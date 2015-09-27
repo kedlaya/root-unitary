@@ -8,7 +8,7 @@
 /*
     Assumes that:
         - {poly, n} is a normalized vector with n >= 2
-        - {w, 3 * n + 9} is scratch space
+        - {w, 3 * n + 8} is scratch space
  */
 int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n, 
                                      fmpz const * a, fmpz const * b, fmpz *w)
@@ -24,7 +24,6 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
     fmpz *d      = w + 3 * n + 5;
     fmpz *t1     = w + 3 * n + 6;
     fmpz *t2     = w + 3 * n + 7;
-    fmpz *t3     = w + 3 * n + 8;
 
     fmpz *l0 = f0 + (n - 1);
     fmpz *l1 = f1 + (n - 2);
