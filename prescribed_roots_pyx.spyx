@@ -1,0 +1,111 @@
+#clang c
+#cinclude $SAGE_LOCAL/include/flint/
+#cfile all_roots_in_interval.c
+#cfile power_sums.c
+
+from cpython cimport array
+import array
+
+cdef extern from "power_sums.h":
+    ctypedef struct power_sums_data_t:
+        pass
+
+    power_sums_data_t ranger_init(int d, int lead)
+    void ranger_clear(power_sums_data_t data)
+    int range_from_power_sums(int *bounds, power_sums_data_t data,
+			   int *pol, int modulus, int k)
+
+cdef class process_queue:
+    cdef int d, verbosity, node_count
+    cdef public int count
+    cdef public int k
+    cdef int[:] Q0
+    cdef public array.array Q1_array
+    cdef int[:] Q1
+    cdef int[:] modlist
+    cdef public array.array modlist_array
+    cdef int[:] lower
+    cdef int[:] upper
+    cdef int bounds[2]
+    cdef power_sums_data_t ps_data
+
+    def __init__(self, int d, int n, int lead,
+                 modlist, node_count, verbosity, Q):
+        cdef int i
+        self.d = d
+        self.k = d-n+1
+        self.Q0 = array.array('i', [0,] * (d+1))
+        self.Q1_array = array.array('i', [0,] * (d+1))
+        self.Q1 = self.Q1_array
+        self.modlist_array = array.array('i', [0,] * (d+1))
+        self.modlist = self.modlist_array
+        self.lower = array.array('i', [0,] * (d+1))
+        self.upper = array.array('i', [0,] * (d+1))
+        for i in range(d+1):
+            self.modlist[i] = modlist[d-i]
+            self.Q0[i] = Q[i]
+            self.Q1[i] = Q[i]
+            self.lower[i] = Q[i]
+            self.upper[i] = Q[i]
+        if verbosity == None:
+            self.verbosity = -1
+        else:
+            self.verbosity = verbosity
+        if node_count == None:
+            self.node_count = -1
+        else:
+            self.node_count = node_count
+        self.count = 0
+        self.ps_data = ranger_init(d, lead)
+
+    def clear(self):
+        ranger_clear(self.ps_data)
+
+    cpdef int exhaust_next_answer(self):
+        cdef int t
+        cdef int d = self.d
+        cdef int k = self.k
+        cdef int *bounds = self.bounds
+        cdef int ascend;
+
+        if k > d:
+            return(None)
+        ascend = (k<0)
+        while (True):
+            if ascend: #ascend, then advance
+                k += 1
+                if (k > d): #don't advance, terminate
+                    t = 0
+                    break
+            else:
+                # First take care of reporting obligations.
+                if d-k <= self.verbosity:
+                    print k, self.Q1[k:d+1]
+                self.count += 1
+                if self.node_count != -1 and self.count > self.node_count:
+                    t = -1
+                    break
+                # Now test this node.
+                if range_from_power_sums(bounds, self.ps_data,
+                                         self.Q1_array.data.as_ints,
+                                         self.modlist[k-1],
+                                         d-k+1):
+                    k -= 1
+                    if k < 0: # return an answer, terminate
+                        t = 1
+                        break
+                    else: #descend
+                        self.Q1[k] = self.Q0[k] + bounds[0]
+                        self.upper[k] = self.Q0[k] + bounds[1]
+                        continue
+            #advance
+            if self.modlist[k] == 0:
+                advance = 1
+            else:
+                self.Q1[k] += self.modlist[k]
+                ascend = (self.Q1[k] > self.upper[k])
+                if ascend:
+                    self.Q1[k] = self.Q0[k] #restore state
+        self.k = k
+        return(t)
+
