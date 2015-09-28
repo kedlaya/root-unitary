@@ -35,22 +35,6 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
     int i;
 
     _fmpz_vec_set(f0, poly, n);
-    _fmpz_poly_evaluate_fmpz(val0_a, f0, n, a);
-
-    /* Remove all factors of val0_a */
-    while (fmpz_is_zero(val0_a))
-    {
-        /* {t1, 2} is available */
-        fmpz_one(t1 + 1);
-        fmpz_neg(t1 + 0, a);
-
-        _fmpz_poly_divrem(f1, f2, f0, n, t1, 2);
-        SWAP(f0, f1);
-        n--;
-
-        _fmpz_poly_evaluate_fmpz(val0_a, f0, n, a);
-    }
-
     _fmpz_poly_evaluate_fmpz(val0_b, f0, n, b);
 
     /* Remove all factors of val0_b */
@@ -65,6 +49,22 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
         n--;
 
         _fmpz_poly_evaluate_fmpz(val0_b, f0, n, b);
+    }
+
+    _fmpz_poly_evaluate_fmpz(val0_a, f0, n, a);
+
+    /* Remove all factors of val0_a */
+    while (fmpz_is_zero(val0_a))
+    {
+        /* {t1, 2} is available */
+        fmpz_one(t1 + 1);
+        fmpz_neg(t1 + 0, a);
+
+        _fmpz_poly_divrem(f1, f2, f0, n, t1, 2);
+        SWAP(f0, f1);
+        n--;
+
+        _fmpz_poly_evaluate_fmpz(val0_a, f0, n, a);
     }
 
     if (n == 1)
@@ -84,8 +84,9 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
 
         /* If we miss any one sign change, we cannot have enough */
         sgn0_a = -sgn0_a;
-        if (fmpz_sgn(val1_a) != sgn0_a || fmpz_sgn(val1_b) != sgn0_b)
+        if (fmpz_sgn(val1_a) != sgn0_a || fmpz_sgn(val1_b) != sgn0_b) {
             return 0;
+	}
 
         /* 
             Explicitly compute the pseudoremainder f2 of f0 modulo f1
