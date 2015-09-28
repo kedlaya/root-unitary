@@ -9,9 +9,10 @@
 typedef struct power_sums_data {
   /* Immutable quantities */
   int d, lead;
-  fmpz_t a, b, const1;
-  fmpq_mat_t *sum_mats;
   int *modlist;
+  fmpz_t a, b, const1;
+  fmpz_mat_t binom_mat;
+  fmpq_mat_t *sum_mats;
 
   /* Mutable quantities */
   /* Todo: include the polynomial to be tested */
@@ -22,7 +23,7 @@ typedef struct power_sums_data {
   fmpz *w;
   slong wlen; /* = 4*d+12 */
   fmpq *w2;
-  slong w2len; /* = 7 */
+  slong w2len; /* = 5 */
 } power_sums_data_t;
 
 void fmpq_floor(fmpz_t res, fmpq_t a) {
@@ -35,7 +36,7 @@ void fmpq_ceil(fmpz_t res, fmpq_t a) {
 
 /* Memory allocation and release.
  */
-power_sums_data_t *ranger_init(int d, int lead, int *modlist) {
+power_sums_data_t *ranger_init(int d, int lead, int *Q0, int *modlist) {
   int i, j;
   power_sums_data_t *data;
   fmpz_poly_t pol;
@@ -56,16 +57,25 @@ power_sums_data_t *ranger_init(int d, int lead, int *modlist) {
   fmpz_set_si(data->b, 2);
   fmpz_one(data->const1);
   fmpz_poly_init(data->pol);
+  for (i=0; i<=d; i++) {
+    fmpz_poly_set_coeff_si(data->pol, i, Q0[i]);
+  }
   
   data->modlist = (int *)malloc((d+1)*sizeof(int));
   for (i=0; i<=d; i++) {
     data->modlist[i] = modlist[i];
   }
+  fmpz_mat_init(data->binom_mat, d+1, d+1);
+  for (i=0; i<=d; i++) {
+    for (j=0; j<=d; j++) {
+      fmpz_bin_uiui(fmpq_mat_entry(data->binom_mat, i, j), i, j);
+    }
+  }
   
   data->sum_mats = (fmpq_mat_t *)malloc((d+1)*sizeof(fmpq_mat_t));
   data->wlen = 4*d+12;
   data->w = _fmpz_vec_init(data->wlen);
-  data->w2len = 7;
+  data->w2len = 5;
   data->w2 = _fmpq_vec_init(data->w2len);
   fmpq_mat_init(data->sum_col, d+1, 1);
   fmpq_mat_init(data->sum_prod, 9, 1);
@@ -75,6 +85,7 @@ power_sums_data_t *ranger_init(int d, int lead, int *modlist) {
 
     arith_chebyshev_t_polynomial(pol, i);
     for (j=0; j<=d; j++) {
+      
       /* Row 0: coeffs of 2*(i-th Chebyshev polynomial)(x/2). */
       k1 = fmpq_mat_entry(data->sum_mats[i], 0, j);
       if (j > i) {
@@ -168,6 +179,7 @@ void ranger_clear(power_sums_data_t *data) {
   fmpz_clear(data->b);
   fmpz_init(data->const1);
   fmpz_poly_clear(data->pol);
+  fmpz_mat_clear(data->binom_mat);
   for (i=0; i<=data->d; i++) {
     fmpq_mat_clear(data->sum_mats[i]);
   }
@@ -242,15 +254,19 @@ int range_from_power_sums(int *bounds, power_sums_data_t *data,
   }
   
   fmpz *tpol = data->w;
+  t0z = data->w + d + 2;
   
   /* Compute the divided (d-k+1)-st derivative of pol, 
      then determine whether its roots are all in [-2, 2]. */
   for (i=0; i<=k-1; i++) {
     fmpz_set_si(tpol+i, pol[i+d-k+1]);
+    fmpz_mul(tpol+i, tpol+i, fmpz_mat_entry(data->binom_mat, i+d-k+1, d-k+1));
+    /*
     for (j=1; j<=d-k+1; j++) {
       fmpz_mul_si(tpol+i, tpol+i, i+j);
       fmpz_divexact_si(tpol+i, tpol+i, j);
     }
+    */
   }
 
   r = _fmpz_poly_all_roots_in_interval(tpol, k, data->a, data->b, data->w+d+1);
@@ -268,7 +284,6 @@ int range_from_power_sums(int *bounds, power_sums_data_t *data,
     bounds[1] = 0;
   } else {
     /* Allocate temporary variables */
-    t0z = data->w + d + 2;
     lower = data->w + d + 3;
     upper = data->w + d + 4;
 

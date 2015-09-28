@@ -175,7 +175,6 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
         
     """
     polRing = P0.parent()
-    x = polRing.gen()
 
     Q0, cofactor = asymmetrize(P0)
     sign = cmp(Q0.leading_coefficient(), 0)

@@ -10,7 +10,7 @@ cdef extern from "power_sums.h":
     ctypedef struct power_sums_data_t:
         pass
 
-    power_sums_data_t *ranger_init(int d, int lead, int *modlist)
+    power_sums_data_t *ranger_init(int d, int lead, int *Q0, int *modlist)
     void ranger_clear(power_sums_data_t *data)
     int range_from_power_sums(int *bounds, power_sums_data_t *data,
 			   int *pol, int k)
@@ -19,6 +19,7 @@ cdef class process_queue:
     cdef int d, verbosity, node_count
     cdef public int count
     cdef public int k
+    cdef public array.array Q0_array
     cdef int[:] Q0
     cdef public array.array Q1_array
     cdef int[:] Q1
@@ -34,7 +35,8 @@ cdef class process_queue:
         cdef int i
         self.d = d
         self.k = d-n+1
-        self.Q0 = array.array('i', [0,] * (d+1))
+        self.Q0_array = array.array('i', [0,] * (d+1))
+        self.Q0 = self.Q0_array
         self.Q1_array = array.array('i', [0,] * (d+1))
         self.Q1 = self.Q1_array
         self.modlist_array = array.array('i', [0,] * (d+1))
@@ -56,7 +58,8 @@ cdef class process_queue:
         else:
             self.node_count = node_count
         self.count = 0
-        self.ps_data = ranger_init(d, lead, self.modlist_array.data.as_ints)
+        self.ps_data = ranger_init(d, lead, self.Q0_array.data.as_ints,
+                                   self.modlist_array.data.as_ints)
 
     def clear(self):
         ranger_clear(self.ps_data)
@@ -94,8 +97,8 @@ cdef class process_queue:
                         t = 1
                         break
                     else: #descend
-                        self.Q1[k] = self.Q0[k] + bounds[0]
-                        self.upper[k] = self.Q0[k] + bounds[1]
+                        self.upper[k] = self.Q1[k] + bounds[1]
+                        self.Q1[k] = self.Q1[k] + bounds[0]
                         continue
             #advance
             if self.modlist[k] == 0:
@@ -103,8 +106,6 @@ cdef class process_queue:
             else:
                 self.Q1[k] += self.modlist[k]
                 ascend = (self.Q1[k] > self.upper[k])
-                if ascend:
-                    self.Q1[k] = self.Q0[k] #restore state
         self.k = k
         return(t)
 
