@@ -25,13 +25,14 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
     fmpz *t1     = w + 3 * n + 6;
     fmpz *t2     = w + 3 * n + 7;
 
-    fmpz *l0 = f0 + (n - 1);
-    fmpz *l1 = f1 + (n - 2);
+    fmpz *l0;
+    fmpz *l1;
 
     fmpz *t;
 
     int sgn0_a;
     int sgn0_b;
+    int i;
 
     _fmpz_vec_set(f0, poly, n);
     _fmpz_poly_evaluate_fmpz(val0_a, f0, n, a);
@@ -78,8 +79,8 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
     sgn0_b = fmpz_sgn(val0_b);
 
     for ( ; ; )
-    {
-        /* Invariant:  n = len(f1) */
+      {
+        /* Invariant:  n = len(f1) = len(f0) - 1 */
 
         /* If we miss any one sign change, we cannot have enough */
         sgn0_a = -sgn0_a;
@@ -92,18 +93,20 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
             c  := - f2[n-1]
             f2 := l1 * f2 + c * f1
          */
+        l0 = f0 + n;
+        l1 = f1 + n - 1;
         fmpz_zero(f2 + 0);
-        _fmpz_vec_scalar_mul_fmpz(f2 + 1, f1, n - 1, l0);
+        _fmpz_vec_scalar_mul_fmpz(f2 + 1, f1, n-1, l0);
         _fmpz_vec_scalar_submul_fmpz(f2, f0, n, l1);
-        fmpz_neg(c, f2 + n - 1);
-
-        _fmpz_vec_scalar_mul_fmpz(f2, f2, n - 1, l1);
-        _fmpz_vec_scalar_addmul_fmpz(f2, f1, n - 1, c);
+      
+        fmpz_neg(c, f2 + n - 1); // len(f2) = n
+        _fmpz_vec_scalar_mul_fmpz(f2, f2, n-1, l1);
+        _fmpz_vec_scalar_addmul_fmpz(f2, f1, n-1, c); // len(f2) = n-1
 
         if (_fmpz_vec_is_zero(f2, n - 1))
             return 1;
 
-        n--;
+        n--; // len(f2) = n
 
         /* Cannot have enough sign changes if the degree drops more than 1 */
         if (fmpz_is_zero(f2 + n - 1))
@@ -136,10 +139,7 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
         /* Rotate the polynomials, leading coefficients, and values */
         _fmpz_vec_scalar_divexact_fmpz(f0, f2, n, d);
         SWAP(f0, f1);
-
-        l0 = f0 + n;
-        l1 = f1 + n - 1;
-    }
+      }
 
     return 1;
 }
