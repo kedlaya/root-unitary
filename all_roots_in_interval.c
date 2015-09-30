@@ -118,6 +118,15 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
         /* Extract content from f2; in practice, this seems to do better than
 	 an explicit subresultant computation. */
         _fmpz_vec_content(d, f2, n);
+	/*
+	printf("%d ", n);
+	fmpz_print(d);
+	printf(" ");
+	fmpz_print(l0);
+	printf(" ");
+	fmpz_print(l1);
+	printf("\n");
+	*/
 
         /* Evaluate f2 at a and b without an explicit function call */
 
@@ -127,7 +136,7 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
         fmpz_submul(t2, l1, val0_a);
         fmpz_mul(t1, c, val1_a);
         fmpz_addmul(t1, l1, t2);
-        fmpz_swap(val0_a, val1_a);
+        SWAP(val0_a, val1_a);
         fmpz_divexact(val1_a, t1, d);
 
         /* val2_b = (c*val1_b + lead1*(lead0*val1_b*b - lead1*val0_b)) // d */
@@ -136,7 +145,7 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
         fmpz_submul(t2, l1, val0_b);
         fmpz_mul(t1, c, val1_b);
         fmpz_addmul(t1, l1, t2);
-        fmpz_swap(val0_b, val1_b);
+        SWAP(val0_b, val1_b);
         fmpz_divexact(val1_b, t1, d);
 
         /* Rotate the polynomials */

@@ -1,4 +1,4 @@
-load("../prescribed_roots.sage")
+load("prescribed_roots.sage")
 polRing.<x> = PolynomialRing(ZZ)
 l = []
 l.append([x+1, x-1])
@@ -8,6 +8,6 @@ for i in range(1, 11):
     for j in ans:
         l[-1].append(j * (x+1))
         l[-1].append(j * (x-1))
-f = open("k3f1-list.txt", "wb")
+f = open("k3-scripts/k3f1-list.txt", "wb")
 f.write(str(l))
 f.close()

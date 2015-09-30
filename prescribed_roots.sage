@@ -63,7 +63,7 @@ def no_roots_of_unity(pol):
     if not pol1.gcd(pol4).is_constant(): return(False) # zeta_{*}, v_2(*) = 1
     return(True)
 
-def eh_test(pol, q):
+def ej_test(pol, q):
     polRing = pol.parent()
     x = polRing.gen()
 

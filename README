@@ -1,4 +1,4 @@
-This package implements the search strategy for root-unitary polynomials (polynomials with all roots on the unit circle) described in:
+This package implements a search strategy for root-unitary polynomials (polynomials with all roots on the unit circle) described in:
 
 K.S. Kedlaya, Search techniques for root-unitary polynomials, in Computational Arithmetic Geometry, Contemporary Mathematics 463, American Mathematical Society, 2008, 71-82;
 
@@ -17,3 +17,4 @@ From a Sage prompt, type
   sage: load("prescribed_roots.sage")
 and everything should compile automatically.
 
+TODO: Try to port from Sage to Nemo (i.e., from Python to Julia).
