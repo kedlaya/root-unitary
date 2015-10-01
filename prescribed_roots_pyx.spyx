@@ -7,13 +7,17 @@ from cpython cimport array
 import array
 
 cdef extern from "power_sums.h":
-    ctypedef struct power_sums_data_t:
+    ctypedef struct ps_static_data_t:
+        pass
+    ctypedef struct ps_dynamic_data_t:
         pass
 
-    power_sums_data_t *ranger_init(int d, int lead, int *Q0, int *modlist)
-    void ranger_clear(power_sums_data_t *data)
-    int c_process_queue(power_sums_data_t *ps_data, int *pol,
-		  int verbosity, int node_count)
+    ps_static_data_t *ps_static_init(int d, int lead, int *modlist,
+                                     int verbosity, int node_count)
+    ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0)
+    void ps_static_clear(ps_static_data_t *st_data)
+    void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
+    int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int *Q)
 
 cdef class process_queue:
     cdef int d, verbosity, node_count
@@ -28,7 +32,8 @@ cdef class process_queue:
     cdef int[:] lower
     cdef int[:] upper
     cdef int bounds[2]
-    cdef power_sums_data_t *ps_data
+    cdef ps_static_data_t *ps_st_data
+    cdef ps_dynamic_data_t *ps_dy_data
 
     def __init__(self, int d, int n, int lead,
                  modlist, node_count, verbosity, Q):
@@ -58,13 +63,17 @@ cdef class process_queue:
         else:
             self.node_count = node_count
         self.count = 0
-        self.ps_data = ranger_init(d, lead, self.Q0_array.data.as_ints,
-                                   self.modlist_array.data.as_ints)
+        self.ps_st_data = ps_static_init(d, lead,
+                                    self.modlist_array.data.as_ints,
+                                         self.verbosity, self.node_count)
+        self.ps_dy_data = ps_dynamic_init(d, self.Q0_array.data.as_ints)
 
     def clear(self):
-        ranger_clear(self.ps_data)
+        ps_static_clear(self.ps_st_data)
+        ps_dynamic_clear(self.ps_dy_data)
 
     cpdef int exhaust_next_answer(self):
-        return c_process_queue(self.ps_data, self.Q1_array.data.as_ints,
-                               self.verbosity, self.node_count)
+        cdef int t
+        t = next_pol(self.ps_st_data, self.ps_dy_data, self.Q1_array.data.as_ints)
+        return(t)
 
