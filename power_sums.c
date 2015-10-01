@@ -8,7 +8,7 @@
 
 typedef struct power_sums_data {
   /* Immutable quantities */
-  int d, lead;
+  int d, k, lead;
   int *modlist;
   fmpz_t a, b, const1;
   fmpz_mat_t binom_mat;
@@ -16,8 +16,10 @@ typedef struct power_sums_data {
 
   /* Mutable quantities */
   /* Todo: include the polynomial to be tested */
+  int count;
   fmpq_mat_t sum_col, sum_prod;
   fmpz_poly_t pol;  
+  int *upper;
 
   /* Scratch space */
   fmpz *w;
@@ -48,7 +50,9 @@ power_sums_data_t *ranger_init(int d, int lead, int *Q0, int *modlist) {
 
   data = (power_sums_data_t *)malloc(sizeof(power_sums_data_t));
   data->d = d;
+  data->k = d;
   data->lead = lead;
+  data->count = 0;
 
   fmpz_init(data->a);
   fmpz_init(data->b);
@@ -65,6 +69,8 @@ power_sums_data_t *ranger_init(int d, int lead, int *Q0, int *modlist) {
   for (i=0; i<=d; i++) {
     data->modlist[i] = modlist[i];
   }
+  data->upper = (int *)malloc((d+1)*sizeof(int));
+
   fmpz_mat_init(data->binom_mat, d+1, d+1);
   for (i=0; i<=d; i++) {
     for (j=0; j<=d; j++) {
@@ -78,6 +84,7 @@ power_sums_data_t *ranger_init(int d, int lead, int *Q0, int *modlist) {
   data->w2len = 5;
   data->w2 = _fmpq_vec_init(data->w2len);
   fmpq_mat_init(data->sum_col, d+1, 1);
+  fmpq_set_si(fmpq_mat_entry(data->sum_col, 0, 0), d, 1);
   fmpq_mat_init(data->sum_prod, 9, 1);
   for (i=0; i<=d; i++) {
 
@@ -191,34 +198,12 @@ void ranger_clear(power_sums_data_t *data) {
   free(data);
 }
 
-/* Compute the 0th to k-th power sums and place them in data->sum_col. */
-void fmpq_poly_power_sums(power_sums_data_t *data, int *pol, int k)
-{
-  int i,j;
-  int d = data->d;
-  fmpq *t, *u;
-
-  u = data->w + d + 1;
-  fmpq_set_si(fmpq_mat_entry(data->sum_col, 0, 0), d, 1);
-  for (i=1; i<=k; i++) {
-    t = fmpq_mat_entry(data->sum_col, i, 0);
-    if (i <= d) fmpq_set_si(t, -i*pol[d-i], pol[d]);
-    else fmpq_zero(t);
-    for (j=1; j<i && j<=d; j++) {
-      fmpq_set_si(u, -pol[d-j], pol[d]);
-      fmpq_addmul(t, u, fmpq_mat_entry(data->sum_col, 0, i-j));
-    }
-  }
-  for (i=k+1; i<=d; i++) 
-    fmpq_zero(fmpq_mat_entry(data->sum_col, i, 0));
-}
-
 /* Return values: 1 if bounds[0] <= bounds[1], 0 otherwise. */
 int range_from_power_sums(int *bounds, power_sums_data_t *data,
 			   int *pol, int k) {
   int i, j, r, r1, r2, modulus, d = data->d;
   fmpz *lower, *upper, *t0z;
-  fmpq *t0q, *f;
+  fmpq *t0q, *t1q, *f;
     
   void set_lower(const fmpq_t val) {
     fmpq_mul(t0q, val, f);
@@ -233,17 +218,13 @@ int range_from_power_sums(int *bounds, power_sums_data_t *data,
   void change_lower(const fmpq_t val) {
     fmpq_mul(t0q, val, f);
     fmpq_ceil(t0z, t0q);
-    if (fmpz_cmp(t0z, lower) > 0) {
-      fmpz_set(lower, t0z);
-    }
+    if (fmpz_cmp(t0z, lower) > 0) fmpz_set(lower, t0z);
   }
   
   void change_upper(const fmpq_t val) {
     fmpq_mul(t0q, val, f);
     fmpq_floor(t0z, t0q);
-    if (fmpz_cmp(t0z, upper) < 0) {
-      fmpz_set(upper, t0z);
-    }
+    if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
   }
   
   fmpz *tpol = data->w;
@@ -275,11 +256,24 @@ int range_from_power_sums(int *bounds, power_sums_data_t *data,
 
     t0q = data->w2;
     f = data->w2 + 1;
-    fmpq *t1q = data->w2 + 2;
+
+    /* Compute the k-th power sum. */
+    for (i=k; i<=k; i++) {
+      t1q = fmpq_mat_entry(data->sum_col, i, 0);
+      fmpq_set_si(t1q, -i*pol[d-i], pol[d]);
+      for (j=1; j<i; j++) {
+	fmpq_set_si(t0q, -pol[d-j], pol[d]);
+	fmpq_addmul(t1q, t0q, fmpq_mat_entry(data->sum_col, i-j, 0));
+      }
+    }
+    for (i=k+1; i<=d; i++) 
+      fmpq_zero(fmpq_mat_entry(data->sum_col, i, 0));
+
+    /* Initialize bounds using power sums of the asymmetrized polynomial. */
+    t1q = data->w2 + 2;
     fmpq *t2q = data->w2 + 3;
     fmpq *t3q = data->w2 + 4;
-    
-    /* Initialize bounds using power sums of the asymmetrized polynomial. */
+ 
     fmpq_poly_power_sums(data, pol, k);
     modulus = data->modlist[d-k];
     fmpq_set_si(f, data->lead, modulus*k);
@@ -302,8 +296,7 @@ int range_from_power_sums(int *bounds, power_sums_data_t *data,
     /* Now set tpol to the divided (d-k)-th derivative of pol.
        then evaluate again. */
     for (i=k; i>=1; i--) {
-      fmpz_set(tpol+i, tpol+i-1);
-      fmpz_mul_si(tpol+i, tpol+i, d-k+1);
+      fmpz_mul_si(tpol+i, tpol+i-1, d-k+1);
       fmpz_divexact_si(tpol+i, tpol+i, i);      
     }
     fmpq_set_si(t2q, -k, data->lead);
@@ -349,31 +342,33 @@ int range_from_power_sums(int *bounds, power_sums_data_t *data,
       fmpq_add(t0q, t0q, t1q);
       change_lower(t0q);
 	
-      t1q = fmpq_mat_entry(data->sum_prod, 6, 0);
-      t2q = fmpq_mat_entry(data->sum_prod, 7, 0);
       t3q = fmpq_mat_entry(data->sum_prod, 8, 0);
-      fmpq_mul(t0q, t2q, t2q);
       if ((k%2 == 0) && (fmpq_sgn(t3q) > 0)) {
+	t2q = fmpq_mat_entry(data->sum_prod, 7, 0);
+	fmpq_mul(t0q, t2q, t2q);
+	t1q = fmpq_mat_entry(data->sum_prod, 6, 0);
 	fmpq_div(t0q, t0q, t3q);
 	fmpq_sub(t0q, t1q, t0q);
 	change_upper(t0q);
       } else if ((k%2 == 1) && (fmpq_sgn(t3q) < 0)) {
+	t2q = fmpq_mat_entry(data->sum_prod, 7, 0);
+	fmpq_mul(t0q, t2q, t2q);
+	t1q = fmpq_mat_entry(data->sum_prod, 6, 0);
 	fmpq_div(t0q, t0q, t3q);
 	fmpq_sub(t0q, t1q, t0q);
 	change_lower(t0q);
       }
       fmpq_set_si(t0q, 4, 1);
       fmpq_mul(t0q, t0q, t2q);
+      // fmpq_mul_si(t0q, t2q, 4);
       fmpq_add(t0q, t0q, t1q);
-      if (k%2 == 0) {
-	change_lower(t0q);
-      } else {
-	change_upper(t0q);
-      }
+      if (k%2 == 0) change_lower(t0q);
+      else change_upper(t0q);
 
       if (k%2 == 0) {
 	fmpq_set_si(t0q, -4, 1);
 	fmpq_mul(t0q, t0q, fmpq_mat_entry(data->sum_col, k-2, 0));
+      // fmpq_mul_si(t0q, fmpq_mat_entry(data->sum_col, k-2, 0), -4);
 	fmpq_add(t0q, t0q, fmpq_mat_entry(data->sum_col, k, 0));
 	change_lower(t0q);	
       }
@@ -384,4 +379,56 @@ int range_from_power_sums(int *bounds, power_sums_data_t *data,
   }
   return(bounds[0] <= bounds[1]);
 
+}
+
+int c_process_queue(power_sums_data_t *data, int *pol,
+		  int verbosity, int node_count) {
+  int i, t, count = data->count, d = data->d, k = data->k;
+  int bounds[2];
+  int *modlist = data->modlist, *upper = data->upper;
+  fmpq *tq;
+  fmpq_t u;
+
+  if (k>d) return(0);
+  int ascend = (k<0);
+  fmpq_init(u);
+  while (1) {
+    if (ascend) {
+      k += 1;
+      if (k>d) { t=0; break; }
+    } else {
+      if (d-k <= verbosity) {
+	printf("%d: ", k);
+	for (i=k; i<=d; i++) printf("%d ", pol[i]);
+	printf("\n");
+      }
+      count += 1;
+      if (node_count != -1 && count >= node_count) { t= -1; break; }
+      if (range_from_power_sums(bounds, data, pol, d-k+1)) {
+	  k -= 1;
+	  if (k<0) { t=1; break; }
+	  upper[k] = pol[k] + bounds[1];
+	  pol[k] += bounds[0];
+	  fmpq_set_si(u, -(d-k)*bounds[0], pol[d]);
+	  tq = fmpq_mat_entry(data->sum_col, d-k, 0);
+	  fmpq_add(tq, tq, u);
+	  continue;
+	}
+    }
+    if (modlist[k] == 0) ascend = 1;
+    else {
+      pol[k] += modlist[k];
+      if (pol[k] > upper[k]) ascend = 1;
+      else {
+	ascend = 0;
+	fmpq_set_si(u, -(d-k)*modlist[k], pol[d]);
+	tq = fmpq_mat_entry(data->sum_col, d-k, 0);
+	fmpq_add(tq, tq, u);
+      }
+    }
+  }
+  fmpq_clear(u);
+  data->k = k;
+  data->count = count;
+  return(t);
 }

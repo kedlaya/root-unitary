@@ -12,8 +12,8 @@ cdef extern from "power_sums.h":
 
     power_sums_data_t *ranger_init(int d, int lead, int *Q0, int *modlist)
     void ranger_clear(power_sums_data_t *data)
-    int range_from_power_sums(int *bounds, power_sums_data_t *data,
-			   int *pol, int k)
+    int c_process_queue(power_sums_data_t *ps_data, int *pol,
+		  int verbosity, int node_count)
 
 cdef class process_queue:
     cdef int d, verbosity, node_count
@@ -34,7 +34,7 @@ cdef class process_queue:
                  modlist, node_count, verbosity, Q):
         cdef int i
         self.d = d
-        self.k = d-n+1
+        self.k = d
         self.Q0_array = array.array('i', [0,] * (d+1))
         self.Q0 = self.Q0_array
         self.Q1_array = array.array('i', [0,] * (d+1))
@@ -65,47 +65,6 @@ cdef class process_queue:
         ranger_clear(self.ps_data)
 
     cpdef int exhaust_next_answer(self):
-        cdef int t
-        cdef int d = self.d
-        cdef int k = self.k
-        cdef int *bounds = self.bounds
-        cdef int ascend;
-
-        if k > d:
-            return(None)
-        ascend = (k<0)
-        while (True):
-            if ascend: #ascend, then advance
-                k += 1
-                if (k > d): #don't advance, terminate
-                    t = 0
-                    break
-            else:
-                # First take care of reporting obligations.
-                if d-k <= self.verbosity:
-                    print k, self.Q1[k:d+1]
-                self.count += 1
-                if self.node_count != -1 and self.count > self.node_count:
-                    t = -1
-                    break
-                # Now test this node.
-                if range_from_power_sums(bounds, self.ps_data,
-                                         self.Q1_array.data.as_ints,
-                                         d-k+1):
-                    k -= 1
-                    if k < 0: # return an answer, terminate
-                        t = 1
-                        break
-                    else: #descend
-                        self.upper[k] = self.Q1[k] + bounds[1]
-                        self.Q1[k] = self.Q1[k] + bounds[0]
-                        continue
-            #advance
-            if self.modlist[k] == 0:
-                ascend = 1
-            else:
-                self.Q1[k] += self.modlist[k]
-                ascend = (self.Q1[k] > self.upper[k])
-        self.k = k
-        return(t)
+        return c_process_queue(self.ps_data, self.Q1_array.data.as_ints,
+                               self.verbosity, self.node_count)
 
