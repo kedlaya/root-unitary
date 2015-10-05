@@ -16,7 +16,7 @@ typedef struct ps_static_data {
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
-  int d, n, count;
+  int d, n, count, ascend;
   fmpq_mat_t sum_col, sum_prod;
   fmpz *pol, *upper;
 
@@ -162,22 +162,67 @@ ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0) {
   /* Initialize mutable quantities */
   dy_data->n = d;
   dy_data->count = 0;
+  dy_data->ascend = 0;
   dy_data->pol = _fmpz_vec_init(d+1);
-  for (i=0; i<=d; i++) 
-    fmpz_set_si(dy_data->pol+i, Q0[i]);
+  if (Q0 != NULL) 
+    for (i=0; i<=d; i++) 
+      fmpz_set_si(dy_data->pol+i, Q0[i]);
   
   fmpq_mat_init(dy_data->sum_col, d+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->sum_col, 0, 0), d, 1);
-  fmpq_mat_init(dy_data->sum_prod, 9, 1);
 
   dy_data->upper = _fmpz_vec_init(d+1);
 
   /* Allocate scratch space */
+  fmpq_mat_init(dy_data->sum_prod, 9, 1);
   dy_data->wlen = 4*d+12;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
   dy_data->w2len = 5;
   dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
   return(dy_data);
+}
+
+ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data) {
+  ps_dynamic_data_t *dy_data2;
+  int i, d = dy_data->d;
+
+  dy_data2 = ps_dynamic_init(d, NULL);
+  dy_data2->n = dy_data->n;
+  dy_data2->count = dy_data->count;
+  dy_data2->ascend = dy_data->ascend;
+  _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
+  _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
+  fmpq_mat_set(dy_data2->sum_col, dy_data->sum_col);
+  return(dy_data2);
+}
+
+ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data) {
+  if (dy_data==NULL) return(NULL);
+
+  ps_dynamic_data_t *dy_data2;
+  int i, d = dy_data->d, n = dy_data->n;
+
+  for (i=d; i>n+1; i--)
+    if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) <0) {
+      
+      dy_data2 = ps_dynamic_clone(dy_data);
+      fmpz_set(dy_data->upper+i, dy_data->pol+i);
+      dy_data2->n = i-1;
+      dy_data2->ascend = 1;
+      return(dy_data2);
+  }
+  return(NULL);
+}
+
+void extract_pol(int *Q, ps_dynamic_data_t *dy_data) {
+  int i;
+  fmpz *pol = dy_data->pol;
+  for (i=0; i<=dy_data->d; i++)
+    Q[i] = fmpz_get_si(pol+i);
+}
+
+int extract_count(ps_dynamic_data_t *dy_data) {
+  return(dy_data->count);
 }
 
 void ps_static_clear(ps_static_data_t *st_data) {
@@ -406,50 +451,56 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
    -1: if the maximum number of nodes has been reached
 */
 
-int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int *Q) {
-  int d = st_data->d, verbosity = st_data->verbosity, 
-    node_count = st_data->node_count;
+int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
+  if (dy_data==NULL) return(0);
+
+  int d = st_data->d;
+  int verbosity = st_data->verbosity;
+  int node_count = st_data->node_count;
   fmpz *modlist = st_data->modlist;
 
+  int ascend = dy_data->ascend;
+  int n = dy_data->n;
+  int count = dy_data->count;
   fmpz *upper = dy_data->upper;
   fmpz *pol = dy_data->pol;
 
   int i, t;
   fmpq *tq;
 
-  if (dy_data->n>d) return(0);
-  int ascend = (dy_data->n<0);
+  if (n>d) return(0);
   while (1) {
     if (ascend) {
-      dy_data->n += 1;
-      if (dy_data->n>d) { t=0; break; }
+      n += 1;
+      if (n>d) { t=0; break; }
     } else {
-      if (d-dy_data->n <= verbosity) {
-	_fmpz_vec_print(pol+dy_data->n, d-dy_data->n+1);
+      if (d-n <= verbosity) {
+	_fmpz_vec_print(pol+n, d-n+1);
 	printf("\n");
       }
-      dy_data->count += 1;
-      if (node_count != -1 && dy_data->count >= node_count) { t= -1; break; }
+      count += 1;
+      if (node_count != -1 && count >= node_count) { t= -1; break; }
+      dy_data->n = n;
       if (set_range_from_power_sums(st_data, dy_data)) {
-	  dy_data->n -= 1;
-	  if (dy_data->n<0) { t=1; break; }
+	  n -= 1;
+	  if (n<0) { t=1; break; }
 	  continue;
 	}
     }
-    if (fmpq_is_zero(modlist+dy_data->n)) ascend = 1;
+    if (fmpq_is_zero(modlist+n)) ascend = 1;
     else {
-      fmpz_add(pol+dy_data->n, pol+dy_data->n, modlist+dy_data->n);
-      if (fmpz_cmp(pol+dy_data->n, upper+dy_data->n) > 0) ascend = 1;
+      fmpz_add(pol+n, pol+n, modlist+n);
+      if (fmpz_cmp(pol+n, upper+n) > 0) ascend = 1;
       else {
 	ascend = 0;
 	/* Update the (d-n)-th power sum. */
-	tq = fmpq_mat_entry(dy_data->sum_col, d-dy_data->n, 0);
-	fmpq_sub(tq, tq, st_data->f+dy_data->n);
+	tq = fmpq_mat_entry(dy_data->sum_col, d-n, 0);
+	fmpq_sub(tq, tq, st_data->f+n);
       }
     }
   }
-  if (t==1)
-    for (i=0; i<=d; i++)
-      Q[i] = fmpz_get_si(pol+i);
+  dy_data->ascend = (n<0);
+  dy_data->n = n;
+  dy_data->count = count;
   return(t);
 }

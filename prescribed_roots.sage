@@ -143,7 +143,8 @@ def symmetrize(Q, R=1):
 
 def roots_on_unit_circle(P0, modulus=1, n=1,
                          answer_count=None,
-                         verbosity=None, node_count=None, filter=None):
+                         verbosity=None, node_count=None, filter=None,
+                         num_threads=None):
     """
     Find polynomials with roots on the unit circle under extra restrictions.
 
@@ -195,6 +196,20 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
                       verbosity, Q0)
     ans = []
     anslen = 0
+    if (num_threads): # parallel version
+        ans1 = process.parallel_exhaust(num_threads)
+        ans = []
+        for i in ans1:
+            Q2 = polRing(i)
+            Q3 = sign * symmetrize(Q2, cofactor)
+            if filter == None or filter(Q3):
+                ans.append(Q3)
+                anslen += 1
+                if answer_count != None and anslen >= answer_count:
+                    break
+        process.clear()
+        return(ans, process.count)
+
     try:
         while True:
             t = process.exhaust_next_answer()
