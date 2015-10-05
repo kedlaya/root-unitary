@@ -9,12 +9,13 @@ typedef struct ps_static_data {
   fmpz *modlist;
   fmpq_mat_t *sum_mats;
   fmpq_t *f;
+  fmpz_poly_t cofactor;
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
-  int d, n, count;
+  int d, n, count, ascend;
   fmpq_mat_t sum_col, sum_prod;
-  fmpz *pol, *upper;
+  fmpz *pol, *sympol, *upper;
 
   /* Scratch space */
   fmpz *w;
@@ -23,12 +24,14 @@ typedef struct ps_dynamic_data {
   slong w2len; /* = 5 */
 } ps_dynamic_data_t;
 
-ps_static_data_t *ps_static_init(int d, int lead, int *modlist, 
+ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor, 
+				 int *modlist,
 				 int verbosity, int node_count);
 ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0);
 void ps_static_clear(ps_static_data_t *st_data);
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data);
 void extract_pol(int *Q, ps_dynamic_data_t *dy_data);
+void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data);
 int extract_count(ps_dynamic_data_t *dy_data);
 ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data);
 ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data);

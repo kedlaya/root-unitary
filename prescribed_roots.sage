@@ -176,8 +176,10 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
         
     """
     polRing = P0.parent()
+    x = polRing.gen()
 
     Q0, cofactor = asymmetrize(P0)
+    num_cofactor = [1, x+1, x-1, x^2-1].index(cofactor)
     sign = cmp(Q0.leading_coefficient(), 0)
     Q0 *= sign
     d = Q0.degree()
@@ -192,18 +194,16 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
     modlist = [0]*n + modlist
     modlist += [modlist[-1]] * (d+1 - len(modlist)) + [1]
 
-    process = process_queue(d, n, lead, modlist, node_count,
-                      verbosity, Q0)
+    process = process_queue(d, n, lead, sign, num_cofactor, 
+                            modlist, node_count, verbosity, Q0)
     ans = []
     anslen = 0
     if (num_threads): # parallel version
         ans1 = process.parallel_exhaust(num_threads)
-        ans = []
         for i in ans1:
             Q2 = polRing(i)
-            Q3 = sign * symmetrize(Q2, cofactor)
-            if filter == None or filter(Q3):
-                ans.append(Q3)
+            if filter == None or filter(Q2):
+                ans.append(Q2)
                 anslen += 1
                 if answer_count != None and anslen >= answer_count:
                     break
@@ -214,10 +214,9 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
         while True:
             t = process.exhaust_next_answer()
             if t>0:
-                Q2 = polRing(process.Q1_array.tolist())
-                Q3 = sign * symmetrize(Q2, cofactor)
-                if filter == None or filter(Q3):
-                    ans.append(Q3)
+                Q2 = polRing(process.Qsym_array.tolist())
+                if filter == None or filter(Q2):
+                    ans.append(Q2)
                     anslen += 1
                     if answer_count != None and anslen >= answer_count:
                         break

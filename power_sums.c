@@ -7,9 +7,10 @@
 #include "all_roots_in_interval.h"
 
 typedef struct ps_static_data {
-  int d, lead, verbosity, node_count;
+  int d, lead, sign, verbosity, node_count;
   fmpz_t a, b;
   fmpz_mat_t binom_mat;
+  fmpz *cofactor;
   fmpz *modlist;
   fmpq_mat_t *sum_mats;
   fmpq_t *f;
@@ -18,7 +19,7 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, count, ascend;
   fmpq_mat_t sum_col, sum_prod;
-  fmpz *pol, *upper;
+  fmpz *pol, *sympol, *upper;
 
   /* Scratch space */
   fmpz *w;
@@ -37,7 +38,8 @@ void fmpq_ceil(fmpz_t res, fmpq_t a) {
 
 /* Memory allocation and release.
  */
-ps_static_data_t *ps_static_init(int d, int lead, int *modlist, 
+ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor, 
+				 int *modlist, 
 				 int verbosity, int node_count) {
   int i, j;
   ps_static_data_t *st_data;
@@ -53,6 +55,7 @@ ps_static_data_t *ps_static_init(int d, int lead, int *modlist,
 
   st_data->d = d;
   st_data->lead = lead;
+  st_data->sign = sign;
   st_data->verbosity = verbosity;
   st_data->node_count = node_count;
 
@@ -60,6 +63,33 @@ ps_static_data_t *ps_static_init(int d, int lead, int *modlist,
   fmpz_init(st_data->b);
   fmpz_set_si(st_data->a, -2);
   fmpz_set_si(st_data->b, 2);
+
+  st_data->cofactor = _fmpz_vec_init(3);
+  switch (cofactor) {
+  case 0: /* Cofactor 1 */
+    fmpz_set_si(st_data->cofactor, 1);
+    fmpz_set_si(st_data->cofactor+1, 0);
+    fmpz_set_si(st_data->cofactor+2, 0);
+    break;
+
+  case 1: /* Cofactor x+1 */
+    fmpz_set_si(st_data->cofactor, 1);
+    fmpz_set_si(st_data->cofactor+1, 1);
+    fmpz_set_si(st_data->cofactor+2, 0);
+    break;
+
+  case 2:  /* Cofactor x-1 */
+    fmpz_set_si(st_data->cofactor, -1);
+    fmpz_set_si(st_data->cofactor+1, 1);
+    fmpz_set_si(st_data->cofactor+2, 0);
+    break;
+
+  case 3: /* Cofactor x^2 - 1 */
+    fmpz_set_si(st_data->cofactor, -1);
+    fmpz_set_si(st_data->cofactor+1, 0);
+    fmpz_set_si(st_data->cofactor+2, 1);
+    break;
+  }
 
   st_data->modlist =_fmpz_vec_init(d+1);
   st_data->f = _fmpq_vec_init(d+1);
@@ -164,6 +194,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0) {
   dy_data->count = 0;
   dy_data->ascend = 0;
   dy_data->pol = _fmpz_vec_init(d+1);
+  dy_data->sympol = _fmpz_vec_init(2*d+3);
   if (Q0 != NULL) 
     for (i=0; i<=d; i++) 
       fmpz_set_si(dy_data->pol+i, Q0[i]);
@@ -204,11 +235,11 @@ ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data) {
 
   for (i=d; i>n+1; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) <0) {
-      
       dy_data2 = ps_dynamic_clone(dy_data);
       fmpz_set(dy_data->upper+i, dy_data->pol+i);
       dy_data2->n = i-1;
       dy_data2->ascend = 1;
+      dy_data2->count = 0;
       return(dy_data2);
   }
   return(NULL);
@@ -221,6 +252,13 @@ void extract_pol(int *Q, ps_dynamic_data_t *dy_data) {
     Q[i] = fmpz_get_si(pol+i);
 }
 
+void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data) {
+  int i;
+  fmpz *sympol = dy_data->sympol;
+  for (i=0; i<=2*dy_data->d+2; i++)
+    Q[i] = fmpz_get_si(sympol+i);
+}
+
 int extract_count(ps_dynamic_data_t *dy_data) {
   return(dy_data->count);
 }
@@ -229,6 +267,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
   int i, d = st_data->d;
   fmpz_clear(st_data->a);
   fmpz_clear(st_data->b);
+  _fmpz_vec_clear(st_data->cofactor, 3);
   fmpz_mat_clear(st_data->binom_mat);
   _fmpq_vec_clear(st_data->f, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
@@ -241,6 +280,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   int d = dy_data->d;
   _fmpz_vec_clear(dy_data->pol, d+1);
+  _fmpz_vec_clear(dy_data->sympol, 2*d+3);
   _fmpz_vec_clear(dy_data->upper, d+1);
   fmpq_mat_clear(dy_data->sum_col);
   fmpq_mat_clear(dy_data->sum_prod);
@@ -464,8 +504,9 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
   int count = dy_data->count;
   fmpz *upper = dy_data->upper;
   fmpz *pol = dy_data->pol;
+  fmpz *sympol = dy_data->sympol;
 
-  int i, t;
+  int i, j, t;
   fmpq *tq;
 
   if (n>d) return(0);
@@ -483,7 +524,23 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
       dy_data->n = n;
       if (set_range_from_power_sums(st_data, dy_data)) {
 	  n -= 1;
-	  if (n<0) { t=1; break; }
+	  if (n<0) { 
+	    t=1; 
+	    /* Convert back into symmetric form. */
+	    _fmpz_vec_zero(sympol, 2*d+3);
+	    fmpz *temp = dy_data->w;
+	    for (i=0; i<=d; i++) {
+	      fmpz_one(temp);
+	      for (j=0; j<=i; j++) {
+		fmpz_addmul(sympol+d+i-2*j, pol+i, temp);
+		fmpz_mul_si(temp, temp, i-j);
+		fmpz_divexact_si(temp, temp, j+1);
+	      }
+	    }
+	    _fmpz_vec_scalar_mul_si(sympol, sympol, 2*d+1, st_data->sign);
+	    _fmpz_poly_mul(sympol, sympol, 2*d+1, st_data->cofactor, 3);
+	    break; 
+	  }
 	  continue;
 	}
     }

@@ -1,5 +1,7 @@
 #clang c
 #cinclude $SAGE_LOCAL/include/flint/
+#clib gomp
+#cargs -fopenmp
 #cfile all_roots_in_interval.c
 #cfile power_sums.c
 
@@ -8,7 +10,6 @@ import array
 from cython.parallel import prange
 from libc.stdlib cimport malloc, free
 cimport cython
-cimport openmp
 
 cdef extern from "power_sums.h":
     ctypedef struct ps_static_data_t:
@@ -16,12 +17,14 @@ cdef extern from "power_sums.h":
     ctypedef struct ps_dynamic_data_t:
         pass
 
-    ps_static_data_t *ps_static_init(int d, int lead, int *modlist,
+    ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor, 
+                                     int *modlist,
                                      int verbosity, int node_count)
     ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0)
     ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data)
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
     void extract_pol(int *Q, ps_dynamic_data_t *dy_data)
+    void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data)
     int extract_count(ps_dynamic_data_t *dy_data)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
@@ -35,23 +38,30 @@ cdef class process_queue:
     cdef int[:] Q0
     cdef public array.array Q1_array
     cdef int[:] Q1
+    cdef public array.array Qsym_array
+    cdef int[:] Qsym
     cdef int[:] modlist
     cdef public array.array modlist_array
     cdef int[:] lower
     cdef int[:] upper
-    cdef int bounds[2]
+    cdef int sign
+    cdef int cofactor
     cdef ps_static_data_t *ps_st_data
     cdef ps_dynamic_data_t *ps_dy_data
 
-    def __init__(self, int d, int n, int lead,
+    def __init__(self, int d, int n, int lead, int sign, int cofactor,
                  modlist, node_count, verbosity, Q):
         cdef int i
         self.d = d
         self.k = d
+        self.sign = sign
+        self.cofactor = cofactor
         self.Q0_array = array.array('i', [0,] * (d+1))
         self.Q0 = self.Q0_array
         self.Q1_array = array.array('i', [0,] * (d+1))
         self.Q1 = self.Q1_array
+        self.Qsym_array = array.array('i', [0,] * (2*d+3))
+        self.Qsym = self.Qsym_array
         self.modlist_array = array.array('i', [0,] * (d+1))
         self.modlist = self.modlist_array
         self.lower = array.array('i', [0,] * (d+1))
@@ -71,7 +81,7 @@ cdef class process_queue:
         else:
             self.node_count = node_count
         self.count = 0
-        self.ps_st_data = ps_static_init(d, lead,
+        self.ps_st_data = ps_static_init(d, lead, sign, cofactor,
                                     self.modlist_array.data.as_ints,
                                          self.verbosity, self.node_count)
         self.ps_dy_data = ps_dynamic_init(d, self.Q0_array.data.as_ints)
@@ -83,7 +93,7 @@ cdef class process_queue:
     cpdef int exhaust_next_answer(self):
         cdef int t
         t = next_pol(self.ps_st_data, self.ps_dy_data)
-        extract_pol(self.Q1_array.data.as_ints, self.ps_dy_data)
+        extract_symmetrized_pol(self.Qsym_array.data.as_ints, self.ps_dy_data)
         self.count = extract_count(self.ps_dy_data)
         return(t)
 
@@ -101,7 +111,7 @@ cdef class process_queue:
             t = 0
             k = k%(np-1) + 1
             with nogil:
-                for i in prange(np, num_threads=np):
+                for i in prange(np, schedule='dynamic', num_threads=np):
                     if dy_data_buf[i] != NULL:
                         res[i] = next_pol(self.ps_st_data, dy_data_buf[i])
             for i in range(np):
@@ -113,12 +123,12 @@ cdef class process_queue:
                         ps_dynamic_clear(dy_data_buf[i])
                         dy_data_buf[i] = NULL
                     else:
-                        extract_pol(self.Q1_array.data.as_ints, 
-                                    dy_data_buf[i])
-                        ans.append(list(self.Q1))
+                        extract_symmetrized_pol(self.Qsym_array.data.as_ints,
+                                                dy_data_buf[i])
+                        ans.append(list(self.Qsym_array))
                 if dy_data_buf[i] == NULL:
                     j = (i-k) % np
-                    dy_data_buf[i] = ps_dynamic_split(dy_data_buf[k])
+                    dy_data_buf[i] = ps_dynamic_split(dy_data_buf[j])
         free(dy_data_buf)
         free(res)
         return(ans)
