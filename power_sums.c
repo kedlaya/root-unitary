@@ -23,9 +23,9 @@ typedef struct ps_dynamic_data {
 
   /* Scratch space */
   fmpz *w;
-  slong wlen; /* = 4*d+12 */
+  int wlen; /* = 4*d+12 */
   fmpq *w2;
-  slong w2len; /* = 5 */
+  int w2len; /* = 5 */
 } ps_dynamic_data_t;
 
 void fmpq_floor(fmpz_t res, fmpq_t a) {
@@ -290,6 +290,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 }
 
 /* Return values: 
+   -1: if the n-th truncated polynomial does not have roots in the interval
    1: if lower <= upper
    0: otherwise. 
    Both cases include the option n=0, in which case we simply check
@@ -354,7 +355,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
      If r=1 and k<=d, continue to compute bounds.
   */
 
-  if (r==0) return(0);
+  if (r==0) return(-1);
   if ((k > d) || fmpz_is_zero(modulus)) return(1);
 
   /* Compute the k-th power sum. */
@@ -506,7 +507,7 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
 
-  int i, j, t;
+  int i, j, t, r;
   fmpq *tq;
 
   if (n>d) return(0);
@@ -521,8 +522,10 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
       }
       count += 1;
       if (node_count != -1 && count >= node_count) { t= -1; break; }
+      i = dy_data->n;
       dy_data->n = n;
-      if (set_range_from_power_sums(st_data, dy_data)) {
+      r = set_range_from_power_sums(st_data, dy_data);
+      if (r > 0) {
 	  n -= 1;
 	  if (n<0) { 
 	    t=1; 
@@ -533,8 +536,10 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	      fmpz_one(temp);
 	      for (j=0; j<=i; j++) {
 		fmpz_addmul(sympol+d+i-2*j, pol+i, temp);
-		fmpz_mul_si(temp, temp, i-j);
-		fmpz_divexact_si(temp, temp, j+1);
+		if (j<i) {
+		  fmpz_mul_si(temp, temp, i-j);
+		  fmpz_divexact_si(temp, temp, j+1);
+		}
 	      }
 	    }
 	    _fmpz_vec_scalar_mul_si(sympol, sympol, 2*d+1, st_data->sign);
@@ -542,7 +547,13 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	    break; 
 	  }
 	  continue;
-	}
+      } else if (r<0 && i<n) { 
+	/* Early abort: given the previous coefficient, the set of values for
+	   a given coefficient giving the right position of real roots for
+	   the corresponding derivative is always an interval. */
+	ascend = 1;
+	continue;
+      }
     }
     if (fmpq_is_zero(modlist+n)) ascend = 1;
     else {

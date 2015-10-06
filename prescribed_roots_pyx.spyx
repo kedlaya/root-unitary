@@ -36,14 +36,10 @@ cdef class process_queue:
     cdef public int k
     cdef public array.array Q0_array
     cdef int[:] Q0
-    cdef public array.array Q1_array
-    cdef int[:] Q1
     cdef public array.array Qsym_array
     cdef int[:] Qsym
     cdef int[:] modlist
     cdef public array.array modlist_array
-    cdef int[:] lower
-    cdef int[:] upper
     cdef int sign
     cdef int cofactor
     cdef ps_static_data_t *ps_st_data
@@ -58,20 +54,13 @@ cdef class process_queue:
         self.cofactor = cofactor
         self.Q0_array = array.array('i', [0,] * (d+1))
         self.Q0 = self.Q0_array
-        self.Q1_array = array.array('i', [0,] * (d+1))
-        self.Q1 = self.Q1_array
         self.Qsym_array = array.array('i', [0,] * (2*d+3))
         self.Qsym = self.Qsym_array
         self.modlist_array = array.array('i', [0,] * (d+1))
         self.modlist = self.modlist_array
-        self.lower = array.array('i', [0,] * (d+1))
-        self.upper = array.array('i', [0,] * (d+1))
         for i in range(d+1):
             self.modlist[i] = modlist[d-i]
             self.Q0[i] = Q[i]
-            self.Q1[i] = Q[i]
-            self.lower[i] = Q[i]
-            self.upper[i] = Q[i]
         if verbosity == None:
             self.verbosity = -1
         else:
@@ -117,15 +106,14 @@ cdef class process_queue:
             for i in range(np):
                 if dy_data_buf[i] != NULL:
                     t = 1
-                    if not res[i]:
-                        j = extract_count(dy_data_buf[i])
-                        self.count += j
-                        ps_dynamic_clear(dy_data_buf[i])
-                        dy_data_buf[i] = NULL
-                    else:
+                    if res[i]:
                         extract_symmetrized_pol(self.Qsym_array.data.as_ints,
                                                 dy_data_buf[i])
                         ans.append(list(self.Qsym_array))
+                    else:
+                        self.count += extract_count(dy_data_buf[i])
+                        ps_dynamic_clear(dy_data_buf[i])
+                        dy_data_buf[i] = NULL
                 if dy_data_buf[i] == NULL:
                     j = (i-k) % np
                     dy_data_buf[i] = ps_dynamic_split(dy_data_buf[j])

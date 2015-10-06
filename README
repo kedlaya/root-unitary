@@ -1,20 +1,34 @@
-This package implements a search strategy for root-unitary polynomials (polynomials with all roots on the unit circle) described in:
+This package implements a search strategy for root-unitary polynomials 
+(polynomials with all roots on the unit circle) described in:
 
-K.S. Kedlaya, Search techniques for root-unitary polynomials, in Computational Arithmetic Geometry, Contemporary Mathematics 463, American Mathematical Society, 2008, 71-82;
+K.S. Kedlaya, Search techniques for root-unitary polynomials, in 
+    Computational Arithmetic Geometry, Contemporary Mathematics 463, 
+    American Mathematical Society, 2008, 71-82;
 
 plus some additional improvements which will be documented later.
 
 There are currently six source files:
 
-prescribed_roots.sage: Sage code for high-level routines
-prescribed_roots_pyx.spyx: Cython code for tree enumeration
-all_roots_in_interval.c: C code, using FLINT library, to test whether a polynomial has its roots in a given interval
-all_roots_in_interval.h: associated header file
-power_sums.c: C code, using FLINT library, to produce bounds based on power sums
-power_sums.h: associated header file
+-- prescribed_roots.sage: Sage code for user interaction
+-- prescribed_roots_pyx.spyx: Cython intermediary layer
+-- all_roots_in_interval.c: C code, using FLINT library, to test whether 
+    a polynomial has its roots in a given interval (Sturm's theorem)
+-- all_roots_in_interval.h: associated header file
+-- power_sums.c: C code, using FLINT library, to enumerate the tree based on
+    Sturm's theorem and additional bounds computed from power sums
+-- power_sums.h: associated header file
 
 From a Sage prompt, type
   sage: load("prescribed_roots.sage")
 and everything should compile automatically.
 
-TODO: Try to port from Sage to Nemo (i.e., from Python to Julia).
+The scripts in the k3-scripts directory generate certain lists associated to
+K3 surfaces. These should be loaded from the parent directory, e.g.,
+  sage: load("k3-scripts/produce-k3f2-lines.sage")
+
+POSSIBLE TODO LIST: 
+-- Improve parallel computation in the current Cython model.
+-- Try to port from Sage to Nemo (i.e., from Python to Julia).
+-- Implement bounds from complete symmetric polynomials (Schur's inequality).
+-- Add some floating-point computations to isolate roots, thus reducing
+    the dependence on Sturm's theorem.
