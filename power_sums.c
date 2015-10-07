@@ -172,6 +172,7 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor,
 	k1 = fmpq_mat_entry(st_data->sum_mats[i], 8, j);
 	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-2], 6, j));
       }
+
     }
   }
   
@@ -350,13 +351,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   r = _fmpz_poly_all_roots_in_interval(tpol, k, st_data->a, st_data->b, 
 				       dy_data->w+d+1);
-  /* If r=0, abort. 
+  /* If r=0, abort.
      If r=1 and k>d, return trivially; no further coefficients to find.
-     If r=1 and k<=d, continue to compute bounds.
   */
 
   if (r==0) return(-1);
-  if ((k > d) || fmpz_is_zero(modulus)) return(1);
+  if (k > d) return(1);
 
   /* Compute the k-th power sum. */
   f = fmpq_mat_entry(dy_data->sum_col, k, 0);
@@ -369,6 +369,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->sum_col, k-i, 0));
   }
   
+  /*
+    If modulus>0, continue to compute bounds.
+  */
+
+  if (fmpz_is_zero(modulus)) return(1);
+
   /* Initialize bounds using power sums of the asymmetrized polynomial. */
   f = st_data->f + n-1;
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
@@ -406,7 +412,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_mul_fmpz(t1q, t2q, t0z);
   if (r2 >= 0) change_lower(t1q);
   if (r2 <= 0) change_upper(t1q);
-  
+
   /* Additional bounds based on power sums. */
   if ((fmpz_cmp(lower, upper) <= 0) && k >= 2) {
     fmpq_add(t1q, fmpq_mat_entry(dy_data->sum_prod, 1, 0),
@@ -520,8 +526,6 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	_fmpz_vec_print(pol+n, d-n+1);
 	printf("\n");
       }
-      count += 1;
-      if (node_count != -1 && count >= node_count) { t= -1; break; }
       i = dy_data->n;
       dy_data->n = n;
       r = set_range_from_power_sums(st_data, dy_data);
@@ -547,12 +551,16 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	    break; 
 	  }
 	  continue;
-      } else if (r<0 && i<n) { 
-	/* Early abort: given the previous coefficient, the set of values for
-	   a given coefficient giving the right position of real roots for
-	   the corresponding derivative is always an interval. */
-	ascend = 1;
-	continue;
+      } else {
+	count += 1;
+	if (node_count != -1 && count >= node_count) { t= -1; break; }
+	if (r<0 && i<n) { 
+	  /* Early abort: given the previous coefficient, the set of values for
+	     a given coefficient giving the right position of real roots for
+	     the corresponding derivative is always an interval. */
+	  ascend = 1;
+	  continue;
+	}
       }
     }
     if (fmpq_is_zero(modlist+n)) ascend = 1;

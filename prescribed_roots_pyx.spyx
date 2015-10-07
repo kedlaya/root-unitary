@@ -8,14 +8,14 @@
 from cpython cimport array
 import array
 from cython.parallel import prange
-from libc.stdlib cimport malloc, free
+from libc.stdlib cimport malloc, free, rand
 cimport cython
 
 cdef extern from "power_sums.h":
     ctypedef struct ps_static_data_t:
         pass
     ctypedef struct ps_dynamic_data_t:
-        pass
+        int count
 
     ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor, 
                                      int *modlist,
@@ -25,7 +25,6 @@ cdef extern from "power_sums.h":
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
     void extract_pol(int *Q, ps_dynamic_data_t *dy_data)
     void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data)
-    int extract_count(ps_dynamic_data_t *dy_data)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
     int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) nogil
@@ -83,35 +82,36 @@ cdef class process_queue:
         cdef int t
         t = next_pol(self.ps_st_data, self.ps_dy_data)
         extract_symmetrized_pol(self.Qsym_array.data.as_ints, self.ps_dy_data)
-        self.count = extract_count(self.ps_dy_data)
+        self.count = self.ps_dy_data.count
         return(t)
 
     cpdef object parallel_exhaust(process_queue self, int num_processes):
         cdef ps_dynamic_data_t **dy_data_buf
-        cdef int i, j, k, d = self.d, t=1, np = num_processes
+        cdef int i, j, k, m, d = self.d, t=1, np = num_processes
         ans = []
         dy_data_buf = <ps_dynamic_data_t **>malloc(np*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
         dy_data_buf[0] = ps_dynamic_clone(self.ps_dy_data)
         cdef int *res = <int *>malloc(np*sizeof(int))
+
         for i in range(1, np):
             dy_data_buf[i] = NULL
-        k = 0
-        while (t):
+        k=0
+        while (t>0):
             t = 0
             k = k%(np-1) + 1
-            with nogil:
+            with nogil: # Drop GIL for this parallel loop
                 for i in prange(np, schedule='dynamic', num_threads=np):
                     if dy_data_buf[i] != NULL:
                         res[i] = next_pol(self.ps_st_data, dy_data_buf[i])
             for i in range(np):
                 if dy_data_buf[i] != NULL:
-                    t = 1
                     if res[i]:
+                        t += 1
                         extract_symmetrized_pol(self.Qsym_array.data.as_ints,
                                                 dy_data_buf[i])
                         ans.append(list(self.Qsym_array))
                     else:
-                        self.count += extract_count(dy_data_buf[i])
+                        self.count += dy_data_buf[i].count
                         ps_dynamic_clear(dy_data_buf[i])
                         dy_data_buf[i] = NULL
                 if dy_data_buf[i] == NULL:

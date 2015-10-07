@@ -29,6 +29,5 @@ K3 surfaces. These should be loaded from the parent directory, e.g.,
 POSSIBLE TODO LIST: 
 -- Improve parallel computation in the current Cython model.
 -- Try to port from Sage to Nemo (i.e., from Python to Julia).
--- Implement bounds from complete symmetric polynomials (Schur's inequality).
 -- Add some floating-point computations to isolate roots, thus reducing
     the dependence on Sturm's theorem.
