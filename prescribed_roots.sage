@@ -63,7 +63,7 @@ def no_roots_of_unity(pol):
     if not pol1.gcd(pol4).is_constant(): return(False) # zeta_{*}, v_2(*) = 1
     return(True)
 
-def ej_test(pol, q):
+def ej_test(pol, q): # Elsenhans-Jahnel condition based on Artin-Tate formula
     polRing = pol.parent()
     x = polRing.gen()
 
@@ -144,7 +144,7 @@ def symmetrize(Q, R=1):
 def roots_on_unit_circle(P0, modulus=1, n=1,
                          answer_count=None,
                          verbosity=None, node_count=None, filter=None,
-                         num_threads=None):
+                         num_threads=None, output=None):
     """
     Find polynomials with roots on the unit circle under extra restrictions.
 
@@ -199,7 +199,9 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
     ans = []
     anslen = 0
     if (num_threads): # parallel version
-        ans1 = process.parallel_exhaust(num_threads)
+        ans1 = process.parallel_exhaust(num_threads, output)
+        if output != None:
+            return process.count
         for i in ans1:
             Q2 = polRing(i)
             if filter == None or filter(Q2):
@@ -216,7 +218,8 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
             if t>0:
                 Q2 = polRing(process.Qsym_array.tolist())
                 if filter == None or filter(Q2):
-                    ans.append(Q2)
+                    if output != None: output.write(str(list(Q2)))
+                    else: ans.append(Q2)
                     anslen += 1
                     if answer_count != None and anslen >= answer_count:
                         break
@@ -226,4 +229,5 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
                 raise RuntimeError, "Node count (" + str(self.node_count) + ") exceeded"
     finally:
         process.clear()
+    if output != None: return(process.count)
     return(ans, process.count)

@@ -547,7 +547,7 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	      }
 	    }
 	    _fmpz_vec_scalar_mul_si(sympol, sympol, 2*d+1, st_data->sign);
-	    _fmpz_poly_mul(sympol, sympol, 2*d+1, st_data->cofactor, 3);
+	    _fmpz_poly_mul_KS(sympol,sympol, 2*d+1, st_data->cofactor, 3);
 	    break; 
 	  }
 	  continue;
