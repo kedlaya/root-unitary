@@ -63,17 +63,15 @@ def no_roots_of_unity(pol):
     if not pol1.gcd(pol4).is_constant(): return(False) # zeta_{*}, v_2(*) = 1
     return(True)
 
-def ej_test(pol, q): # Elsenhans-Jahnel condition based on Artin-Tate formula
+def ej_test(pol): # Elsenhans-Jahnel condition based on Artin-Tate formula
     polRing = pol.parent()
     x = polRing.gen()
 
     pol1 = pol
     while pol1(1) == 0:
-        pol1 //= x-1
+        pol1 //= 1-x
     d = pol1.degree()
     v = pol1(-1)
-    if d%2:
-        v *= q
     return(v.is_square())
 
 def asymmetrize(P):
@@ -103,7 +101,7 @@ def asymmetrize(P):
     elif (P == -P0):
         sign = -1
     else:
-        raise RuntimeError, "Polynomial not self-inversive"
+        raise RuntimeError, "Polynomial " + str(P)+" not self-inversive"
     if P.degree() % 2 == 1:
         if sign == 1:
             cofactor = x+1
