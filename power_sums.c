@@ -443,18 +443,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_add(t0q, t0q, t1q);
     change_lower(t0q);
     
+    t1q = fmpq_mat_entry(dy_data->sum_prod, 6, 0);
+    t2q = fmpq_mat_entry(dy_data->sum_prod, 7, 0);
     t3q = fmpq_mat_entry(dy_data->sum_prod, 8, 0);
     if ((k%2 == 0) && (fmpq_sgn(t3q) > 0)) {
-      t2q = fmpq_mat_entry(dy_data->sum_prod, 7, 0);
       fmpq_mul(t0q, t2q, t2q);
-      t1q = fmpq_mat_entry(dy_data->sum_prod, 6, 0);
       fmpq_div(t0q, t0q, t3q);
       fmpq_sub(t0q, t1q, t0q);
       change_upper(t0q);
     } else if ((k%2 == 1) && (fmpq_sgn(t3q) < 0)) {
-      t2q = fmpq_mat_entry(dy_data->sum_prod, 7, 0);
       fmpq_mul(t0q, t2q, t2q);
-      t1q = fmpq_mat_entry(dy_data->sum_prod, 6, 0);
       fmpq_div(t0q, t0q, t3q);
       fmpq_sub(t0q, t1q, t0q);
       change_lower(t0q);
