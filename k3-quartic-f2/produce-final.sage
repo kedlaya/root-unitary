@@ -10,7 +10,7 @@ for i in f:
     else:
         l1[k] = [j[0]]
 f.close()
-for h in range(13, 17):
+for h in range(13, 18):
     s = "k3miss" + str(h) + "pts.txt"
     f = open(s, "rb")
     for i in f:
