@@ -5,7 +5,10 @@ K.S. Kedlaya, Search techniques for root-unitary polynomials, in
     Computational Arithmetic Geometry, Contemporary Mathematics 463, 
     American Mathematical Society, 2008, 71-82;
 
-plus some additional improvements which will be documented later.
+plus some additional improvements described in:
+
+K.S. Kedlaya and A.V. Sutherland, A census of zeta functions of
+    quartic K3 surfaces over F_2, preprint (2015).
 
 There are currently six source files:
 
@@ -23,11 +26,14 @@ From a Sage prompt, type
 and everything should compile automatically.
 
 The scripts in the k3-scripts directory generate certain lists associated to
-K3 surfaces. These should be loaded from the parent directory, e.g.,
-  sage: load("k3-scripts/produce-k3f2-lines.sage")
+K3 surfaces. See the README file in that directory for more information.
+
+The k3-quartic-f2 directory contains scripts and data files associated to
+smooth quartic K3 surfaces over F_2. See the README file in that directory
+and the paper "A census of zeta functions..." for more information.
 
 POSSIBLE TODO LIST: 
 -- Improve parallel computation in the current Cython model.
--- Try to port from Sage to Nemo (i.e., from Python to Julia).
+-- Port from Sage (based on Python) to Nemo (based on Julia).
 -- Add some floating-point computations to isolate roots, thus reducing
     the dependence on Sturm's theorem.
