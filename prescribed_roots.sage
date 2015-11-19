@@ -67,12 +67,8 @@ def ej_test(pol): # Elsenhans-Jahnel condition based on Artin-Tate formula
     polRing = pol.parent()
     x = polRing.gen()
 
-    pol1 = pol
-    while pol1(1) == 0:
-        pol1 //= 1-x
-    d = pol1.degree()
-    v = pol1(-1)
-    return(v.is_square())
+    pol1 = pol // (1-x)^pol.ord(1-x)
+    return(pol1(-1).is_square())
 
 def asymmetrize(P):
     """
