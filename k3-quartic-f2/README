@@ -1,12 +1,21 @@
+These files accompany the paper
+
+K.S. Kedlaya and A.V. Sutherland, A census of zeta functions of
+    quartic K3 surfaces over F_2, preprint (2015).
+
 Files in this directory:
 
 k3points.txt: Raw point counts up to 2^12 for all smooth quartic (K3) surfaces in P^3 over F_2
 
 produce-misses.sage: Script to identify cases for which extra counts are needed
 
-k3miss13.txt: Extra point counts up to 2^13
+k3miss13.txt: Extra point counts up to 2^13 (strong misses)
 ...
-k3miss19.txt: Extra point counts up to 2^19
+k3miss19.txt: Extra point counts up to 2^19 (strong misses)
+
+k3misses13.txt: Extra point counts up to 2^13 (weak misses)
+...
+k3misses18.txt: Extra point counts up to 2^18 (weak misses)
 
 produce-final.sage: Script to reconstruct full zeta functions from counts
 
@@ -15,3 +24,5 @@ k3final.txt: Output of the previous script
 produce-k3f2-candidates.sage: Script to generate candidate degree-20 irreducible factors
 
 f2-candidates.txt: Output of the previous script
+
+compare-quartics.sage: Script to compare quartics under extra conditions
