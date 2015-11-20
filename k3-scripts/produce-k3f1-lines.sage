@@ -3,14 +3,14 @@ load("prescribed_roots.sage")
 
 polRing.<x> = PolynomialRing(ZZ)
 l = []
-l.append(x+1)
-l.append(x-1)
+l.append(1+x)
+l.append(1-x)
 t = time.time()
 for i in range(1, 11):
     ans, count = roots_on_unit_circle(x^(2*i)+1, num_threads=512)
     for j in ans:
-        l.append(j * (x+1))
-        l.append(j * (x-1))
+        l.append(j * (1+x))
+        l.append(j * (1-x))
     print len(ans)*2, "polynomials added"
     print "time so far: ", time.time() - t, " seconds"
 

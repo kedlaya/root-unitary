@@ -13,7 +13,7 @@ K.S. Kedlaya and A.V. Sutherland, A census of zeta functions of
 There are currently six source files:
 
 -- prescribed_roots.sage: Sage code for user interaction
--- prescribed_roots_pyx.spyx: Cython intermediary layer
+-- prescribed_roots_pyx.spyx: Cython intermediate layer wrapping C code
 -- all_roots_in_interval.c: C code, using FLINT library, to test whether 
     a polynomial has its roots in a given interval (Sturm's theorem)
 -- all_roots_in_interval.h: associated header file
@@ -24,6 +24,10 @@ There are currently six source files:
 From a Sage prompt, type
   sage: load("prescribed_roots.sage")
 and everything should compile automatically.
+
+There is one test script in this directory:
+
+-- search-test.sage: Run computations from the 2008 paper
 
 The scripts in the k3-scripts directory generate certain lists associated to
 K3 surfaces. See the README file in that directory for more information.

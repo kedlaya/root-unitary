@@ -9,6 +9,9 @@ k3points.txt: Raw point counts up to 2^12 for all smooth quartic (K3) surfaces i
 
 produce-misses.sage: Script to identify cases for which extra counts are needed
 
+k3misses-weak.txt: Output of the previous script
+k3misses-strong.txt: Output of the previous script
+
 k3miss13.txt: Extra point counts up to 2^13 (strong misses)
 ...
 k3miss19.txt: Extra point counts up to 2^19 (strong misses)

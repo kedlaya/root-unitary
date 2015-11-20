@@ -6,6 +6,9 @@
 
 #include "all_roots_in_interval.h"
 
+/* Primary data structures.
+ */
+
 typedef struct ps_static_data {
   int d, lead, sign, verbosity, node_count;
   fmpz_t a, b;
@@ -415,6 +418,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   /* Additional bounds based on power sums. */
   if ((fmpz_cmp(lower, upper) <= 0) && k >= 2) {
+    /* The k=2 case requires separate attention; this corrects a bug
+       in the 2008 implementation.
+    */
     fmpq_add(t1q, fmpq_mat_entry(dy_data->sum_prod, 1, 0),
 	     fmpq_mat_entry(dy_data->sum_prod, 2, 0));
     fmpq_set_si(t2q, 4*d, 1);

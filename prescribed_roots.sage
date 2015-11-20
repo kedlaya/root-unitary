@@ -11,7 +11,7 @@ EXAMPLES:
     sage: P0 = 3*x^21 + 5*x^20 + 6*x^19 + 7*x^18 + 5*x^17 + 4*x^16 + 2*x^15 - x^14 - 3*x^13 - 5*x^12 - 5*x^11 - 5*x^10 - 5*x^9 - 3*x^8 - x^7 + 2*x^6 + 4*x^5 + 5*x^4 + 7*x^3 + 6*x^2 + 5*x + 3
     sage: ans, count = roots_on_unit_circle(P0, 3^2, 1)
     sage: print "Number of terminal nodes:", count
-    Number of terminal nodes: 1157
+    Number of terminal nodes: 1404
     sage: print ans
     [3*x^21 + 5*x^20 + 6*x^19 + 7*x^18 + 5*x^17 + 4*x^16 + 2*x^15 - x^14
     - 3*x^13 - 5*x^12 - 5*x^11 - 5*x^10 - 5*x^9 - 3*x^8 - x^7 + 2*x^6
@@ -21,7 +21,7 @@ NOTES:
 
 """
 
-attach("prescribed_roots_pyx.spyx")
+load("prescribed_roots_pyx.spyx")
 
 ## Auxiliary function for detecting roots of unity
 def no_roots_of_unity(pol):

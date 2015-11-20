@@ -24,10 +24,10 @@ for i in l1.keys():
             l2.append([j, k])
 	    ct = 0
 	    mm = polRing(m + [m[8-i] for i in range(9)])
-	    if roots_on_unit_circle(mm, n=11) and ej_test(mm):
+	    if roots_on_unit_circle(mm, n=11) and ej_test(mm) and mm(1).is_square():
                 ct += 1
 	    mm = polRing(m + [-m[8-i] for i in range(9)])
-	    if roots_on_unit_circle(mm, n=11) and ej_test(mm):
+	    if roots_on_unit_circle(mm, n=11) and ej_test(mm) and mm(1).is_square():
                 ct += 1
             if ct == 0:
                 print "error"
