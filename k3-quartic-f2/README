@@ -3,6 +3,9 @@ These files accompany the paper
 K.S. Kedlaya and A.V. Sutherland, A census of zeta functions of
     quartic K3 surfaces over F_2, preprint (2015).
 
+Note that some scripts depend on "prescribed_roots.sage" in the parent
+directory, which must be loaded first.
+
 Files in this directory:
 
 k3points.txt: Raw point counts up to 2^12 for all smooth quartic (K3) surfaces in P^3 over F_2
@@ -24,8 +27,12 @@ produce-final.sage: Script to reconstruct full zeta functions from counts
 
 k3final.txt: Output of the previous script
 
-produce-k3f2-candidates.sage: Script to generate candidate degree-20 irreducible factors
+k3f2-lines.txt: Alias to list of possible transcendental parts of zeta functions of K3 surfaces over F2
 
-f2-candidates.txt: Output of the previous script
+k3f2-full-filtered.txt: Alias to list of possible zeta functions of K3 surfaces over F2
+
+compare-full-quartics.sage: Script to compare quartic zeta functions
 
 compare-quartics.sage: Script to compare quartics under extra conditions
+
+compute-heights.sage: Script to compute heights

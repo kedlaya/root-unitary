@@ -1,7 +1,7 @@
 polRing.<x> = PolynomialRing(ZZ)
 n = 19
 print n
-f = open("f2-candidates.txt", "rb")
+f = open("k3f2-lines.txt", "rb")
 la0 = [polRing(eval(i)) for i in f]
 f.close()
 la1 = [i for i in la0 if i.degree() == 20]
