@@ -1,4 +1,3 @@
-load("prescribed_roots.sage")
 polRing.<x> = PolynomialRing(ZZ)
 powRing.<y> = PowerSeriesRing(QQ, 5)
 l1 = []

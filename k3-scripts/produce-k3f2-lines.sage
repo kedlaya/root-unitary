@@ -1,6 +1,4 @@
 import time
-load("prescribed_roots.sage")
-
 polRing.<x> = PolynomialRing(ZZ)
 ans = [polRing(2)]
 t = time.time()

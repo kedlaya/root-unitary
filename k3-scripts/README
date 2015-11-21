@@ -1,8 +1,7 @@
 This directory includes scripts, based on the code in the parent directory,
 to identify candidates for the zeta functions of K3 surfaces over finite 
-fields. Note that scripts should be executed with the current directory set 
-to the parent of this directory, e.g.,
-   load("k3-scripts/produce-k3f1-list.sage")
+fields. Note that some of these scripts depend on prescribed_roots.sage in the
+parent directory, so that script should be loaded first.
 
 produce-k3f1-lines.sage: Script to generate monic integer polynomials of 
 degrees 1, 3, ..., 21 with all roots on the unit circle.
