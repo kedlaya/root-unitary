@@ -105,7 +105,7 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor,
   fmpz_mat_init(st_data->binom_mat, d+1, d+1);
   for (i=0; i<=d; i++)
     for (j=0; j<=d; j++)
-      fmpz_bin_uiui(fmpq_mat_entry(st_data->binom_mat, i, j), i, j);
+      fmpz_bin_uiui(fmpz_mat_entry(st_data->binom_mat, i, j), i, j);
   
   st_data->sum_mats = (fmpq_mat_t *)malloc((d+1)*sizeof(fmpq_mat_t));
   for (i=0; i<=d; i++) {
@@ -143,7 +143,7 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor,
       /* Row 3: coeffs of (2+x)^i. */
       if (j<= i) {
 	k1 = fmpq_mat_entry(st_data->sum_mats[i], 3, j);
-	fmpq_set_fmpz_frac(k1, fmpq_mat_entry(st_data->binom_mat, i, j), const1);
+	fmpq_set_fmpz_frac(k1, fmpz_mat_entry(st_data->binom_mat, i, j), const1);
 	fmpq_mul_2exp(k1, k1, i-j);
       }
       
@@ -357,7 +357,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* If r=0, abort.
      If r=1 and k>d, return trivially; no further coefficients to find.
   */
-
+  
   if (r==0) return(-1);
   if (k > d) return(1);
 
