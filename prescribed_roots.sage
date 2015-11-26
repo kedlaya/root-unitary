@@ -6,7 +6,6 @@ AUTHOR:
   -- Kiran S. Kedlaya (2015-08-29): updated version; switch from NTL to FLINT
         
 EXAMPLES:
-    sage: from prescribed_roots import roots_on_unit_circle
     sage: polRing.<x> = PolynomialRing(Rationals())
     sage: P0 = 3*x^21 + 5*x^20 + 6*x^19 + 7*x^18 + 5*x^17 + 4*x^16 + 2*x^15 - x^14 - 3*x^13 - 5*x^12 - 5*x^11 - 5*x^10 - 5*x^9 - 3*x^8 - x^7 + 2*x^6 + 4*x^5 + 5*x^4 + 7*x^3 + 6*x^2 + 5*x + 3
     sage: ans, count = roots_on_unit_circle(P0, 3^2, 1)
@@ -26,9 +25,9 @@ load("prescribed_roots_pyx.spyx")
 ## Auxiliary function for detecting roots of unity
 def no_roots_of_unity(pol):
     """
-    Return True if the given polynomial is irreducible and not cyclotomic,
-    and False if it is divisible by a cyclotomic polynomial. Other inputs
-    give undetermined results.
+    Return True if the given polynomial is irreducible (or a power of an 
+    irreducible) and not cyclotomic, and False if it is divisible by a 
+    cyclotomic polynomial. Other inputs give undetermined results.
 
     INPUT:
         pol -- polynomial with rational coefficients
@@ -90,32 +89,32 @@ def asymmetrize(P):
     """
     polRing = P.parent()
     x = polRing.gen()
+    if P[0] == 0:
+        raise ValueError, "Polynomial " + str(P) + " not self-inversive"
     d = P.degree()
-    P0 = P.reverse()
-    if (P == P0):
-        sign = +1
-    elif (P == -P0):
-        sign = -1
-    else:
-        raise RuntimeError, "Polynomial " + str(P)+" not self-inversive"
-    if P.degree() % 2 == 1:
-        if sign == 1:
-            cofactor = x+1
-        else:
-            cofactor = x-1
-    elif sign == 1:
-        cofactor = polRing(1)
-    else:
-        cofactor = x^2 - 1
-    Q = P // cofactor
+    sg = (P[d]/P[0]).sign()
+    q = abs(P[d]/P[0])^(2/d)
+    if not q in Rationals():
+        raise ValueError, "Polynomial " + str(P) + " not self-inversive"
+    for i in range(d+1):
+        if P[i] != sg*P[d-i]/q^(d/2-i):
+            raise ValueError, "Polynomial " + str(P) + " not self-inversive"
+    cofactor = polRing(1)
+    Q = P
+    if sg == -1:
+        cofactor *= 1-q*x
+        Q /= 1-q*x
+    if Q.degree() %2 == 1:
+        cofactor *= 1+q*x
+        Q /= 1+q*x
     coeffs = []
     m = Q.degree() // 2
     for i in reversed(range(m+1)):
         coeffs.insert(0, Q.constant_coefficient())
-        Q = (Q % (x^2+1)^i) // x
-    return polRing(coeffs), cofactor
+        Q = (Q % (1 + q*x^2)^i) // x
+    return polRing(coeffs), cofactor, q
 
-def symmetrize(Q, R=1):
+def symmetrize(Q, R=1, q=1):
     """
     Convert a self-inversive polynomial from asymmetric form.
 
@@ -133,7 +132,7 @@ def symmetrize(Q, R=1):
     """
     polRing = Q.parent()
     x = polRing.gen()
-    return polRing(x^(Q.degree()) * Q(x + 1/x)) * R
+    return polRing(x^(Q.degree()) * Q(q*x + 1/x)) * R
 
 def roots_on_unit_circle(P0, modulus=1, n=1,
                          answer_count=None,
@@ -172,8 +171,8 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
     polRing = P0.parent()
     x = polRing.gen()
 
-    Q0, cofactor = asymmetrize(P0)
-    num_cofactor = [1, x+1, x-1, x^2-1].index(cofactor)
+    Q0, cofactor, q = asymmetrize(P0)
+    num_cofactor = [1, 1+q*x, 1-q*x, 1-q*x^2].index(cofactor)
     sign = cmp(Q0.leading_coefficient(), 0)
     Q0 *= sign
     d = Q0.degree()
@@ -188,7 +187,7 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
     modlist = [0]*n + modlist
     modlist += [modlist[-1]] * (d+1 - len(modlist)) + [1]
 
-    process = process_queue(d, n, lead, sign, num_cofactor, 
+    process = process_queue(d, n, lead, sign, q, num_cofactor, 
                             modlist, node_count, verbosity, Q0)
     ans = []
     anslen = 0

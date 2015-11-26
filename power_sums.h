@@ -24,7 +24,8 @@ typedef struct ps_dynamic_data {
   slong w2len; /* = 5 */
 } ps_dynamic_data_t;
 
-ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor, 
+ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
+				 int cofactor, 
 				 int *modlist,
 				 int verbosity, int node_count);
 ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0);

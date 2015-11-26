@@ -10,7 +10,7 @@
  */
 
 typedef struct ps_static_data {
-  int d, lead, sign, verbosity, node_count;
+  int d, lead, sign, q, verbosity, node_count;
   fmpz_t a, b;
   fmpz_mat_t binom_mat;
   fmpz *cofactor;
@@ -41,7 +41,8 @@ void fmpq_ceil(fmpz_t res, fmpq_t a) {
 
 /* Memory allocation and release.
  */
-ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor, 
+ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
+				 int cofactor, 
 				 int *modlist, 
 				 int verbosity, int node_count) {
   int i, j;
@@ -59,13 +60,19 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor,
   st_data->d = d;
   st_data->lead = lead;
   st_data->sign = sign;
+  st_data->q = q;
   st_data->verbosity = verbosity;
   st_data->node_count = node_count;
 
   fmpz_init(st_data->a);
   fmpz_init(st_data->b);
-  fmpz_set_si(st_data->a, -2);
-  fmpz_set_si(st_data->b, 2);
+  if (q==1) {
+    fmpz_set_si(st_data->a, -2);
+    fmpz_set_si(st_data->b, 2);
+  } else {
+    fmpz_set_si(st_data->a, 0);
+    fmpz_set_si(st_data->b, 4*q);    
+  }
 
   st_data->cofactor = _fmpz_vec_init(3);
   switch (cofactor) {
@@ -75,22 +82,22 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor,
     fmpz_set_si(st_data->cofactor+2, 0);
     break;
 
-  case 1: /* Cofactor x+1 */
+  case 1: /* Cofactor 1+q*x */
     fmpz_set_si(st_data->cofactor, 1);
-    fmpz_set_si(st_data->cofactor+1, 1);
+    fmpz_set_si(st_data->cofactor+1, q);
     fmpz_set_si(st_data->cofactor+2, 0);
     break;
 
-  case 2:  /* Cofactor x-1 */
-    fmpz_set_si(st_data->cofactor, -1);
-    fmpz_set_si(st_data->cofactor+1, 1);
+  case 2:  /* Cofactor 1-q*x */
+    fmpz_set_si(st_data->cofactor, 1);
+    fmpz_set_si(st_data->cofactor+1, -q);
     fmpz_set_si(st_data->cofactor+2, 0);
     break;
 
-  case 3: /* Cofactor x^2 - 1 */
-    fmpz_set_si(st_data->cofactor, -1);
+  case 3: /* Cofactor 1-q*x^2 */
+    fmpz_set_si(st_data->cofactor, 1);
     fmpz_set_si(st_data->cofactor+1, 0);
-    fmpz_set_si(st_data->cofactor+2, 1);
+    fmpz_set_si(st_data->cofactor+2, -q);
     break;
   }
 
@@ -124,6 +131,11 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor,
 	fmpq_div_fmpz(k1, k1, m);
 	fmpz_set_ui(m, 2);
 	fmpq_mul_fmpz(k1, k1, m);
+	if (q != 1 && i%2==j%2) {
+	  fmpz_set_ui(m, q);
+	  fmpz_pow_ui(m, m, (i-j)/2); 
+	  fmpq_mul_fmpz(k1, k1, m);
+	}
       }
 
       /* Row 1: coeffs of row 0 from matrix i-2, multiplied by -2. */
@@ -352,6 +364,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   for (i=0; i<=k-1; i++)
     fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
 
+  /* If q>1, square the roots of the polynomial before finding roots. */
+  if (st_data->q != 1) {
+    for (i=0; i<=k-1; i++) fmpz_mul_si(tpol+k+i, tpol+i, 1-2*(i%2));
+    _fmpz_poly_mul(tpol+2*k, tpol, k, tpol+k, k);
+    for (i=0; i<=k-1; i++) fmpz_set(tpol+i, tpol+2*k+2*i);
+  }
   r = _fmpz_poly_all_roots_in_interval(tpol, k, st_data->a, st_data->b, 
 				       dy_data->w+d+1);
   /* If r=0, abort.
@@ -359,7 +377,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   */
   
   if (r==0) return(-1);
-  if (k > d) return(1);
+  if (k>d) return(1);
 
   /* Compute the k-th power sum. */
   f = fmpq_mat_entry(dy_data->sum_col, k, 0);
@@ -382,7 +400,22 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   f = st_data->f + n-1;
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
 
-  fmpq_set_si(t1q, 2*d, 1);
+  if (st_data->q == 1) fmpq_set_si(t1q, 2*d, 1);
+  else if (k%2==1) {
+    fmpq_set_si(t1q, 2*d, 1);
+    fmpz_set_si(t0z, st_data->q);
+    fmpz_pow_ui(t0z, t0z, (k+1)/2);
+    fmpq_mul_fmpz(t1q, t1q, t0z);
+  } else {
+    fmpz_set_si(t0z, st_data->q);
+    fmpz_pow_ui(t0z, t0z, k+1);
+    fmpz_mul_ui(t0z, t0z, 4*d*d);
+    fmpz_sqrt(t0z, t0z);
+    fmpz_add_ui(t0z, t0z, 1);
+    fmpq_one(t1q);
+    fmpq_mul_fmpz(t1q, t1q, t0z);
+  }
+
   fmpq_sub(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
   set_lower(t0q);
   fmpq_add(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
@@ -391,33 +424,35 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* Apply Descartes' rule of signs at -2, +2. */
   /* Currently tpol is the divided n-th derivative of pol;
      evaluate at the endpoints. */
-  _fmpz_poly_evaluate_fmpz(t0z, tpol, k, st_data->a);
-  r1 = fmpz_sgn(t0z);
-  _fmpz_poly_evaluate_fmpz(t0z, tpol, k, st_data->b);
-  r2 = fmpz_sgn(t0z);
-  
-  /* Now set tpol to the divided (n-1)-st derivative of pol.
-     then evaluate again. */
-  for (i=k; i>=1; i--) {
-    fmpz_mul_si(tpol+i, tpol+i-1, n);
+  if (st_data->q == 1) {
+    _fmpz_poly_evaluate_fmpz(t0z, tpol, k, st_data->a);
+    r1 = fmpz_sgn(t0z);
+    _fmpz_poly_evaluate_fmpz(t0z, tpol, k, st_data->b);
+    r2 = fmpz_sgn(t0z);
+    
+    /* Now set tpol to the divided (n-1)-st derivative of pol.
+       then evaluate again. */
+    for (i=k; i>=1; i--) {
+      fmpz_mul_si(tpol+i, tpol+i-1, n);
     fmpz_divexact_si(tpol+i, tpol+i, i);
+    }
+    fmpq_set_si(t2q, -k, 1);
+    fmpq_div_fmpz(t2q, t2q, pol+d);
+    
+    fmpz_set(tpol, pol+d-k);    
+    _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->a);
+    fmpq_mul_fmpz(t1q, t2q, t0z);
+    if (r1 >= 0) change_upper(t1q);
+    if (r1 <= 0) change_lower(t1q);
+    
+    _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->b);
+    fmpq_mul_fmpz(t1q, t2q, t0z);
+    if (r2 >= 0) change_lower(t1q);
+    if (r2 <= 0) change_upper(t1q);
   }
-  fmpq_set_si(t2q, -k, 1);
-  fmpq_div_fmpz(t2q, t2q, pol+d);
-  
-  fmpz_set(tpol, pol+d-k);    
-  _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->a);
-  fmpq_mul_fmpz(t1q, t2q, t0z);
-  if (r1 >= 0) change_upper(t1q);
-  if (r1 <= 0) change_lower(t1q);
-  
-  _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->b);
-  fmpq_mul_fmpz(t1q, t2q, t0z);
-  if (r2 >= 0) change_lower(t1q);
-  if (r2 <= 0) change_upper(t1q);
 
   /* Additional bounds based on power sums. */
-  if ((fmpz_cmp(lower, upper) <= 0) && k >= 2) {
+  if (st_data->q==1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
     /* The k=2 case requires separate attention; this corrects a bug
        in the 2008 implementation.
     */
@@ -545,6 +580,7 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	      for (j=0; j<=i; j++) {
 		fmpz_addmul(sympol+d+i-2*j, pol+i, temp);
 		if (j<i) {
+		  fmpz_mul_si(temp, temp, st_data->q);
 		  fmpz_mul_si(temp, temp, i-j);
 		  fmpz_divexact_si(temp, temp, j+1);
 		}

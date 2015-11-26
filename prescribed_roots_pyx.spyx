@@ -17,7 +17,8 @@ cdef extern from "power_sums.h":
     ctypedef struct ps_dynamic_data_t:
         int count
 
-    ps_static_data_t *ps_static_init(int d, int lead, int sign, int cofactor, 
+    ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
+    		     		     int cofactor, 
                                      int *modlist,
                                      int verbosity, int node_count)
     ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0)
@@ -44,7 +45,7 @@ cdef class process_queue:
     cdef ps_static_data_t *ps_st_data
     cdef ps_dynamic_data_t *ps_dy_data
 
-    def __init__(self, int d, int n, int lead, int sign, int cofactor,
+    def __init__(self, int d, int n, int lead, int sign, int q, int cofactor,
                  modlist, node_count, verbosity, Q):
         cdef int i
         self.d = d
@@ -69,7 +70,7 @@ cdef class process_queue:
         else:
             self.node_count = node_count
         self.count = 0
-        self.ps_st_data = ps_static_init(d, lead, sign, cofactor,
+        self.ps_st_data = ps_static_init(d, lead, sign, q, cofactor,
                                     self.modlist_array.data.as_ints,
                                          self.verbosity, self.node_count)
         self.ps_dy_data = ps_dynamic_init(d, self.Q0_array.data.as_ints)

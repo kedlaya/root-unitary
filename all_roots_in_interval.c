@@ -37,7 +37,7 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
     _fmpz_vec_set(f0, poly, n);
     _fmpz_poly_evaluate_fmpz(val0_a, f0, n, a);
 
-    /* Remove all factors of val0_a */
+    /* Remove all factors of x-a */
     while (fmpz_is_zero(val0_a))
     {
         /* {t1, 2} is available */
@@ -53,7 +53,7 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
 
     _fmpz_poly_evaluate_fmpz(val0_b, f0, n, b);
 
-    /* Remove all factors of val0_b, updating val0_a */
+    /* Remove all factors of x-b, updating val0_a */
     fmpz_sub(c, a, b);
     while (fmpz_is_zero(val0_b))
     {
