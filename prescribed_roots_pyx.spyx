@@ -15,12 +15,12 @@ cdef extern from "power_sums.h":
     ctypedef struct ps_static_data_t:
         pass
     ctypedef struct ps_dynamic_data_t:
-        int count
+        long count
 
     ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
     		     		     int cofactor, 
                                      int *modlist,
-                                     int verbosity, int node_count)
+                                     int verbosity, long node_count)
     ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0)
     ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data)
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
@@ -31,8 +31,9 @@ cdef extern from "power_sums.h":
     int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) nogil
 
 cdef class process_queue:
-    cdef int d, verbosity, node_count
-    cdef public int count
+    cdef int d, verbosity
+    cdef long node_count
+    cdef public long count
     cdef public int k
     cdef public array.array Q0_array
     cdef int[:] Q0

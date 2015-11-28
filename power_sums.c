@@ -20,7 +20,8 @@ typedef struct ps_static_data {
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
-  int d, n, count, ascend;
+  int d, n, ascend;
+  long count;
   fmpq_mat_t sum_col, sum_prod;
   fmpz *pol, *sympol, *upper;
 
@@ -44,7 +45,7 @@ void fmpq_ceil(fmpz_t res, fmpq_t a) {
 ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
 				 int cofactor, 
 				 int *modlist, 
-				 int verbosity, int node_count) {
+				 int verbosity, long node_count) {
   int i, j;
   ps_static_data_t *st_data;
   fmpz_poly_t pol;
@@ -275,7 +276,7 @@ void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data) {
     Q[i] = fmpz_get_si(sympol+i);
 }
 
-int extract_count(ps_dynamic_data_t *dy_data) {
+long extract_count(ps_dynamic_data_t *dy_data) {
   return(dy_data->count);
 }
 
