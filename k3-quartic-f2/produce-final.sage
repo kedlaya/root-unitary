@@ -73,4 +73,3 @@ for i in l2+l4:
     f.write("\n")
 f.close()
 print sum(len(i[0]) for i in l5), " more ambiguous cases remain"
-
