@@ -12,7 +12,7 @@ for i in range(1, 11):
     print len(ans)*2, "polynomials added"
     print "time so far: ", time.time() - t, " seconds"
 
-f = open("k3-scripts/k3f1-lines.txt", "wb")
+f = open("k3f1-lines.txt", "wb")
 for i in l:
     f.write(str(i.list()))
     f.write("\n")

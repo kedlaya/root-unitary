@@ -3,7 +3,7 @@ powRing.<y> = PowerSeriesRing(QQ, 5)
 l1 = []
 for i in range(11):
     l1.append([])
-f = open("k3-scripts/k3f1-lines.txt", "rb")
+f = open("k3f1-lines.txt", "rb")
 for i in f:
     j = eval(i)
     k = (len(j)-2)/2
@@ -13,7 +13,7 @@ print "Loaded", sum(len(i) for i in l1), "1-polynomials"
 l2 = []
 for i in range(11):
     l2.append([])
-f = open("k3-scripts/k3f2-lines.txt", "rb")
+f = open("k3f2-lines.txt", "rb")
 for i in f:
     j = eval(i)
     k = (len(j)-1)/2
@@ -38,7 +38,7 @@ l5 = [i for i in l4 if -i[1]+7 >= 0 and i[1]^2 - 4*i[2] + 21 >= -i[1] + 7 and
 #    if m2[1] >= 0 and m2[2]*2 >= m2[1] and m2[3]*3 >= m2[1] and m2[4]*4 >= m2[2]*2:
 #        l5.append(i)
 print "Satisfying nonnegativity:", len(l5), "polynomials"
-f = open("k3-scripts/k3f2-full-filtered.txt", "wb")
+f = open("k3f2-full-filtered.txt", "wb")
 for i in l5:
     f.write(str(i.list()))
     f.write("\n")

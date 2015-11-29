@@ -13,7 +13,7 @@ for i in range(1, 11):
     print c, "nodes enumerated"
     print "time so far: ", time.time() - t, " seconds"
 
-f = open("k3-scripts/k3f2-lines.txt", "wb")
+f = open("k3f2-lines.txt", "wb")
 for i in ans:
     f.write(str(i.list()))
     f.write("\n")
