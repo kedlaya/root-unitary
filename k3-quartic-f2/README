@@ -6,6 +6,7 @@ K.S. Kedlaya and A.V. Sutherland, A census of zeta functions of
 Note that some scripts depend on "prescribed_roots.sage" in the parent
 directory, which must be loaded first.
 
+=======
 Files in this directory:
 
 k3points.txt: Raw point counts up to 2^12 for all smooth quartic (K3) surfaces in P^3 over F_2
