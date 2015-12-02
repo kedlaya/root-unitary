@@ -674,9 +674,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 	change_lower(t0q);	
       }
   }
-
-  if (fmpz_cmp(lower, upper) > 0) return(0);
   /*
+  if (fmpz_cmp(lower, upper) > 0) return(0);
   fmpz_sub(t0z, upper, lower);
   if (fmpz_cmp_ui(t0z, 10) > 0) {
     fmpz_print(t0z);
