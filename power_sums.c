@@ -33,13 +33,87 @@ typedef struct ps_dynamic_data {
   int w2len; /* = 5 */
 } ps_dynamic_data_t;
 
-void fmpq_floor(fmpz_t res, fmpq_t a) {
+/* Set res to floor(a). */
+void fmpq_floor(fmpz_t res, const fmpq_t a) {
   fmpz_fdiv_q(res, fmpq_numref(a), fmpq_denref(a));
 };
 
-void fmpq_ceil(fmpz_t res, fmpq_t a) {
+/* Set res to ceil(a). */
+void fmpq_ceil(fmpz_t res, const fmpq_t a) {
   fmpz_cdiv_q(res, fmpq_numref(a), fmpq_denref(a));
 };
+
+void fmpz_sqrt_f(fmpz_t res, const fmpz_t a) {
+  fmpz_sqrt(res, a);
+}
+
+void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
+  int s = fmpz_is_square(a);
+  fmpz_sqrt(res, a);
+  if (!s) fmpz_add_ui(res, res, 1);
+}
+
+/* Set res to floor(a + b sqrt(q)). 
+   For efficiency, we do not assume a and b are canonical;
+   we must thus be careful about signs. */
+void fmpq_floor_quad(fmpz_t res, const fmpq_t a,
+		     const fmpq_t b, int q) {
+  if (b==NULL) fmpq_floor(res, a);
+  else {
+    fmpz *anum = fmpq_numref(a);
+    int anum_s = fmpz_sgn(anum);
+    fmpz *aden = fmpq_denref(a);
+    int aden_s = fmpz_sgn(aden);
+    fmpz *bnum = fmpq_numref(b);
+    int bnum_s = fmpz_sgn(bnum);
+    fmpz *bden = fmpq_denref(b);
+    int bden_s = fmpz_sgn(bden);
+    
+    fmpz_mul(res, aden, bnum);
+    fmpz_mul(res, res, res);
+    fmpz_mul_si(res, res, q);
+    if (bnum_s*bden_s >= 0) fmpz_sqrt_f(res, res);
+    else {
+      fmpz_sqrt_c(res, res);
+      fmpz_neg(res, res);
+    }
+    fmpz_mul_si(res, res, aden_s*bden_s);
+    fmpz_addmul(res, anum, bden);
+    if (bden_s > 0) fmpz_fdiv_q(res, res, aden);
+    else fmpz_cdiv_q(res, res, aden);
+    fmpz_fdiv_q(res, res, bden);
+  }
+}
+
+/* Set res to ceil(a + b sqrt(q)). */
+void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
+		     const fmpq_t b, int q) {
+  if (b==NULL) fmpq_ceil(res, a);
+  else {
+    fmpz *anum = fmpq_numref(a);
+    int anum_s = fmpz_sgn(anum);
+    fmpz *aden = fmpq_denref(a);
+    int aden_s = fmpz_sgn(aden);
+    fmpz *bnum = fmpq_numref(b);
+    int bnum_s = fmpz_sgn(bnum);
+    fmpz *bden = fmpq_denref(b);
+    int bden_s = fmpz_sgn(bden);
+
+    fmpz_mul(res, aden, bnum);
+    fmpz_mul(res, res, res);
+    fmpz_mul_si(res, res, q);
+    if (bnum_s*bden_s >= 0) fmpz_sqrt_c(res, res);
+    else {
+      fmpz_sqrt_f(res, res);
+      fmpz_neg(res, res);
+    }
+    fmpz_mul_si(res, res, aden_s*bden_s);
+    fmpz_addmul(res, anum, bden);
+    if (bden_s > 0) fmpz_cdiv_q(res, res, aden);
+    else fmpz_fdiv_q(res, res, aden);
+    fmpz_cdiv_q(res, res, bden);
+  }
+}
 
 /* Memory allocation and release.
  */
@@ -125,7 +199,8 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
     arith_chebyshev_t_polynomial(pol, i);
     for (j=0; j<=d; j++) {
       
-      /* Row 0: coeffs of 2*(i-th Chebyshev polynomial)(x/2). */
+      /* Row 0: coeffs of 2*(i-th Chebyshev polynomial)(x/2). 
+         If q != 1, the coeff of x^j is multiplied by q^{floor(i-j)/2}. */
       if (j <= i) {
 	k1 = fmpq_mat_entry(st_data->sum_mats[i], 0, j);
 	fmpq_set_fmpz_frac(k1, fmpz_poly_get_coeff_ptr(pol, j), const1);
@@ -140,6 +215,8 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
 	}
       }
 
+      /* The other rows are currently used only when q==1. */
+      
       /* Row 1: coeffs of row 0 from matrix i-2, multiplied by -2. */
       if (i >= 2) {
 	k1 = fmpq_mat_entry(st_data->sum_mats[i], 1, j);
@@ -322,23 +399,30 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   int d = st_data->d;
   int n = dy_data->n;
   int k = d+1-n;
-  fmpz *modulus = st_data->modlist + n-1; // Cannot dereference until n>0
+  int q = st_data->q;
+  fmpz *modulus = st_data->modlist + n-1;
   fmpz *pol = dy_data->pol;
   fmpq *f;
     
   /* Allocate temporary variables from persistent scratch space. */
   fmpz *tpol = dy_data->w;
+  fmpz *tpol2 = dy_data->w + d+1;
+  fmpz *tpol3 = dy_data->w + 2*d+2;
 
-  fmpz *t0z = dy_data->w + d + 1;
-  fmpz *lower = dy_data->w + d + 2;
-  fmpz *upper = dy_data->w + d + 3;
+  fmpz *t0z = dy_data->w + 3*d+3;
+  fmpz *t1z = dy_data->w + 3*d + 4;
+  fmpz *t2z = dy_data->w + 3*d + 5;
+  fmpz *lower = dy_data->w + 3*d + 6;
+  fmpz *upper = dy_data->w + 3*d + 7;
   
   fmpq *t0q = dy_data->w2;
   fmpq *t1q = dy_data->w2 + 1;
   fmpq *t2q = dy_data->w2 + 2;
   fmpq *t3q = dy_data->w2 + 3;
+  fmpq *t4q = dy_data->w2 + 4;
 
-  /* Subroutines to adjust lower and upper bounds. */
+  /* Subroutines to adjust lower and upper bounds. 
+   These use t0q and t4q as persistent scratch space. */
 
   void set_lower(const fmpq_t val) {
     fmpq_div(t0q, val, f);
@@ -348,6 +432,24 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   void set_upper(const fmpq_t val) {
     fmpq_div(t0q, val, f);
     fmpq_floor(upper, t0q);
+  }
+
+  void set_lower_quad(const fmpq_t val1, const fmpq_t val2) {
+    fmpq_div(t0q, val1, f);
+    if (val2==NULL) fmpq_ceil(lower, t0q);
+    else {
+      fmpq_div(t4q, val2, f);
+      fmpq_ceil_quad(lower, t0q, t4q, q);
+    }
+  }
+  
+  void set_upper_quad(const fmpq_t val1, const fmpq_t val2) {
+    fmpq_div(t0q, val1, f);
+    if (val2==NULL) fmpq_floor(upper, t0q);
+    else {
+      fmpq_div(t4q, val2, f);
+      fmpq_floor_quad(upper, t0q, t4q, q);
+    }
   }
 
   void change_lower(const fmpq_t val) {
@@ -362,27 +464,50 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
   }
     
-  /* Compute the divided n-th derivative of pol, 
-     then determine whether its roots are all in [-2, 2]. */
+  void change_lower_quad(const fmpq_t val1, const fmpq_t val2) {
+    fmpq_div(t0q, val1, f);
+    if (val2==NULL) fmpq_ceil(t0z, t0q);
+    else {
+      fmpq_div(t4q, val2, f);
+      fmpq_ceil_quad(t0z, t0q, t4q, q);
+    }
+    if (fmpz_cmp(t0z, lower) > 0) fmpz_set(lower, t0z);
+  }
+  
+  void change_upper_quad(const fmpq_t val1, const fmpq_t val2) {
+    fmpq_div(t0q, val1, f);
+    if (val2==NULL) fmpq_floor(t0z, t0q);
+    else {
+      fmpq_div(t4q, val2, f);
+      fmpq_floor_quad(t0z, t0q, t4q, q);
+    }
+    if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
+  }
+    
+  /* Compute the divided n-th derivative of pol. */
   for (i=0; i<=k-1; i++)
     fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
 
-  /* If q>1, square the roots of the polynomial before finding roots. */
-  if (st_data->q == 1)
+  /* If previous modulus==0, check for roots in [-2 sqrt(q), 2 sqrt(q)]. */
+  if (fmpz_is_zero(st_data->modlist+n)) {
+    if (q != 1) {
+      /* If q>1, square the roots of the polynomial before finding roots. */
+      for (i=0; i<=k-1; i++) fmpz_mul_si(tpol+k+i, tpol+i, 1-2*(i%2));
+      _fmpz_poly_mul(tpol+2*k, tpol, k, tpol+k, k);
+      for (i=0; i<=k-1; i++) fmpz_set(tpol+i, tpol+2*k+2*i);
+    }
+    r = _fmpz_poly_all_roots_in_interval(tpol, k, st_data->a, st_data->b, dy_data->w+d+1);
+    if (r<=0) return(r-1);
+    /* Restore tpol. */
+    for (i=0; i<=k-1; i++)
+      fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
+  } else {
+    /* Only check for real roots; we'll deal with the interval later. */
     r = _fmpz_poly_all_roots_real(tpol, k, dy_data->w+d+1);
-  else {
-    for (i=0; i<=k-1; i++) fmpz_mul_si(tpol+k+i, tpol+i, 1-2*(i%2));
-    _fmpz_poly_mul(tpol+2*k, tpol, k, tpol+k, k);
-    for (i=0; i<=k-1; i++) fmpz_set(tpol+i, tpol+2*k+2*i);
-    r = _fmpz_poly_all_roots_in_interval(tpol, k, st_data->a, st_data->b, 
-				       dy_data->w+d+1);
+    if (r<=0) return(r-1);
   }
   
-  /* If r<=0, abort.
-     If r=1 and k>d, return trivially; no further coefficients to find.
-  */
-
-  if (r<=0) return(r-1);
+  /* If r=1 and k>d, no further coefficients to bound. */
   if (k>d) return(1);
 
   /* Compute the k-th power sum. */
@@ -396,37 +521,58 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->sum_col, k-i, 0));
   }
   
-  s = fmpz_is_zero(modulus);
+  /* If modulus==0, no further work required. */
+  if (fmpz_is_zero(modulus)) {
+    fmpz_zero(lower);
+    fmpz_zero(upper);
+    return(1);
+  }
 
-  /* If modulus > 0, initialize bounds using asymmetrized power sums. */
-  if (!s) {
-    f = st_data->f + n-1;
-    fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
-    
-    if (st_data->q == 1) fmpq_set_si(t1q, 2*d, 1);
-    else if (k%2==1) {
-      fmpq_set_si(t1q, 2*d, 1);
-      fmpz_set_si(t0z, st_data->q);
-      fmpz_pow_ui(t0z, t0z, (k+1)/2);
-      fmpq_mul_fmpz(t1q, t1q, t0z);
-    } else {
-      fmpz_set_si(t0z, st_data->q);
-      fmpz_pow_ui(t0z, t0z, k+1);
-      fmpz_mul_ui(t0z, t0z, 4*d*d);
-      fmpz_sqrt(t0z, t0z);
-      fmpz_add_ui(t0z, t0z, 1);
-      fmpq_one(t1q);
-      fmpq_mul_fmpz(t1q, t1q, t0z);
-    }
-    
+  /* Initialize bounds using asymmetrized power sums. */
+  f = st_data->f + n-1;
+  fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
+  
+  if (q == 1) {
+    fmpq_set_si(t1q, 2*d, 1);
     fmpq_sub(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
     set_lower(t0q);
     fmpq_add(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
     set_upper(t0q);
   }
-  
-  /* If q=1, apply Descartes' rule of signs at -2, +2. */
-  if (st_data->q == 1) {
+  else if (k%2==0) {
+    fmpq_set_si(t1q, 2*d, 1);
+    fmpz_set_si(t0z, q);
+    fmpz_pow_ui(t0z, t0z, k/2);
+    fmpq_mul_fmpz(t1q, t1q, t0z);
+    fmpq_sub(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
+    set_lower(t0q);
+    fmpq_add(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
+    set_upper(t0q);
+  } else {
+    fmpq_zero(t1q); 
+    fmpq_set_si(t2q, 2*d, 1);
+    fmpz_set_si(t0z, q);
+    fmpz_pow_ui(t0z, t0z, k/2);
+    fmpq_mul_fmpz(t2q, t2q, t0z);
+    set_upper_quad(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
+    fmpq_neg(t2q, t2q);
+    set_lower_quad(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
+  }
+
+  /* Apply Descartes' rule of signs at -2*sqrt(q), +2*sqrt(q);
+     this enforces the roots being in the correct interval (if real). */
+  fmpq_set_si(t3q, -k, 1);
+  fmpq_div_fmpz(t3q, t3q, pol+d);
+
+  /* Currently tpol is the divided n-th derivative of pol.
+     Undo one derivative, then evaluate at the endpoints. */
+  for (i=k; i>=1; i--) {
+    fmpz_mul_si(tpol+i, tpol+i-1, n);
+    fmpz_divexact_si(tpol+i, tpol+i, i);
+  }
+  fmpz_set(tpol, pol+d-k);
+
+  if (q == 1) {
     /*
     _fmpz_poly_evaluate_fmpz(t0z, tpol, k, st_data->a);
     r1 = fmpz_sgn(t0z); // Usually (-1)^(k-1), sometimes 0
@@ -434,47 +580,44 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     _fmpz_poly_evaluate_fmpz(t0z, tpol, k, st_data->b);
     r2 = fmpz_sgn(t0z); // Usually +1, sometimes 0
     */
-      
-  /* Currently tpol is the divided n-th derivative of pol;
-     evaluate at the endpoints. Take one more derivative,
-     then evaluate again. */
-    for (i=k; i>=1; i--) {
-      fmpz_mul_si(tpol+i, tpol+i-1, n);
-      fmpz_divexact_si(tpol+i, tpol+i, i);
-    }
-    fmpq_set_si(t2q, -k, 1);
-    fmpq_div_fmpz(t2q, t2q, pol+d);
-    
-    fmpz_set(tpol, pol+d-k);    
-    _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->a);
-    fmpq_mul_fmpz(t1q, t2q, t0z);
-    if (s) {
-      if (fmpq_sgn(t1q) == 1-2*(k%2)) return(0); 
-    } else {
-      if (k%2==1) change_upper(t1q);
-      else change_lower(t1q);
-    }
+
+    _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->a);    
+    fmpq_mul_fmpz(t1q, t3q, t0z);
+    if (k%2==1) change_upper(t1q);
+    else change_lower(t1q);
     /*
     if (r1 >= 0) change_upper(t1q);
     if (r1 <= 0) change_lower(t1q);
     */
     
     _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->b);
-    fmpq_mul_fmpz(t1q, t2q, t0z);
+    fmpq_mul_fmpz(t1q, t3q, t0z);
     /*
     if (r2 >= 0) change_lower(t1q);
     if (r2 <= 0) change_upper(t1q);
     */
-    if (s) {
-      if (fmpq_sgn(t1q) > 0) return(0);
-    } else change_lower(t1q);
+    change_lower(t1q);
+  } else {
+    for (i=0; 2*i <= k; i++)
+      fmpz_set(tpol2+i, tpol+2*i);
+    for (i=0; 2*i+1 <= k; i++)
+      fmpz_set(tpol3+i, tpol+2*i+1);
+    fmpz_set_si(t2z, 4*q);
+    _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, t2z);
+    _fmpz_poly_evaluate_fmpz(t1z, tpol3, (k+1) / 2, t2z);
+    fmpz_mul_si(t1z, t1z, 2);
+    fmpq_mul_fmpz(t1q, t3q, t0z);
+    fmpq_mul_fmpz(t2q, t3q, t1z);
+
+    change_lower_quad(t1q, t2q);
+
+    fmpq_neg(t2q, t2q);
+    if (k%2==1) change_upper_quad(t1q, t2q);
+    else change_lower_quad(t1q, t2q);
   }
 
-  /* If modulus==0, success! */
-  if (s) return(1);
-
-  /* Additional bounds based on power sums in case q=1. */
-  if (st_data->q==1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
+  /* If q=1, compute additional bounds using power sums. */
+  if (q==1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
     /* The k=2 case requires separate attention; this corrects a bug
        in the 2008 implementation.
     */
@@ -535,7 +678,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 	change_lower(t0q);	
       }
   }
-
   if (fmpz_cmp(lower, upper) > 0) return(0);
   /*
   fmpz_sub(t0z, upper, lower);
@@ -607,7 +749,7 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	  for (i=0; i<=d; i++) {
 	    fmpz_one(temp);
 	    for (j=0; j<=i; j++) {
-	      fmpz_addmul(sympol+d+i-2*j, pol+i, temp);
+	      fmpz_addmul(sympol+d-i+2*j, pol+i, temp);
 	      if (j<i) {
 		fmpz_mul_si(temp, temp, st_data->q);
 		fmpz_mul_si(temp, temp, i-j);

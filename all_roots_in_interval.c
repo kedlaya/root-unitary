@@ -82,7 +82,7 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
     for ( ; ; )
       {
         /* Invariant:  n = len(f1) = len(f0) - 1 */
-
+	
         /* If we miss any one sign change, we cannot have enough */
         sgn0_a = -sgn0_a;
         if (fmpz_sgn(val1_a) != sgn0_a || fmpz_sgn(val1_b) != sgn0_b) {
@@ -196,7 +196,7 @@ int _fmpz_poly_all_roots_real(fmpz *poly, slong n, fmpz *w)
         /* If we miss any one sign change, we cannot have enough */
 	if (sgn1_l == 0) return(0);
 	if (sgn1_l != sgn0_l) {
-	  j = 2*n - n0 + 1; 
+	  j = 2*n - n0+1; 
 	  if (j>0) return(-j); /* Independent of terms of degree <j */
 	  return 0;
 	}
