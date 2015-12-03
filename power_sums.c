@@ -48,8 +48,9 @@ void fmpz_sqrt_f(fmpz_t res, const fmpz_t a) {
 }
 
 void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
+  int s = fmpz_is_square(a);
   fmpz_sqrt(res, a);
-  if (!fmpz_is_square(a)) fmpz_add_ui(res, res, 1);
+  if (!s) fmpz_add_ui(res, res, 1);
 }
 
 /* Set res to floor(a + b sqrt(q)). 
@@ -97,7 +98,7 @@ void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
     int bnum_s = fmpz_sgn(bnum);
     fmpz *bden = fmpq_denref(b);
     int bden_s = fmpz_sgn(bden);
-    
+
     fmpz_mul(res, aden, bnum);
     fmpz_mul(res, res, res);
     fmpz_mul_si(res, res, q);
@@ -399,7 +400,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   int n = dy_data->n;
   int k = d+1-n;
   int q = st_data->q;
-  fmpz *modulus = st_data->modlist + n-1; // Cannot dereference until n>0
+  fmpz *modulus = st_data->modlist + n-1;
   fmpz *pol = dy_data->pol;
   fmpq *f;
     
@@ -444,7 +445,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   
   void set_upper_quad(const fmpq_t val1, const fmpq_t val2) {
     fmpq_div(t0q, val1, f);
-    if (val2==NULL) fmpq_floor(lower, t0q);
+    if (val2==NULL) fmpq_floor(upper, t0q);
     else {
       fmpq_div(t4q, val2, f);
       fmpq_floor_quad(upper, t0q, t4q, q);
@@ -483,31 +484,28 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
   }
     
-  /* Compute the divided n-th derivative of pol, 
-     then determine whether its roots are all in [-2, 2]. */
+  /* Compute the divided n-th derivative of pol. */
   for (i=0; i<=k-1; i++)
     fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
 
-  /* If modulus==0, only check for roots in the interval. */
-  if (fmpz_is_zero(modulus)) {
-    if (st_data->q == 1) {
-      fmpz_set_si(t0z, -2);
-      fmpz_set_si(t1z, 2);
-    } else {
+  /* If previous modulus==0, check for roots in [-2 sqrt(q), 2 sqrt(q)]. */
+  if (fmpz_is_zero(st_data->modlist+n)) {
+    if (q != 1) {
       /* If q>1, square the roots of the polynomial before finding roots. */
       for (i=0; i<=k-1; i++) fmpz_mul_si(tpol+k+i, tpol+i, 1-2*(i%2));
       _fmpz_poly_mul(tpol+2*k, tpol, k, tpol+k, k);
       for (i=0; i<=k-1; i++) fmpz_set(tpol+i, tpol+2*k+2*i);
-      fmpz_set_si(t0z, 0);
-      fmpz_set_si(t1z, 4*q);
     }
-    r = _fmpz_poly_all_roots_in_interval(tpol, k, t0z, t1z, dy_data->w+d+1);
-    return(r>0);
+    r = _fmpz_poly_all_roots_in_interval(tpol, k, st_data->a, st_data->b, dy_data->w+d+1);
+    if (r<=0) return(r-1);
+    /* Restore tpol. */
+    for (i=0; i<=k-1; i++)
+      fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
+  } else {
+    /* Only check for real roots; we'll deal with the interval later. */
+    r = _fmpz_poly_all_roots_real(tpol, k, dy_data->w+d+1);
+    if (r<=0) return(r-1);
   }
-
-  /* Only check for real roots; we'll deal with the interval later. */
-  r = _fmpz_poly_all_roots_real(tpol, k, dy_data->w+d+1);
-  if (r<=0) return(r-1);
   
   /* If r=1 and k>d, no further coefficients to bound. */
   if (k>d) return(1);
@@ -523,6 +521,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->sum_col, k-i, 0));
   }
   
+  /* If modulus==0, no further work required. */
+  if (fmpz_is_zero(modulus)) {
+    fmpz_zero(lower);
+    fmpz_zero(upper);
+    return(1);
+  }
+
   /* Initialize bounds using asymmetrized power sums. */
   f = st_data->f + n-1;
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
@@ -549,10 +554,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpz_set_si(t0z, q);
     fmpz_pow_ui(t0z, t0z, k/2);
     fmpq_mul_fmpz(t2q, t2q, t0z);
-    fmpq_sub(t3q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
-    set_lower_quad(t1q, t3q);
-    fmpq_add(t3q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
-    set_upper_quad(t1q, t3q);
+    set_upper_quad(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
+    fmpq_neg(t2q, t2q);
+    set_lower_quad(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
   }
 
   /* Apply Descartes' rule of signs at -2*sqrt(q), +2*sqrt(q);
@@ -674,8 +678,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 	change_lower(t0q);	
       }
   }
-  /*
   if (fmpz_cmp(lower, upper) > 0) return(0);
+  /*
   fmpz_sub(t0z, upper, lower);
   if (fmpz_cmp_ui(t0z, 10) > 0) {
     fmpz_print(t0z);

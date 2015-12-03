@@ -185,7 +185,8 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
     except TypeError:
         modlist = [modulus]
     modlist = [0]*n + modlist
-    modlist += [modlist[-1]] * (d+1 - len(modlist)) + [1]
+    if len(modlist) < d+1:
+        modlist += [modlist[-1]] * (d+1 - len(modlist))
 
     process = process_queue(d, n, lead, sign, q, num_cofactor, 
                             modlist, node_count, verbosity, Q0)
