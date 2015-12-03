@@ -1,1 +1,3 @@
 Scripts associated to zeta functions of abelian varieties
+
+test_suite.sage: Some consistency checks for zeta functions of abelian varieties
