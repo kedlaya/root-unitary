@@ -103,10 +103,10 @@ def asymmetrize(P):
     Q = P
     if sg == -1:
         cofactor *= 1-q*x
-        Q /= 1-q*x
+        Q //= 1-q*x
     if Q.degree() %2 == 1:
         cofactor *= 1+q*x
-        Q /= 1+q*x
+        Q //= 1+q*x
     coeffs = []
     m = Q.degree() // 2
     for i in reversed(range(m+1)):
