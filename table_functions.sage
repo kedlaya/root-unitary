@@ -62,7 +62,7 @@ def newton_and_prank(p,r,poly_in_t):
 def angles(poly_in_z):
     #returns the angles (as a multiple of pi) in the upperhalf plane
     roots = poly_in_z.roots(CC)
-    return sum([[root.arg()/pi]*e for (root, e) in roots if root.imag() >= 0],[])
+    return sum([[RR(root.arg()/pi)]*e for (root, e) in roots if root.imag() >= 0],[])
 
 
 #def make_label(g,q,poly_in_x):
@@ -126,94 +126,29 @@ def alternating(pol, m):
         ans.append(s)
     return P(ans)
     
-def find_invs_and_slopes(p,r,L):
-    poly = L.change_ring(QQ)
+def find_invs_and_slopes(p,r,P):
+    poly = P.change_ring(QQ)
     K.<a> = NumberField(poly)
     l = K.primes_above(p)
     invs = []
     slopes = []
     for v in l:
         vslope = a.valuation(v)/K(p^r).valuation(v)
-        slope.append(vslope)
+        slopes.append(vslope)
         vdeg = v.residue_class_degree()*v.ramification_index()
         invs.append(vslope*vdeg)
     return invs,slopes
         
-def make_label(coeffs):
+def make_label(g,q,Lpoly):
+    label = '%s.%s' % (g,q)
+    for i in range(1,g+1):
+        c = Lpoly[i]
+        if sign(c) == -1:
+            label = label + '.a' + cremona_letter_code((-1)*c)
+        else:
+            label = label + '.' + cremona_letter_code(c)
+    return label
     
-
-
-#######################################################################################################
-#######################################################################################################
-
-def make_table(g,q):
-    """
-    For a dimension g and a prime power q, generate a file "weilgp.txt" which contains the possible
-    weil polynomials.
-    FIXM: We need to pass an intelligent answer_count=1000
-    """
-    p,r = q.is_prime_power(get_data=True)
-    currentfilename = "weil" + "-" + ( "%s" % g ) + "-"+ ("%s" % q) + ".txt"
-    target = open(currentfilename, 'w')
-    
-    polyRing.<x> = PolynomialRing(ZZ)
-    F = Qp(p) #p-adic version
-    polyRingF.<t> = PolynomialRing(F)
-    
-    weil_polys,some_number_i_dont_understand = roots_on_unit_circle(1+(q*x^2)^g)
-    for Lpoly in weil_polys:
-        #create the two types of polynomial objects needed for algorithms 
-        Ppoly = Lpoly.reverse()
-        coeffs = Lpoly.coefficients(sparse=False)
-        Ppolyt = polyRingF(Ppoly) #p-adic (automatically changes variable from x to t) 
-        
-        line_for_file = ""
-        
-        #label
-        #FOR NEWTON LABELING CODE:
-        #a,s,c,label = make_label(g,q,Ppoly)
-        line_for_file = line_for_file + ("%s" % g) + "." + ("%s" % q)
-        
-        #for i in range(g):
-        #    line_for_file = line_for_file + (".%s" % label[i]) 
-        #line_for_file = line_for_file + ","
-        
-        
-        #FOR NAIVE LABELING: 
-        #convert to base 26 and use a leading 'a' for negative signs. 
-        for i in range(1,g+1):
-            c = coeffs[i]
-            if sign(c) == -1:
-                line_for_file = line_for_file + ".a" + cremona_letter_code((-1)*c)
-            else
-                line_for_file = line_for_file + "." + cremona_letter_code(c)
-        line_for_file = line_for_file + ","
-        
-        #polynomial_coeffs
-        line_for_file = line_for_file + ("%s" % coeffs) + ","
-                
-        #FIXME: number_field
-        line_for_file = line_for_file + ","
-        
-        #slopes and p-rank
-        slopes,p_rank = newton_and_prank(p,r,Ppolyt)
-        line_for_file = line_for_file + ("%s" % slopes) + "," + ("%s" % p_rank)
-        
-        #A-counts
-        a_counts = abelian_counts(g,p,r,Lpoly)
-        line_for_file = line_for_file + ("%s" % a_counts) + "," 
-        
-        #C-counts
-        c_counts = curve_counts(g,q,Lpoly)
-        line_for_file = line_for_file + ("%s" % c_counts) + "," 
-        
-        #Known Jacobian
-        line_for_file = line_for_file + "0" + ","
-        
-        #Has principal polarization
-        
-        #Check_Invs
-        
-        target.write(line_for_file + "\n")
-####################################################################################################################################################
+def quote_me(word):
+    return '"'+ word + '"'
 
