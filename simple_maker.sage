@@ -55,7 +55,7 @@ def make_simples(g,q):
                 line = line + str(sorted(angles(Lpoly))) + ','
                 
                 #angle ranks
-                line = line + '" ",'
+                line = line + '"",'
                 
                 #number_field label
                 #line = line + WebNumberField.from_polynomial(Ppoly).label + ','
@@ -68,8 +68,13 @@ def make_simples(g,q):
                 line = line + str(p_rank) + ','
                 
                 #slopes
-                s = [quote_me(x) for x in str(sorted(slopes))]
-                line = line + str(s) + ','
+                printed_slopes = '['
+                for s in sorted(slopes):
+                    if printed_slopes != '[':
+                        printed_slopes += ','
+                    printed_slopes += quote_me(s)
+                #s = [quote_me(x) for x in sorted(slopes)]
+                line = line + printed_slopes + '],'
                 
                 #a-counts
                 a_counts = abelian_counts(g,p,r,Lpoly)
@@ -89,8 +94,13 @@ def make_simples(g,q):
                 line = line + '[' + quote_me(my_label) + '],'
                 
                 #brauers
-                invs_str = [quote_me(inv) for inv in invs] 
-                line = line + str(invs_str) + ','
+                printed_invs = '['
+                for inv in invs:
+                    if printed_invs != '[':
+                        printed_invs += ','
+                    printed_invs += quote_me(inv)
+                #invs_str = [quote_me(inv) for inv in invs] 
+                line = line + printed_invs + '],'
                 
                 #primitive models
                 line = line + '""'

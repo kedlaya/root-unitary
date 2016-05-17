@@ -8,9 +8,9 @@ AUTHORS:
 
 Fields we want to populate with an example
 
-label: "2.9.12.20"
+label: "2.9.ab_d"
 polynomial: ["1","-1","3","-9","81"]
-angle_numbers: (doubles): [0.23756..., 0.69210...]
+angle_numbers (doubles): [0.23756..., 0.69210...]
 number_field: "4.0.213413.1"
 p-rank: 1
 slopes: ["0","1/2","1/2","1"]
@@ -20,7 +20,7 @@ known_jacobian (0,1,-1): 1
 decomposition: ["9.2.-1._3"]
 pricipally_polarizable (0,1,-1): 1
 Brauer Invariants: inv_v( End(A_{FFbar_q})_{QQ} )=(v(\pi)/v(q))*[QQ(pi)_{v}: QQ(pi): v\vert p place of QQ(\pi)], these are stored as elements of QQ.
-Primative models: 
+Primitive models: 
 """
 
 ######################################################################################################
@@ -44,13 +44,22 @@ load("prescribed_roots.sage")
 
 def newton_and_prank(p,r,poly_in_t):
     """
-    works for nonsimple.
     
-    
-    Newton Polygons
-    Needs:
+    before calling this function, first do:
     F = Qp(p)
     polyRingF.<t> = PolynomialRing(F)
+    
+    INPUT:
+    - ``p`` -- a prime
+    - ``r`` -- a positive integer, the abelian variety is defined over F_q for q = p^r
+    - ``poly_in_t`` -- the characteristic polynomial whose Newton polygon and p-rank will be computed. This polynomial must be an element of Qp<t>
+    
+    OUTPUT:
+     slopes -- the slopes of the Newton polygon
+     p-rank -- the p-rank of the isogeny class of abelian varieties (the number of slopes equal to 0)
+    
+    
+    This also works for the characteristic polynomial of a non-simple isogeny class.
     """
     d = poly_in_t.degree()
     mynp=poly_in_t.newton_polygon()
@@ -63,8 +72,15 @@ def newton_and_prank(p,r,poly_in_t):
 
 
 def angles(poly_in_z):
-    #works for nonsimple
-    #returns the angles (as a multiple of pi) in the upperhalf plane
+    """
+    INPUT:
+    - ``poly_in_z`` -- a polynomial whose roots can be coerced to CC
+    
+    OUTPUT:
+    a list whose elements are the arguments (angles) of the roots of the polynomial that are in the upper half plane, divided by pi, with multiplicity, coerced into RR
+    
+    This also works for the characteristic polynomial of a non-simple isogeny class.
+    """
     roots = poly_in_z.roots(CC)
     return sum([[RR(root.arg()/pi)]*e for (root, e) in roots if root.imag() >= 0],[])
 
@@ -103,11 +119,31 @@ def angles(poly_in_z):
 
 
 def abelian_counts(g,p,r,L):
-    #works for nonsimple
+    """
+    INPUT:
+    - ``g`` -- the dimension of the abelian variety
+    - ``p`` -- a prime
+    - ``r`` -- a positive integer, the abelian variety is defined over F_q for q = p^r
+    - ``L`` -- the L-polynomial of the isogeny class of abelian varieties
+    
+    OUPUT:
+    for prec = max(g,10), a list containing the number of points of the abelian variety defined over F_q^i, for i = 1 to prec
+    
+    This also works for the characteristic polynomial of a non-simple isogeny class.
+    """
     prec = max([g,10])
     return [L.resultant(x^i-1) for i in range(1,prec+1)]
 
 def curve_counts(g,q,L):
+    """
+    INPUT:
+    - ``g`` -- the dimension of the abelian variety
+    - ``q`` -- the abelian variety is defined over F_q
+    - ``L`` -- the L-polynomial of the isogeny class of abelian varieties
+    
+    OUTPUT:
+    
+    """
     prec = max([g,10])
     S = PowerSeriesRing(QQ, 'x', prec+2)
     f = S(L)/((1-x)*(1-q*x))
@@ -158,7 +194,7 @@ def make_label(g,q,Lpoly):
             label += 'a' + cremona_letter_code((-1)*c)
         else:
             label += cremona_letter_code(c)
-    return quote_me(label)
+    return label
     
 def angle_rank(angles):
     """
