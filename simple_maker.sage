@@ -4,7 +4,12 @@ from sage.databases.cremona import cremona_letter_code
 from sage.databases.cremona import class_to_int
 #from lmfdb.WebNumberField import WebNumberField
 
+#
+#For some reason you need to instantiate polyRing.<x> = ZZ[]
+#
+
 def make_simples(g,q):
+    print "starting g=%s, q=%s..." % (g,q)
     p,r = q.is_prime_power(get_data=True)
     
     #open a file for writing 
@@ -16,8 +21,10 @@ def make_simples(g,q):
     polyRingF.<t> = PolynomialRing(F)
     
     Lpolys,_ = roots_on_unit_circle( 1+ (q*x^2)^g )
-    
-    for Lpoly in Lpolys:
+    npolys = len(Lpolys)
+    for polycount,Lpoly in enumerate(Lpolys):
+        if polycount % 500 == 0 and polycount != 0:
+            print "%s / %s polynomials complete" % (polycount, npolys)
         #some stuff that will be used later
         Ppoly = Lpoly.reverse()
         coeffs = Lpoly.coefficients(sparse=False)
@@ -25,33 +32,44 @@ def make_simples(g,q):
         
         if Lpoly.is_irreducible():
             invs, newton_slopes = find_invs_and_slopes(p,r,Ppoly)
-            e = max(invs)
+            e = lcm([a.denominator() for a in invs])
             #check that invs 
             if e==1:
                 #return a single factor
+                line = '['
                 
                 #label
                 my_label = make_label(g,q,Lpoly)
-                line = quote_me(my_label) + ','
+                line = line + quote_me(my_label) + ','
+                
+                #dim
+                line = line + str(g) + ','
+                
+                #q
+                line = line + str(q) + ','
                 
                 #coeffs
                 line = line + str(coeffs) + ','
                 
                 #angle numbers
-                line = line + str(angles(Lpoly)) + ','
+                line = line + str(sorted(angles(Lpoly))) + ','
+                
+                #angle ranks
+                line = line + '" ",'
                 
                 #number_field label
                 #line = line + WebNumberField.from_polynomial(Ppoly).label + ','
                 
                 #FIXME THE FOLLOWING IS STUPID
                 slopes,p_rank = newton_and_prank(p,r,Ppolyt)
-                line = line + ("%s" % slopes) + ','
+                #line = line + ("%s" % slopes) + ','
                 
                 #p-rank
                 line = line + str(p_rank) + ','
                 
                 #slopes
-                line = line + str(slopes) + ','
+                s = [quote_me(x) for x in str(sorted(slopes))]
+                line = line + str(s) + ','
                 
                 #a-counts
                 a_counts = abelian_counts(g,p,r,Lpoly)
@@ -68,15 +86,16 @@ def make_simples(g,q):
                 line = line + '0,'
                 
                 #decomposition
-                line = line + quote_me(my_label) + ','
+                line = line + '[' + quote_me(my_label) + '],'
                 
                 #brauers
-                line = line + str(invs) + ','
+                invs_str = [quote_me(inv) for inv in invs] 
+                line = line + str(invs_str) + ','
                 
                 #primitive models
                 line = line + '""'
                 
-                target.write(line + '\n')
+                target.write(line + ']' + '\n')
             
             #if e is not one we throw this dude away
         else:
@@ -84,33 +103,45 @@ def make_simples(g,q):
             if len(factors)==1:
                 factor, power = factors[0]
                 invs, newton_slopes = find_invs_and_slopes(p,r,factor.reverse())
-                e = max(invs)
+                e = lcm([a.denominator() for a in invs])
                 
                 if e == power:
                     #return a single factor
                     
+                    line = '['
+                    
                     #label
                     my_label = make_label(g,q,Lpoly)
-                    line = quote_me(my_label) + ','
+                    line = line + quote_me(my_label) + ','
+                    
+                    #dim
+                    line = line + str(g) + ','
+                
+                    #q
+                    line = line + str(q) + ','
                      
                     #coeffs
                     line = line + str(coeffs) + ','
                     
                     #angle numbers
-                    line = line + str(angles(Lpoly)) + ','
+                    line = line + str(sorted(angles(Lpoly))) + ','
+                    
+                    #angle ranks
+                    line = line + '" ",'
                     
                     #number_field label
                     #line = line + WebNumberField.from_polynomial(Ppoly).label + ','
                     
                     #FIXME THE FOLLOWING IS STUPID
                     slopes,p_rank = newton_and_prank(p,r,Ppolyt)
-                    line = line + ("%s" % slopes) + ','
+                    #line = line + ("%s" % slopes) + ','
                     
                     #p-rank
                     line = line + str(p_rank) + ','
                     
                     #slopes
-                    line = line + str(slopes) + ','
+                    s = [quote_me(x) for x in str(sorted(slopes))]
+                    line = line + str(s) + ',''
                     
                     #a-counts
                     a_counts = abelian_counts(g,p,r,Lpoly)
@@ -127,13 +158,14 @@ def make_simples(g,q):
                     line = line + '0,'
                     
                     #decomposition
-                    line = line + quote_me(my_label) + ','
+                    line = line + '[' +  quote_me(my_label) + '],'
                     
                     #brauers
-                    line = line + str(invs) + ','
+                    invs_str = [quote_me(inv) for inv in invs] 
+                    line = line + str(invs_str) + ','
                     
                     #primitive models
                     line = line + '""' 
                     
-                    target.write(line + '\n')
+                    target.write(line + ']' + '\n')
             #throw this guy away

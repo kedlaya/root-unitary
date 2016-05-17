@@ -44,6 +44,9 @@ load("prescribed_roots.sage")
 
 def newton_and_prank(p,r,poly_in_t):
     """
+    works for nonsimple.
+    
+    
     Newton Polygons
     Needs:
     F = Qp(p)
@@ -60,6 +63,7 @@ def newton_and_prank(p,r,poly_in_t):
 
 
 def angles(poly_in_z):
+    #works for nonsimple
     #returns the angles (as a multiple of pi) in the upperhalf plane
     roots = poly_in_z.roots(CC)
     return sum([[RR(root.arg()/pi)]*e for (root, e) in roots if root.imag() >= 0],[])
@@ -99,12 +103,15 @@ def angles(poly_in_z):
 
 
 def abelian_counts(g,p,r,L):
-    return [L.resultant(x^i-1) for i in range(1,g+1)]
+    #works for nonsimple
+    prec = max([g,10])
+    return [L.resultant(x^i-1) for i in range(1,prec+1)]
 
 def curve_counts(g,q,L):
-    S = PowerSeriesRing(QQ, 'x', g+1)
-    g = S(L)/((1-x)*(1-q*x))
-    return g.log().derivative().coefficients()
+    prec = max([g,10])
+    S = PowerSeriesRing(QQ, 'x', prec+2)
+    f = S(L)/((1-x)*(1-q*x))
+    return f.log().derivative().coefficients()[:prec]
 
 def alternating(pol, m):
     """
@@ -127,6 +134,7 @@ def alternating(pol, m):
     return P(ans)
     
 def find_invs_and_slopes(p,r,P):
+    #We only want to run this one at a time.
     poly = P.change_ring(QQ)
     K.<a> = NumberField(poly)
     l = K.primes_above(p)
@@ -138,17 +146,68 @@ def find_invs_and_slopes(p,r,P):
         vdeg = v.residue_class_degree()*v.ramification_index()
         invs.append(vslope*vdeg)
     return invs,slopes
+    
         
 def make_label(g,q,Lpoly):
-    label = '%s.%s' % (g,q)
+    #this works for one and just write it on each factors. 
+    label = '%s.%s.' % (g,q)
     for i in range(1,g+1):
+        if i > 1: label += '_'
         c = Lpoly[i]
         if sign(c) == -1:
-            label = label + '.a' + cremona_letter_code((-1)*c)
+            label += 'a' + cremona_letter_code((-1)*c)
         else:
-            label = label + '.' + cremona_letter_code(c)
-    return label
+            label += cremona_letter_code(c)
+    return quote_me(label)
+    
+def angle_rank(angles):
+    """
+    There are two methods for computing this. 
+    The first method is to use S-units in sage where S = primes in Q(pi) dividing p.
+    The second method is to use lindep in pari. 
+    
+    
+    """
+        
+    
+    
     
 def quote_me(word):
-    return '"'+ word + '"'
+    return '"'+ str(word) + '"'
+    
+def dudes_less_than(my_list):
+    many_lists = []
+    for j in range(my_list[0]):
+        many_lists.append([j])
+        #print many_lists
+    for i in range(1,len(my_list)):
+        for j in range(my_list[i]):
+            for dude in many_lists:
+                if len(dude) ==i:
+                    many_lists.append(dude + [j])
+        #print many_lists
+        indices_to_delete = []
+        for dude in many_lists:
+            if len(dude) <= i:
+                indices_to_delete.append(many_lists.index(dude))
+        indices_to_delete.reverse()
+        for i in indices_to_delete:
+            many_lists.remove(many_lists[i])
+    return many_lists
+
+import json
+def load_previous_polys(filename):
+#needs the fields to have the proper quotations/other Json formatting. 
+    D = {}
+    R = PolynomialRing(QQ,'x')
+    with open(filename) as F:
+        for line in F.readlines():
+            data = json.loads(line)
+            label, g, q, polynomial = data[:4]
+            D[g,q] = (label, R(polynomial))
+    return D
+
+
+
+
 
