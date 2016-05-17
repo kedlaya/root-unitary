@@ -141,7 +141,7 @@ def make_simples(g,q):
                     
                     #slopes
                     s = [quote_me(x) for x in str(sorted(slopes))]
-                    line = line + str(s) + ',''
+                    line = line + str(s) + ','
                     
                     #a-counts
                     a_counts = abelian_counts(g,p,r,Lpoly)
