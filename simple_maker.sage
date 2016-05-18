@@ -89,7 +89,7 @@ def make_simples(g,q):
                 line = line + '0,'
                 
                 #decomposition
-                line = line + '[' + quote_me(my_label) + '],'
+                line = line + '[' + quote_me(my_label) + ',1],'
                 
                 #brauer invariants
                 printed_invs = '['
