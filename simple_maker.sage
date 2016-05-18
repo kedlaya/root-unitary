@@ -1,4 +1,4 @@
-load("table_functions.sage")
+\load("table_functions.sage")
 load("prescribed_roots.sage")
 from sage.databases.cremona import cremona_letter_code
 from sage.databases.cremona import class_to_int
@@ -48,7 +48,7 @@ def make_simples(g,q):
                 #q
                 line = line + str(q) + ','
                 
-                #coeffs
+                #polynomial
                 line = line + str(coeffs) + ','
                 
                 #angle numbers
@@ -60,9 +60,7 @@ def make_simples(g,q):
                 #number_field label
                 #line = line + WebNumberField.from_polynomial(Ppoly).label + ','
                 
-                #FIXME THE FOLLOWING IS STUPID
                 slopes,p_rank = newton_and_prank(p,r,Ppolyt)
-                #line = line + ("%s" % slopes) + ','
                 
                 #p-rank
                 line = line + str(p_rank) + ','
@@ -76,11 +74,11 @@ def make_simples(g,q):
                 #s = [quote_me(x) for x in sorted(slopes)]
                 line = line + printed_slopes + '],'
                 
-                #a-counts
+                #A_counts
                 a_counts = abelian_counts(g,p,r,Lpoly)
                 line = line + str(a_counts) + ',' 
                 
-                #c-counts
+                #C_counts
                 c_counts = curve_counts(g,q,Lpoly)
                 line = line + str(c_counts) + ','
                 
@@ -93,7 +91,7 @@ def make_simples(g,q):
                 #decomposition
                 line = line + '[' + quote_me(my_label) + '],'
                 
-                #brauers
+                #brauer invariants
                 printed_invs = '['
                 for inv in invs:
                     if printed_invs != '[':
