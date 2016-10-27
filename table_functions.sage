@@ -142,7 +142,7 @@ def curve_counts(g,q,L):
     - ``L`` -- the L-polynomial of the isogeny class of abelian varieties
     
     OUTPUT:
-    
+    for prec = max(g,10), a list containing the number of points of the curve whose jacobian this abelian variety could be that are defined over F_q^i, for i = 1 to prec    
     """
     prec = max([g,10])
     S = PowerSeriesRing(QQ, 'x', prec+2)
@@ -209,19 +209,31 @@ def angle_rank(angles):
     
     
 def quote_me(word):
+    """
+    INPUT:
+    - ``word`` -- anything
+    
+    OUTPUT:
+    a string containing the word with " around it
+    """
     return '"'+ str(word) + '"'
     
 def dudes_less_than(my_list):
+    """
+    INPUT:
+    - ``my_list`` -- a list of positive integers
+    
+    OUTPUT:
+    all lists of the same length as my_list and such that their entries are nonnegative and coordinate-wise strictly small that those of my_list
+    """
     many_lists = []
     for j in range(my_list[0]):
         many_lists.append([j])
-        #print many_lists
     for i in range(1,len(my_list)):
         for j in range(my_list[i]):
             for dude in many_lists:
                 if len(dude) ==i:
                     many_lists.append(dude + [j])
-        #print many_lists
         indices_to_delete = []
         for dude in many_lists:
             if len(dude) <= i:
