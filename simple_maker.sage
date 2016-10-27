@@ -150,8 +150,13 @@ def make_simples(g,q):
                     line = line + str(p_rank) + ','
                     
                     #slopes
-                    s = [quote_me(x) for x in str(sorted(slopes))]
-                    line = line + str(s) + ','
+                    printed_slopes = '['
+                    for s in sorted(slopes):
+                        if printed_slopes != '[':
+                            printed_slopes += ','
+                        printed_slopes += quote_me(s)
+                    #s = [quote_me(x) for x in sorted(slopes)]
+                    line = line + printed_slopes + '],'
                     
                     #a-counts
                     a_counts = abelian_counts(g,p,r,Lpoly)
