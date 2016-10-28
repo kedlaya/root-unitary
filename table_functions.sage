@@ -28,7 +28,7 @@ Primitive models:
 #for the make_label function
 from sage.databases.cremona import cremona_letter_code
 from sage.databases.cremona import class_to_int
-import json
+import json, os, re
 from collections import defaultdict
 
 load("prescribed_roots.sage")
@@ -213,17 +213,28 @@ def quote_me(word):
     """
     return '"'+ str(word) + '"'
 
-def load_previous_polys(filename):
+oldmatcher = re.compile(r"weil-(\d+)-(\d+)\.txt")
+gmatcher = re.compile(r"weil-simple-g(\d+)-q(\d+)\.txt")
+def load_previous_polys(q, rootdir=None):
 #needs the fields to have the proper quotations/other Json formatting.
+    if rootdir is None:
+        rootdir = os.path.abspath(os.curdir)
     D = defaultdict(list)
     R = PolynomialRing(QQ,'x')
-    with open(filename) as F:
-        for line in F.readlines():
-            data = json.loads(line)
-            label, g, q, polynomial = data[:4]
-            D[g,q].append((label, R(polynomial)))
+    for dirpath, dirnames, filenames in os.walk(rootdir):
+        for filename in filenames:
+            match = gmatcher.match(filename)
+            if match:
+                gf, qf = map(int,match.groups())
+                if qf != q:
+                    continue
+                with open(filename) as F:
+                    for line in F.readlines():
+                        data = json.loads(line)
+                        label, gpol, qpol, polynomial = data[:4]
+                        assert gpol == gf and qpol == qf
+                        D[g,q].append((label, R(polynomial)))
     return D
-
 
 
 
