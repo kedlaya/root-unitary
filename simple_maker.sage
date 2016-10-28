@@ -1,4 +1,4 @@
-\load("table_functions.sage")
+load("table_functions.sage")
 load("prescribed_roots.sage")
 from sage.databases.cremona import cremona_letter_code
 from sage.databases.cremona import class_to_int

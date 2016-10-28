@@ -196,7 +196,7 @@ def make_label(g,q,Lpoly):
             label += cremona_letter_code(c)
     return label
     
-def angle_rank(angles):
+def angle_rank(u,p):
     """
     There are two methods for computing this. 
     The first method is to use S-units in sage where S = primes in Q(pi) dividing p.
@@ -204,7 +204,21 @@ def angle_rank(angles):
     
     
     """
-        
+    
+    """
+    K.<a> = u.splitting_field()
+    l = [p] + [i[0] for i in u.roots(K)]
+    S = K.primes_above(p)
+    UGS = UnitGroup(K, S = tuple(S), proof=False)
+    ## Even with proof=False, it is guaranteed to obtain independent S-units; just maybe not the fully saturated group.
+    d = K.number_of_roots_of_unity()
+    gs = [K(i) for i in UGS.gens()]
+    l2 = [UGS(i^d).exponents() for i in l] #For x = a^1b^2c^3 exponents are (1,2,3)
+    for i in range(len(l)):
+        assert(l[i]^d == prod(gs[j]^l2[i][j] for j in range(len(l2[i]))))
+    M = Matrix(l2)
+    return M.rank()-1
+    """    
     
     
     
