@@ -11,15 +11,15 @@ def create_line(Lpoly, polydata, check_simple = True):
     Ppoly = Lpoly.reverse()
     coeffs = Lpoly.coefficients(sparse=False)
     Ppolyt = polydata.polyRingF(Ppoly) #p-adic (automatically changes variable from x to t)
-    if check_simple:
-        factors = Lpoly.factor()
-        if len(factors) != 1:
-            return ""
-        factor, power = factors[0]
-        invs, newton_slopes = find_invs_and_slopes(polydata.p, polydata.r, Ppoly)
-        e = lcm([a.denominator() for a in invs])
-        if e != power:
-            return ""
+    #if check_simple:
+    factors = Lpoly.factor()
+    if len(factors) != 1:
+        return ""
+    factor, power = factors[0]
+    invs, newton_slopes = find_invs_and_slopes(polydata.p, polydata.r, factor.reverse())
+    e = lcm([a.denominator() for a in invs])
+    if e != power:
+        return ""
 
     #return a single factor
     line = '['
@@ -95,11 +95,13 @@ def make_simples(g, q):
             target.write(create_line(Lpoly, polydata))
 
 def revise_file(g, q):
-    p,r = q.is_prime_power(get_data=True)
+    print "revsing %s, %s"%(g, q)
+    p,r = ZZ(q).is_prime_power(get_data=True)
     oldfilename = "weil-%s-%s.txt"%(g, q)
     newfilename = "weil-simple-g%s-q%s.txt"%(g, q)
     s = ""
     polyRing.<x> = PolynomialRing(ZZ)
+    polyRingF.<t> = PolynomialRing(Qp(p)) #p-adic version
     with open(oldfilename) as F:
         for line in F.readlines():
             try:
