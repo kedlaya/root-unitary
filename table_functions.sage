@@ -132,6 +132,7 @@ def abelian_counts(g,p,r,L):
     This also works for the characteristic polynomial of a non-simple isogeny class.
     """
     prec = max([g,10])
+    x = L.parent().gen()
     return [L.resultant(x^i-1) for i in range(1,prec+1)]
 
 def curve_counts(g,q,L):
@@ -146,6 +147,7 @@ def curve_counts(g,q,L):
     """
     prec = max([g,10])
     S = PowerSeriesRing(QQ, 'x', prec+2)
+    x = S.gen()
     f = S(L)/((1-x)*(1-q*x))
     return f.log().derivative().coefficients()[:prec]
 
@@ -229,27 +231,34 @@ def quote_me(word):
 
 oldmatcher = re.compile(r"weil-(\d+)-(\d+)\.txt")
 gmatcher = re.compile(r"weil-simple-g(\d+)-q(\d+)\.txt")
-def load_previous_polys(q, rootdir=None):
+allmatcher = re.compile(r"weil-all-g(\d+)-q(\d+)\.txt")
+def load_previous_polys(q = None, g = None, rootdir=None, all = False):
 #needs the fields to have the proper quotations/other Json formatting.
     if rootdir is None:
         rootdir = os.path.abspath(os.curdir)
+    if all:
+        matcher = allmatcher
+    else:
+        matcher = gmatcher
     D = defaultdict(list)
     R = PolynomialRing(QQ,'x')
-    for dirpath, dirnames, filenames in os.walk(rootdir):
-        for filename in filenames:
-            match = gmatcher.match(filename)
+    def update_dict(D, filename):
+        with open(filename) as F:
+            for line in F.readlines():
+                data = json.loads(line)
+                label, g, q, polynomial = data[:4]
+                D[g,q].append((label, R(polynomial)))
+    if q is not None and g is not None:
+        filename = "weil-simple-g%s-q%s.txt"%(g, q)
+        update_dict(D, filename)
+    else:
+        for filename in os.listdir(rootdir):
+            match = matcher.match(filename)
             if match:
                 gf, qf = map(int,match.groups())
-                if qf != q:
+                if q is not None and qf != q:
                     continue
-                with open(filename) as F:
-                    for line in F.readlines():
-                        data = json.loads(line)
-                        label, gpol, qpol, polynomial = data[:4]
-                        assert gpol == gf and qpol == qf
-                        D[g,q].append((label, R(polynomial)))
+                if g is not None and gf != g:
+                    continue
+                update_dict(D, os.path.join(rootdir, filename))
     return D
-
-
-
-
