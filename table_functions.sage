@@ -232,9 +232,9 @@ def num_angles(u, prec=500):
     angles = [z[0].argument()/RealField(prec)(pi) for z in myroots]
     return [angle for angle in angles if angle>0]
 
-def significant(rel,prec):
+def significant(rel,prec=500):
     m = min(map(abs,rel))
-    if m.exact_log(2)>sqrt(prec):
+    if (m+1).exact_log(2)>=sqrt(prec):
         return False
     else:
         return True
@@ -243,20 +243,35 @@ def sage_lindep(angles):
     rel = gp.lindep(angles)
     return [ Integer(rel[i]) for i in range(1,len(angles)+1)]
 
-def compute_rank(angles, prec):
-    r = len(angles)
+def compute_rank(numbers, prec=500):
+    r = len(numbers)
+    #print "r = %s" %r
     if r ==1:
         return 1
     else:
-        rels = sage_lindep(angles)
+        #print "computing relations..."
+        rels = sage_lindep(numbers)
         if significant(rels, prec):
-            return compute_rank(angles[1:r], prec)
+            #print "found a relation, removing element..."
+            #print rels
+            i=0
+            while i<len(rels):
+                if not rels[i] == 0:
+                    numbers.pop(i)
+                    return compute_rank(numbers, prec)
+                else:
+                    i+=1
         else:
-            return len(angles)
+            #print "relation not significant..."
+            return len(numbers)
 
-def num_angle_rank(u,prec=500):
-    angles = num_angles(u, prec)
-    return compute_rank(angles,prec)
+def num_angle_rank(mypoly,prec=500):
+    #We actually have enough functionality at this point to compute the entire group!
+    #we added 1 to the span of the normalized angles then subtract 1 from the result
+    angles = num_angles(mypoly, prec)
+    angles = angles + [1]
+    #print angles
+    return compute_rank(angles,prec)-1
 
 oldmatcher = re.compile(r"weil-(\d+)-(\d+)\.txt")
 gmatcher = re.compile(r"weil-simple-g(\d+)-q(\d+)\.txt")
