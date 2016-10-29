@@ -227,6 +227,37 @@ def quote_me(word):
     """
     return '"'+ str(word) + '"'
 
+def num_angles(u, prec=500):
+    myroots = u.roots(ComplexField(prec))
+    angles = [z[0].argument()/RealField(prec)(pi) for z in myroots]
+    return [angle for angle in angles if angle>0]
+
+def significant(rel,prec):
+    m = min(map(abs,rel))
+    if m.exact_log(2)>sqrt(prec):
+        return False
+    else:
+        return True
+    
+def sage_lindep(angles):
+    rel = gp.lindep(angles)
+    return [ Integer(rel[i]) for i in range(1,len(angles)+1)]
+
+def compute_rank(angles, prec):
+    r = len(angles)
+    if r ==1:
+        return 1
+    else:
+        rels = sage_lindep(angles)
+        if significant(rels, prec):
+            return compute_rank(angles[1:r], prec)
+        else:
+            return len(angles)
+
+def num_angle_rank(u,prec=500):
+    angles = num_angles(u, prec)
+    return compute_rank(angles,prec)
+
 oldmatcher = re.compile(r"weil-(\d+)-(\d+)\.txt")
 gmatcher = re.compile(r"weil-simple-g(\d+)-q(\d+)\.txt")
 def load_previous_polys(q, rootdir=None):
