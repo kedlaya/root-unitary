@@ -172,7 +172,7 @@ def alternating(pol, m):
     return P(ans)
 
 def find_invs_and_slopes(p,r,P):
-    #We only want to run this one at a time.
+    ### KEEPS OLD INVARIANTS BEHAVIOR (doesn't reduce mod Z) ###
     poly = P.change_ring(QQ)
     K.<a> = NumberField(poly)
     l = K.primes_above(p)
@@ -183,7 +183,30 @@ def find_invs_and_slopes(p,r,P):
         slopes.append(vslope)
         vdeg = v.residue_class_degree()*v.ramification_index()
         invs.append(vslope*vdeg)
-    return invs,slopes
+    return invs,places,slopes
+
+def find_invs_places_and_slopes(p,r,P):
+    #We only want to run this one at a time.
+    poly = P.change_ring(QQ)
+    K.<a> = NumberField(poly)
+    l = K.primes_above(p)
+    invs = []
+    places = []
+    slopes = []
+    for v in l:
+        vslope = a.valuation(v)/K(p^r).valuation(v)
+        slopes.append(vslope)
+        inv = vslope * v.residue_class_degree()*v.ramification_index()
+        invs.append(inv - inv.floor())
+        vgen = v.gens_two()[1].list()
+        d = lcm([c.denominator() for c in vgen])
+        valp_d, unit_d = d.val_unit(p)
+        # together with p, the following will still generate the same ideal.
+        # We may be able to simplify the coefficients more in the case that valp_d > 0,
+        # but it's complicated.
+        vgen = [str(((d*c)%(p^(valp_d+1)))/p^valp_d) for c in vgen]
+        places.append(vgen)
+    return invs,places,slopes
 
 def make_label(g,q,Lpoly):
     #this works for one and just write it on each factors.
@@ -230,7 +253,7 @@ def quote_me(word):
     return '"'+ str(word) + '"'
 
 def num_angles(u, prec=500):
-    myroots = u.roots(ComplexField(prec))
+    myroots = u.radical().roots(ComplexField(prec))
     angles = [z[0].argument()/RealField(prec)(pi) for z in myroots]
     return [angle for angle in angles if angle>0]
 
@@ -239,8 +262,10 @@ def significant(rel,prec=500):
     if (m+1).exact_log(2)>=sqrt(prec):
         return False
     else:
+        if (max(map(abs, rel))+1).exact_log(2) >= sqrt(prec):
+            raise RuntimeError("Mixed significance")
         return True
-    
+
 def sage_lindep(angles):
     rel = gp.lindep(angles)
     return [ Integer(rel[i]) for i in range(1,len(angles)+1)]
@@ -258,7 +283,7 @@ def compute_rank(numbers, prec=500):
             #print rels
             i=0
             while i<len(rels):
-                if not rels[i] == 0:
+                if rels[i] != 0:
                     numbers.pop(i)
                     return compute_rank(numbers, prec)
                 else:
