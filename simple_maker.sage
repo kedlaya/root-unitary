@@ -5,41 +5,52 @@ from sage.databases.cremona import class_to_int
 from collections import namedtuple
 import json
 PolyData = namedtuple("PolyData","g q p r label decomposition polyRingF")
-#from lmfdb.WebNumberField import WebNumberField
+from lmfdb.WebNumberField import WebNumberField
 
 def create_line(Lpoly, polydata, check_simple = True):
     Ppoly = Lpoly.reverse()
     coeffs = Lpoly.coefficients(sparse=False)
     Ppolyt = polydata.polyRingF(Ppoly) #p-adic (automatically changes variable from x to t)
     if check_simple:
-        factors = Lpoly.factor()
+        factors = Ppoly.factor()
         if len(factors) != 1:
             return ""
         factor, power = factors[0]
-        invs, newton_slopes = find_invs_and_slopes(polydata.p, polydata.r, factor.reverse())
+        invs, places, newton_slopes = find_invs_places_and_slopes(polydata.p, polydata.r, factor)
         e = lcm([a.denominator() for a in invs])
         if e != power:
             return ""
         invs = [str(inv) for inv in invs]
+        galois_n = int(factor.degree())
+        nf = WebNumberField.from_polynomial(factor)
+        if nf.label == 'a':
+            nf_label = galois_t = ""
+        else:
+            nf_label = nf.label
+            galois_t = nf.galois_t()
     else:
-        invs = ""
+        invs = nf_label = galois_t = galois_n = places = ""
     my_label = make_label(polydata.g, polydata.q, Lpoly)
     slopes, p_rank = newton_and_prank(polydata.p, polydata.r, Ppolyt)
+    C_counts = map(int, curve_counts(polydata.g, polydata.q, Lpoly))
     line = [my_label, # label
             int(polydata.g), # dim
             int(polydata.q), # q
             map(int, coeffs), # polynomial coefficients
             map(float, sorted(angles(Lpoly))), # angle numbers
             "", # angle ranks
-            p_rank, # p-rank
+            int(p_rank), # p-rank
             [str(s) for s in sorted(slopes)], # slopes
             map(int, abelian_counts(polydata.g, polydata.p, polydata.r, Lpoly)), # A_counts
-            map(int, curve_counts(polydata.g, polydata.q, Lpoly)), # C_counts
-            0r, # known jacobian
+            C_counts, # C_counts
+            -1r if any(c<0 for c in C_counts) else 0r, # known jacobian
             0r, # principally polarizable
             polydata.decomposition, # decomposition
             invs, # brauer invariants
-            ""] # primitive models
+            places, # corresponding ideals
+            "", # primitive models
+            nf_label, # number field
+            galois_n, galois_t] # galois group
     return json.dumps(line) + "\n"
 
 @cached_function
@@ -108,7 +119,7 @@ def make_simples(g, q):
             if polycount % 500 == 0 and polycount != 0:
                 print "%s / %s polynomials complete" % (polycount, npolys)
             label = make_label(g, q, Lpoly)
-            polydata = PolyData(g, q, p, r, label, [[label, 1]], polyRingF)
+            polydata = PolyData(g, q, p, r, label, [[label, 1r]], polyRingF)
             target.write(create_line(Lpoly, polydata))
 
 def revise_file(g, q):
@@ -129,10 +140,44 @@ def revise_file(g, q):
             except ValueError:
                 Lpoly = polyRing(json.loads(line[line.find('[',1):line.find(']')+1]))
                 label = make_label(g, q, Lpoly)
-                polydata = PolyData(g, q, p, r, label, [[label, 1]], polyRingF)
+                polydata = PolyData(g, q, p, r, label, [[label, 1r]], polyRingF)
                 s += create_line(Lpoly, polydata)
     with open(newfilename,'w') as F:
         F.write(s)
+
+def regen(g, q, rootdir):
+    print "Regenerating g=%s q=%s"%(g, q)
+    if rootdir is None:
+        rootdir = os.path.abspath(os.curdir)
+    filename = os.path.join(rootdir, "weil-simple-g%s-q%s.txt"%(g, q))
+    p,r = Integer(q).is_prime_power(get_data=True)
+    polyRing.<x> = PolynomialRing(ZZ)
+    polyRingF.<t> = PolynomialRing(Qp(p)) #p-adic version
+    s = ""
+    counter = 0
+    with open(filename) as F:
+        for line in F.readlines():
+            data = json.loads(line.strip())
+            label = data[0]
+            if counter % 100 == 0 and counter != 0:
+                print "%s (%s)"%(label, counter)
+            counter += 1
+            Lpoly = polyRing(data[3])
+            polydata = PolyData(g, q, p, r, label, [[label, 1r]], polyRingF)
+            s += create_line(Lpoly, polydata)
+    with open(filename, 'w') as F:
+        F.write(s)
+
+def regen_all(rootdir=None):
+    if rootdir is None:
+        rootdir = os.path.abspath(os.curdir)
+    for filename in os.listdir(rootdir):
+        match = gmatcher.match(filename)
+        if match:
+            gf, qf = map(int, match.groups())
+            if gf == 5 and qf == 3:
+                continue
+            regen(gf, qf, rootdir)
 
 def revise_files(rootdir=None):
     if rootdir is None:
@@ -143,30 +188,110 @@ def revise_files(rootdir=None):
             gf, qf = map(int,match.groups())
             revise_file(gf, qf)
 
-def fill_primitive_models(rootdir=None):
-    # Assumes that, for fixed g, if q^r exists then all smaller powers do as well.
+def fill_nf_data(rootdir=None):
     if rootdir is None:
         rootdir = os.path.abspath(os.curdir)
-    models = defaultdict(list)
-    qs = defaultdict(list)
+    R = PolynomialRing(QQ,'x')
+    def insert_data(data, newdata):
+        data[10] = newdata[0]
+        data[13:14] = newdata[1:3]
+        data.extend(newdata[3:])
+    for filename in os.listdir(rootdir):
+        match = gmatcher.match(filename)
+        if match:
+            g, q = map(int,match.groups())
+            if g == 6 and q == 2:
+                continue
+            print filename
+            p,r = Integer(q).is_prime_power(get_data=True)
+            D = {}
+            s = ""
+            done_already = False
+            with open(filename) as F:
+                for line in F.readlines():
+                    data = json.loads(line.strip())
+                    if len(data) == 19:
+                        done_already = True
+                        print "Skipping"
+                        break
+                    label = data[0]
+                    print label
+                    Ppoly = R(data[3]).reverse()
+                    C_counts = data[9]
+                    if any(c < 0 for c in C_counts):
+                        jac = -1r
+                    else:
+                        jac = 0r
+                    factor, power = Ppoly.factor()[0]
+                    galois_n = int(factor.degree())
+                    nf = WebNumberField.from_polynomial(factor)
+                    if nf.label == 'a':
+                        nf_label = galois_t = ""
+                    else:
+                        nf_label = nf.label
+                        galois_t = int(nf.galois_t())
+                    invs, places, slopes = find_invs_places_and_slopes(p, r, factor)
+                    newdata = (jac, [str(inv) for inv in invs], [places], nf_label, galois_n, galois_t)
+                    D[label] = newdata
+                    insert_data(data, newdata)
+                    s += json.dumps(data) + '\n'
+            if done_already:
+                continue
+            with open(filename, 'w') as F:
+                F.write(s)
+            s = ""
+            filename = "weil-all-g%s-q%s.txt"%(g, q)
+            print filename
+            with open(filename) as F:
+                for line in F.readlines():
+                    data = json.loads(line.strip())
+                    label = data[0]
+                    print label
+                    if label in D:
+                        insert_data(data, D[label])
+                    else:
+                        C_counts = data[9]
+                        if any(c < 0 for c in C_counts):
+                            jac = -1r
+                        else:
+                            jac = 0r
+                        insert_data(data, (jac, "", "", "", "", ""))
+                    s += json.dumps(data) + '\n'
+            with open(filename, 'w') as F:
+                F.write(s)
+
+def fill_angle_ranks(rootdir=None):
+    if rootdir is None:
+        rootdir = os.path.abspath(os.curdir)
+    R = PolynomialRing(ZZ,'x')
+    gs = defaultdict(list)
     for filename in os.listdir(rootdir):
         match = allmatcher.match(filename)
         if match:
             gf, qf = map(int, match.groups())
-            qs[gf].append(qf)
-    D = {}
-    for g in qs:
-        qs[g].sort()
-        for q in qs[g]:
-            if q^2 in qs[g]:
-                D.update(load_previous_polys(q,g,rootdir,True))
-                r = 2
-                while q^r in qs[g]:
-                    for label, Lpoly in D[g, q]:
-                        if Lpoly in models: # already a base change
-                            continue
-                        models[base_change(Lpoly, r)].append(label)
-                    r += 1
+            gs[qf].append(gf)
+    for q in sorted(gs.keys()):
+        gs[q].sort()
+        print q, gs[q]
+        for g in gs[q]:
+            filename = 'weil-all-g%s-q%s.txt'%(g, q)
+            print filename
+            s = ""
+            early_break = False
+            with open(filename) as F:
+                for line in F.readlines():
+                    data = json.loads(line.strip())
+                    Ppoly = R(list(reversed(data[3])))
+                    if data[5] != "":
+                        early_break = True
+                        break
+                    data[5] = int(num_angle_rank(Ppoly))
+                    s += json.dumps(data) + "\n"
+            if not early_break:
+                with open(filename, 'w') as F:
+                    F.write(s)
+
+def _fill_primitive_models(models, qs, rootdir):
     R = PolynomialRing(QQ,'x')
     for g in qs:
         for q in qs[g]:
@@ -191,3 +316,34 @@ def fill_primitive_models(rootdir=None):
                 with open(filename, 'w') as F:
                     F.write(s)
                 raise
+
+def _make_models_dict(qs, rootdir):
+    models = defaultdict(list)
+    D = {}
+    for g in qs:
+        qs[g].sort()
+        for q in qs[g]:
+            if q^2 in qs[g]:
+                D.update(load_previous_polys(q,g,rootdir,True))
+                r = 2
+                while q^r in qs[g]:
+                    for label, Lpoly in D[g, q]:
+                        if Lpoly in models: # already a base change
+                            continue
+                        models[base_change(Lpoly, r)].append(label)
+                    r += 1
+    return models
+
+
+def fill_primitive_models(rootdir=None):
+    # Assumes that, for fixed g, if q^r exists then all smaller powers do as well.
+    if rootdir is None:
+        rootdir = os.path.abspath(os.curdir)
+    qs = defaultdict(list)
+    for filename in os.listdir(rootdir):
+        match = allmatcher.match(filename)
+        if match:
+            gf, qf = map(int, match.groups())
+            qs[gf].append(qf)
+    models = _make_models_dict(qs, rootdir)
+    _fill_primitive_models(models, qs, rootdir)
