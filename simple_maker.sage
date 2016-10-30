@@ -168,6 +168,16 @@ def regen(g, q, rootdir):
     with open(filename, 'w') as F:
         F.write(s)
 
+def regen_qrange(qmin, qmax, rootdir=None):
+    if rootdir is None:
+        rootdir = os.path.abspath(os.curdir)
+    for filename in os.listdir(rootdir):
+        match = gmatcher.match(filename)
+        if match:
+            gf, qf = map(int, match.groups())
+            if qf >= qmin and qf <= qmax:
+                regen(gf, qf, rootdir)
+
 def regen_all(rootdir=None):
     if rootdir is None:
         rootdir = os.path.abspath(os.curdir)
