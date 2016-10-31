@@ -29,7 +29,7 @@ Primitive models:
 from sage.databases.cremona import cremona_letter_code
 from sage.databases.cremona import class_to_int
 import json, os, re
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 
 load("prescribed_roots.sage")
 #this command should be replaced in the big list
@@ -183,7 +183,7 @@ def find_invs_and_slopes(p,r,P):
         slopes.append(vslope)
         vdeg = v.residue_class_degree()*v.ramification_index()
         invs.append(vslope*vdeg)
-    return invs,places,slopes
+    return invs,slopes
 
 def find_invs_places_and_slopes(p,r,P):
     #We only want to run this one at a time.
@@ -300,9 +300,59 @@ def num_angle_rank(mypoly,prec=500):
     #print angles
     return compute_rank(angles,prec)-1
 
+@cached_function
+def symfunc(i, r):
+    Sym = SymmetricFunctions(QQ)
+    p = Sym.powersum()
+    if i == 0:
+        return p.one()
+    e = Sym.elementary()
+    return e(p(e[i]).map_support(lambda A: Partition([r*c for c in list(A)])))
+
+@cached_function
+def basechange_transform(g, r, q):
+    f = [symfunc(i, r) for i in range(g+1)]
+    coeffs = [b.coefficients() for b in f]
+    exps = [[{a: list(elem).count(a) for a in set(elem)} for elem in sorted(b.support()) if list(elem) and max(elem) <= 2*g] for b in f]
+    def bc(Lpoly):
+        # Assume that Lpoly has constant coefficient 1.
+        R = Lpoly.parent()
+        signed_coeffs = [(-1)^j * c for j, c in enumerate(Lpoly)]
+        bc_coeffs = [1]
+        for i in range(1, g+1):
+            bc_coeffs.append((-1)^i*sum(c*prod(signed_coeffs[j]^e for j,e in D.iteritems()) for c, D in zip(coeffs[i], exps[i])))
+        for i in range(1,g+1):
+            # a_{g+i} = q^(ri) * a_{g-i}
+            bc_coeffs.append(q^(r*i) * bc_coeffs[g-i])
+        return R(bc_coeffs)
+    return bc
+
+def base_change(Lpoly, r, algorithm='sym', g = None, q = None, prec=53):
+    if g is None:
+        g = Lpoly.degree()
+        assert g % 2 == 0
+        g = g // 2
+    if q is None:
+        q = Lpoly.leading_coefficient().nth_root(g)
+    if algorithm == 'approx':
+        C = ComplexField(prec)
+        R = RealField(prec)
+        LC = Lpoly.change_ring(C)
+        x = LC.parent().gen()
+        approx = prod((1 - x/alpha^r)^e for alpha, e in LC.roots())
+        approx_coeffs = approx.list()
+        acceptable_error = R(2)^-(prec//2)
+        exact_coeffs = [c.real().round() for c in approx_coeffs]
+        if max(abs(ap - ex) for ap, ex in zip(approx_coeffs, exact_coeffs)) > acceptable_error:
+            raise RuntimeError
+        return Lpoly.parent()(exact_coeffs)
+    else:
+        return basechange_transform(g, r, q)(Lpoly)
+
 oldmatcher = re.compile(r"weil-(\d+)-(\d+)\.txt")
-gmatcher = re.compile(r"weil-simple-g(\d+)-q(\d+)\.txt")
+simplematcher = re.compile(r"weil-simple-g(\d+)-q(\d+)\.txt")
 allmatcher = re.compile(r"weil-all-g(\d+)-q(\d+)\.txt")
+LoadedPolyData = namedtuple("LoadedPolyData","label poly angle_numbers p_rank slopes invs places")
 def load_previous_polys(q = None, g = None, rootdir=None, all = False):
 #needs the fields to have the proper quotations/other Json formatting.
     if rootdir is None:
@@ -310,15 +360,17 @@ def load_previous_polys(q = None, g = None, rootdir=None, all = False):
     if all:
         matcher = allmatcher
     else:
-        matcher = gmatcher
+        matcher = simplematcher
     D = defaultdict(list)
     R = PolynomialRing(QQ,'x')
     def update_dict(D, filename):
         with open(filename) as F:
             for line in F.readlines():
                 data = json.loads(line)
-                label, g, q, polynomial = data[:4]
-                D[g,q].append((label, R(polynomial)))
+                label, g, q, polynomial, angle_numbers = data[:5]
+                p_rank, slopes = data[6:8]
+                invs, places = data[13:15]
+                D[g,q].append(LoadedPolyData(label, R(polynomial), angle_numbers, p_rank, slopes, invs, places))
     if q is not None and g is not None:
         filename = "weil-simple-g%s-q%s.txt"%(g, q)
         update_dict(D, filename)
