@@ -29,6 +29,34 @@ NonsimplePolyData = namedtuple("NonsimplePolyData","g q p r label angle_numbers 
 SimplePolyData = namedtuple("SimplePolyData","g q p r label polyRingF")
 from lmfdb.WebNumberField import WebNumberField
 
+def check_dataspec(filename):
+    bad = {}
+    with open(filename) as F:
+        for line in F.readlines():
+            if not line.strip():
+                bad[100] = 'empty lines'
+                continue
+            data = json.loads(line.strip())
+            if len(data) != 19:
+                print "%s: %s has length %s"%(filename, data[0], len(data))
+                break
+            if not (isinstance(data[14], list) and len(data[14]) > 0 and
+                    isinstance(data[14][0], list) and len(data[14][0]) > 0 and
+                    isinstance(data[14][0][0], basestring)):
+                bad[14] = data[0]
+        else:
+            if bad:
+                for key in sorted(bad.keys()):
+                    print "%s: %s"%(filename, bad[key])
+            else:
+                print filename, "ok"
+
+def check_all(rootdir=None):
+    rootdir = rootdir or os.path.abspath(os.curdir)
+    for filename in os.listdir(rootdir):
+        if simplematcher.match(filename):
+            check_dataspec(filename)
+
 def know_simple_pp(g, q, coeffs):
     if g == 1:
         return 1r
@@ -36,8 +64,8 @@ def know_simple_pp(g, q, coeffs):
         # P-poly: x^4 = ax^3 + bx^2 + aqx + q^2
         # Howe, Maisner, Nart, Ritzenthaler
         # "Principally polarizable isogeny classes of abelian surfaces over finite fields"
-        a = coeffs[1]
-        b = coeffs[2]
+        a = ZZ(coeffs[1])
+        b = ZZ(coeffs[2])
         if (a^2 - b == q and b < 0 and all(p % 3 == 1 for p in b.prime_divisors())):
             return -1r
         else:
@@ -56,8 +84,8 @@ def know_simple_jac(g, q, p, r, coeffs, p_rank):
         # P-poly: x^4 + ax^3 + bx^2 + aqx + q^2
         # Howe, Nart, Ritzenthaler
         # "Jacobians in isogeny classes of abelian surfaces over finite fields"
-        a = coeffs[1]
-        b = coeffs[2]
+        a = ZZ(coeffs[1])
+        b = ZZ(coeffs[2])
         if (a^2 - b == q and b < 0 and all(p % 3 == 1 for p in b.prime_divisors())
             or p_rank == 2 and a == 0 and (b == 1-2*q or p > 2 and b == 2-2*q)
             or p_rank == 0 and a == 0 and b == -q and (p % 12 == 11 and r % 2 == 0 or
@@ -74,8 +102,8 @@ def know_nonsimple_jac(g, q, p, r, factors, p_rank):
         # P-poly: (x^2 - sx + q)(x^2 - tx + q) with |s| >= |t|
         # Howe, Nart, Ritzenthaler
         # "Jacobians in isogeny classes of abelian surfaces over finite fields"
-        s = -factors[0][1]
-        t = -factors[1][1]
+        s = -ZZ(factors[0][1])
+        t = -ZZ(factors[1][1])
         if abs(t) > abs(s):
             s, t = t, s
         if (abs(s - t) == 1
@@ -106,9 +134,14 @@ def create_line(Lpoly, polydata, simple = True):
         e = lcm([a.denominator() for a in invs])
         if e != power:
             return ""
+        angle_numbers = map(float, sorted(angles(Lpoly)))
+        slopes, p_rank = newton_and_prank(polydata.p, polydata.r, Ppolyt)
+        slopes = [str(s) for s in sorted(slopes)]
+        jac = know_simple_jac(polydata.g, polydata.q, polydata.p, polydata.r, coeffs, p_rank)
+        pp = know_simple_pp(polydata.g, polydata.q, coeffs)
+        decomposition = [[polydata.label, 1r]]
         invs = [str(inv) for inv in invs]
         places = [places]
-        decomposition = [[polydata.label, 1r]]
         galois_n = int(factor.degree())
         nf = WebNumberField.from_polynomial(factor)
         if nf.label == 'a':
@@ -117,33 +150,33 @@ def create_line(Lpoly, polydata, simple = True):
             nf_label = nf.label
             galois_t = nf.galois_t()
     else:
+        angle_numbers = polydata.angle_numbers
         p_rank = polydata.p_rank
         slopes = polydata.slopes
+        jac = polydata.jac
+        pp = know_nonsimple_pp(polydata.g, polydata.q, coeffs)
+        decomposition = polydata.decomposition
         invs = polydata.invs
         places = polydata.places
-        jac = polydata.jac
         nf_label = galois_t = galois_n = ""
-    my_label = make_label(polydata.g, polydata.q, Lpoly)
-    slopes, p_rank = newton_and_prank(polydata.p, polydata.r, Ppolyt)
     C_counts = map(int, curve_counts(polydata.g, polydata.q, Lpoly))
-    if simple:
-        jac = know_simple_jac(polydata.g, polydata.q, polydata.p, polydata.r, coeffs, p_rank)
-        pp = know_simple_pp(polydata.g, polydata.q, coeffs)
-    if jac < 1r and any(c < 0r for c in C_counts):
+    if any(c < 0r for c in C_counts):
+        if jac == 1r:
+            raise RuntimeError("Incorrect value for Known Jacobian")
         jac = -1r
-    line = [my_label, # label
+    line = [polydata.label, # label
             int(polydata.g), # dim
             int(polydata.q), # q
             map(int, coeffs), # polynomial coefficients
-            map(float, sorted(angles(Lpoly))), # angle numbers
+            angle_numbers, # angle numbers
             "", # angle ranks
             int(p_rank), # p-rank
-            [str(s) for s in sorted(slopes)], # slopes
+            slopes, # slopes
             map(int, abelian_counts(polydata.g, polydata.p, polydata.r, Lpoly)), # A_counts
             C_counts, # C_counts
             jac, # known jacobian
             pp, # principally polarizable
-            polydata.decomposition, # decomposition
+            decomposition, # decomposition
             invs, # brauer invariants
             places, # corresponding ideals
             "", # primitive models
@@ -168,7 +201,7 @@ def make_simples(g, q):
             if polycount % 500 == 0 and polycount != 0:
                 print "%s / %s polynomials complete" % (polycount, npolys)
             label = make_label(g, q, Lpoly)
-            polydata = PolyData(g, q, p, r, label, None, None, None, polyRingF)
+            polydata = SimplePolyData(g, q, p, r, label, polyRingF)
             target.write(create_line(Lpoly, polydata))
 
 def regen(g, q, rootdir):
@@ -188,7 +221,7 @@ def regen(g, q, rootdir):
                 print "%s (%s)"%(label, counter)
             counter += 1
             Lpoly = polyRing(data[3])
-            polydata = PolyData(g, q, p, r, label, polyRingF)
+            polydata = SimplePolyData(g, q, p, r, label, polyRingF)
             s += create_line(Lpoly, polydata)
     with open(filename, 'w') as F:
         F.write(s)
@@ -230,7 +263,7 @@ def regen_all(rootdir=None):
 #             except ValueError:
 #                 Lpoly = polyRing(json.loads(line[line.find('[',1):line.find(']')+1]))
 #                 label = make_label(g, q, Lpoly)
-#                 polydata = PolyData(g, q, p, r, label, [[label, 1r]], None, None, None, polyRingF)
+#                 polydata = SimplePolyData(g, q, p, r, label, polyRingF)
 #                 s += create_line(Lpoly, polydata)
 #     with open(newfilename,'w') as F:
 #         F.write(s)
@@ -332,6 +365,7 @@ def fix_places_and_jac_pp(rootdir=None):
     for filename in os.listdir(rootdir):
         match = simplematcher.match(filename)
         if match:
+            print filename
             g, q = map(Integer, match.groups())
             p, r = q.is_prime_power(get_data=True)
             # if g = 2
@@ -345,8 +379,8 @@ def fix_places_and_jac_pp(rootdir=None):
                     coeffs = data[3]
                     p_rank = data[6]
                     data[10] = know_simple_jac(g, q, p, r, coeffs, p_rank)
-                    data[11] = know_simple_pp(g, q)
+                    data[11] = know_simple_pp(g, q, coeffs)
                     data[14] = [data[14]]
-                    s += json.dumps(line) + '\n'
+                    s += json.dumps(data) + '\n'
             with open(filename, 'w') as F:
                 F.write(s)

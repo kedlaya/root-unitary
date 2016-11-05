@@ -33,8 +33,9 @@
 
 load("table_functions.sage")
 load("simple_maker.sage")
-from itertools import combinations_with_replacement, imap
+from itertools import combinations_with_replacement, imap, izip_longest
 import shutil
+import datetime
 
 def multiplicity_dict(L):
     L = list(L)
@@ -84,11 +85,11 @@ def nonsimples_from_simples(g,q,D=None,rootdir=None):
                 labels_uniq = [factor.label for factor in factors if not (factor.label in seen or seen.add(factor.label))] # keeps order
                 decomposition = [[lbl, Lpoly_mD[lbl]] for lbl in labels_uniq]
                 label = make_label(g, q, Lpoly)
-                angle_numbers = sorted(sum(factor.angle_numbers for factor in factors, []))
+                angle_numbers = sorted(sum([factor.angle_numbers for factor in factors], []))
                 p_rank = sum(factor.p_rank for factor in factors)
-                slopes = [str(a) for a in sorted(sum([QQ(s) for s in factor.slopes] for factor in factors, []))]
-                invs = sum(factor.invs, [])
-                places = sum(factor.places, [])
+                slopes = [str(a) for a in sorted(sum([[QQ(str(s)) for s in factor.slopes] for factor in factors], []))]
+                invs = sum([factor.invs for factor in factors], [])
+                places = sum([factor.places for factor in factors], [])
                 jac = know_nonsimple_jac(g, q, p, r, [factor.poly for factor in factors], p_rank)
                 polydata = NonsimplePolyData(g, q, p, r, label, angle_numbers, p_rank, slopes, jac, decomposition, invs, places, polyRingF)
                 target.write(create_line(Lpoly, polydata, False))
@@ -125,22 +126,58 @@ def all_nonsimples_from_simples(qstart=None, gstart=None, rootdir=None):
 def _fill_angle_rank(g, q, rootdir=None):
     rootdir = rootdir or os.path.abspath(os.curdir)
     R = PolynomialRing(ZZ,'x')
-    filename = 'weil-all-g%s-q%s.txt'%(g, q)
-    print filename
-    s = ""
-    early_break = False
-    with open(filename) as F:
-        for line in F.readlines():
-            data = json.loads(line.strip())
-            Ppoly = R(list(reversed(data[3])))
-            if data[5] != "":
-                early_break = True
-                break
-            data[5] = int(num_angle_rank(Ppoly))
-            s += json.dumps(data) + "\n"
-    if not early_break:
-        with open(filename, 'w') as F:
-            F.write(s)
+    all_filename = os.path.join(rootdir, 'weil-all-g%s-q%s.txt'%(g, q))
+    tmp_filename = os.path.join(rootdir, 'weil-tmp-g%s-q%s.txt'%(g, q))
+    print "Starting Angle rank (g=%s, q=%s) computation"%(g, q)
+    with open(all_filename) as Fall:
+        for num_lines, line in enumerate(Fall,1r):
+            pass
+        # Now num_lines is the number of lines in Fall
+    with open(all_filename) as Fall:
+        # a+ creates file if it doesn't exist.
+        with open(tmp_filename, 'a+') as Fwrite:
+            with open(tmp_filename) as Ftmp:
+                # Angle ranks take a long time to compute,
+                # so we keep sum_of_times and sum_of_squares
+                # to give good progress estimates
+                print_next_time = walltime()
+                sum_of_times = float(0r)
+                sum_of_squares = float(0r)
+                start_line = None
+                for cur_line, (line_all, line_tmp) in enumerate(izip_longest(Fall, Ftmp, fillvalue=None),1r):
+                    if line_tmp is not None:
+                        if line_all[:line_all.find(',')] != line_tmp[:line_tmp.find(',')]:
+                            raise RuntimeError("Label mismatch")
+                        if cur_line % 1000 == 0:
+                            print "Skipping existing computations (%s/%s)"%(cur_line, num_lines)
+                        continue
+                    if start_line is None:
+                        start_line = cur_line
+                    data = json.loads(line_all.strip())
+                    if data[5] != "":
+                        Fwrite.write(line_all.strip() + "\n")
+                        continue
+                    t = walltime()
+                    Ppoly = R(list(reversed(data[3])))
+                    data[5] = int(num_angle_rank(Ppoly))
+                    t = walltime(t)
+                    sum_of_times += t
+                    sum_of_squares += t^2
+                    if walltime() > print_next_time:
+                        print_next_time = walltime() + 15
+                        to_print = "Angle rank (g=%s, q=%s) %s/%s."%(g, q, cur_line, num_lines)
+                        if cur_line - start_line > 10:
+                            elapsed_lines = cur_line - start_line
+                            scaling = float(num_lines - elapsed_lines) / elapsed_lines
+                            sigma = sqrt(sum_of_times^2 - sum_of_squares)
+                            lower_bound = max(0r, sum_of_times*scaling - 2*sigma*sqrt(scaling))
+                            upper_bound = sum_of_times*scaling + 2*sigma*sqrt(scaling)
+                            lower_bound = datetime.timedelta(seconds=int(lower_bound))
+                            upper_bound = datetime.timedelta(seconds=int(upper_bound))
+                            to_print += "  %s to %s remaining."%(lower_bound, upper_bound)
+                        print to_print
+                    Fwrite.write(json.dumps(data) + "\n")
+    shutil.move(tmp_filename, all_filename)
 
 def fill_angle_ranks(rootdir=None):
     rootdir = rootdir or os.path.abspath(os.curdir)
@@ -168,9 +205,9 @@ def _fill_primitive_models(models, qs, rootdir=None):
                     data = json.loads(line.strip())
                     Lpoly = R(data[3])
                     if Lpoly in models:
-                        data[14] = models[Lpoly]
+                        data[15] = models[Lpoly]
                     else:
-                        data[14] = [data[0]]
+                        data[15] = [data[0]]
                     s += json.dumps(data) + "\n"
             try:
                 with open(filename, 'w') as F:
