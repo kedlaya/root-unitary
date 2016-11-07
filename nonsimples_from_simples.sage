@@ -167,9 +167,14 @@ def _fill_angle_rank(g, q, rootdir=None):
                         print_next_time = walltime() + 15
                         to_print = "Angle rank (g=%s, q=%s) %s/%s."%(g, q, cur_line, num_lines)
                         if cur_line - start_line > 10:
-                            elapsed_lines = cur_line - start_line
+                            elapsed_lines = cur_line - start_line + 1
                             scaling = float(num_lines - elapsed_lines) / elapsed_lines
-                            sigma = sqrt(sum_of_times^2 - sum_of_squares)
+                            # sigma^2 = 1/n sum(xj^2) - 2mu * 1/n sum(xj) + 1/n sum(mu^2)
+                            #         = 1/n sum(xj^2) - 2mu * mu + mu^2
+                            #         = 1/n sum(xj^2) - 1/n^2 sum(xj)^2
+                            # sigma = sqrt( (1/n sum(xj^2) - 1/n^2 sum(xj)^2) )
+                            # actual mean is sum(xj)/n +- 2sigma/sqrt(n)
+                            sigma = sqrt(sum_of_squares - sum_of_times^2 / elapsed_lines)
                             lower_bound = max(0r, sum_of_times*scaling - 2*sigma*sqrt(scaling))
                             upper_bound = sum_of_times*scaling + 2*sigma*sqrt(scaling)
                             lower_bound = datetime.timedelta(seconds=int(lower_bound))
