@@ -1,3 +1,27 @@
+"""
+Finding polynomials with roots in prescribed regions
+
+AUTHOR:
+  -- Kiran S. Kedlaya (2007-05-28): initial version
+  -- Kiran S. Kedlaya (2015-08-29): updated version; switch from NTL to FLINT
+        
+EXAMPLES:
+    sage: polRing.<x> = PolynomialRing(Rationals())
+    sage: P0 = 3*x^21 + 5*x^20 + 6*x^19 + 7*x^18 + 5*x^17 + 4*x^16 + 2*x^15 - 
+    ....: x^14 - 3*x^13 - 5*x^12 - 5*x^11 - 5*x^10 - 5*x^9 - 3*x^8 - x^7 + 
+    ....: 2*x^6 + 4*x^5 + 5*x^4 + 7*x^3 + 6*x^2 + 5*x + 3
+    sage: ans, count = roots_on_unit_circle(P0, 3^2, 1)
+    sage: print "Number of terminal nodes:", count
+    Number of terminal nodes: 1404
+    sage: print ans
+    [3*x^21 + 5*x^20 + 6*x^19 + 7*x^18 + 5*x^17 + 4*x^16 + 2*x^15 - x^14
+    - 3*x^13 - 5*x^12 - 5*x^11 - 5*x^10 - 5*x^9 - 3*x^8 - x^7 + 2*x^6
+    + 4*x^5 + 5*x^4 + 7*x^3 + 6*x^2 + 5*x + 3]
+
+NOTES:
+
+"""
+
 #clang c
 #cinclude $SAGE_LOCAL/include/flint/
 #clib gomp
@@ -126,3 +150,95 @@ cdef class process_queue:
         free(res)
         if (f != None): return None
         else: return(ans)
+
+def roots_on_unit_circle(P0, modulus=1, n=1,
+                         answer_count=None,
+                         verbosity=None, node_count=None, filter=None,
+                         num_threads=None, output=None):
+    """
+    Find polynomials with roots on the unit circle under extra restrictions.
+
+    INPUT:
+        P0 -- polynomial with rational coefficients, which must be
+           self-inversive
+        m -- positive integer or list of positive integers
+        n -- positive integer
+        answer_count -- positive integer or None
+        node_count -- positive integer or None; if not None, an exception will
+            be raised if this many nodes of the tree are encountered.
+	filter -- function or None; if not None, only polynomials for which 
+            this function evaluates to True will be returned.
+
+    OUTPUT:
+        list -- a list of all polynomials P with roots on the unit circle
+            such that P is congruent to P0 modulo m and shares its highest
+            n coefficients with P0. If answer_count is not None, return at
+            most answer_count polynomials, otherwise return all of them.
+	integer -- the number of terminal nodes in the tree enumerated
+            in order to compute the list.
+
+    EXAMPLES:
+        sage: pol.<x> = PolynomialRing(Rationals())
+        sage: roots_on_unit_circle(x^5 - 1, 2, 1)
+        ([x^5 - 1, x^5 - 2*x^4 + 2*x^3 - 2*x^2 + 2*x - 1], 4)
+        sage: roots_on_unit_circle(x^5 - 1, 4, 1)
+        ([x^5 - 1], 2)
+        
+    """
+    polRing = P0.parent()
+    x = polRing.gen()
+
+    Q0, cofactor, q = P0.inverse_reciprocal_transform()
+    num_cofactor = [1, x+sqrt(q), x-sqrt(q), x^2-q].index(cofactor)
+    sign = cmp(Q0.leading_coefficient(), 0)
+    Q0 *= sign
+    d = Q0.degree()
+    lead = Q0.leading_coefficient()
+
+    count = 0
+
+    try:
+        modlist = list(modulus)
+    except TypeError:
+        modlist = [modulus]
+    modlist = [0]*n + modlist
+    if len(modlist) < d+1:
+        modlist += [modlist[-1]] * (d+1 - len(modlist))
+
+    process = process_queue(d, n, lead, sign, q, num_cofactor, 
+                            modlist, node_count, verbosity, Q0)
+    ans = []
+    anslen = 0
+    if (num_threads): # parallel version
+        ans1 = process.parallel_exhaust(num_threads, output)
+        if output != None:
+            return process.count
+        for i in ans1:
+            Q2 = polRing(i)
+            if filter == None or filter(Q2):
+                ans.append(Q2)
+                anslen += 1
+                if answer_count != None and anslen >= answer_count:
+                    break
+        process.clear()
+        return(ans, process.count)
+
+    try:
+        while True:
+            t = process.exhaust_next_answer()
+            if t>0:
+                Q2 = polRing(process.Qsym_array.tolist())
+                if filter == None or filter(Q2):
+                    if output != None: output.write(str(list(Q2)))
+                    else: ans.append(Q2)
+                    anslen += 1
+                    if answer_count != None and anslen >= answer_count:
+                        break
+            elif t==0:
+                break
+            else:
+                raise RuntimeError, "Node count (" + str(process.node_count) + ") exceeded"
+    finally:
+        process.clear()
+    if output != None: return(process.count)
+    return(ans, process.count)
