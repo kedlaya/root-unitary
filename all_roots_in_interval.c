@@ -8,7 +8,12 @@
 /*
     Assumes that:
         - {poly, n} is a normalized vector with n >= 2
-        - {w, 3 * n + 8} is scratch space
+        - {w, 3 * n + 8} is scratch space.
+
+    Return values:
+        1: poly has all roots in [a,b]
+        j <= 0: poly does not have roots in [a,b], and this remains
+                true for any choice of coefficients in degrees less than -j.
  */
 int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n, 
                                      fmpz const * a, fmpz const * b, fmpz *w)
@@ -156,10 +161,8 @@ int _fmpz_poly_all_roots_in_interval(fmpz *poly, slong n,
 }
 
 /*
-  Return values:
-  1: if all roots are in the given interval
-  r <= 0: 
- */
+   The same as above, but with the interval replaced by the whole real line.
+*/
 int _fmpz_poly_all_roots_real(fmpz *poly, slong n, fmpz *w)
 {
     fmpz *f0     = w + 0 * n;
