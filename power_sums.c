@@ -11,7 +11,7 @@
 
 typedef struct ps_static_data {
   int d, lead, sign, q, verbosity;
-  long node_count;
+  long node_limit;
   fmpz_t a, b;
   fmpz_mat_t binom_mat;
   fmpz *cofactor;
@@ -30,7 +30,7 @@ typedef struct ps_dynamic_data {
   fmpz *w;
   int wlen; /* = 4*d+12 */
   fmpq *w2;
-  int w2len; /* = 5 */
+  int w2len; /* = 6 */
 } ps_dynamic_data_t;
 
 /* Set res to floor(a). */
@@ -120,7 +120,7 @@ void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
 ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
 				 int cofactor, 
 				 int *modlist, 
-				 int verbosity, long node_count) {
+				 int verbosity, long node_limit) {
   int i, j;
   ps_static_data_t *st_data;
   fmpz_poly_t pol;
@@ -138,7 +138,7 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
   st_data->sign = sign;
   st_data->q = q;
   st_data->verbosity = verbosity;
-  st_data->node_count = node_count;
+  st_data->node_limit = node_limit;
 
   fmpz_init(st_data->a);
   fmpz_init(st_data->b);
@@ -158,22 +158,25 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
     fmpz_set_si(st_data->cofactor+2, 0);
     break;
 
-  case 1: /* Cofactor 1+q*x */
-    fmpz_set_si(st_data->cofactor, 1);
-    fmpz_set_si(st_data->cofactor+1, q);
+  case 1: /* Cofactor x+sqrt(q) */
+    fmpz_set_si(st_data->cofactor, q);
+    fmpz_sqrt(st_data->cofactor, st_data->cofactor);
+    fmpz_set_si(st_data->cofactor+1, 1);
     fmpz_set_si(st_data->cofactor+2, 0);
     break;
 
-  case 2:  /* Cofactor 1-q*x */
-    fmpz_set_si(st_data->cofactor, 1);
-    fmpz_set_si(st_data->cofactor+1, -q);
+  case 2:  /* Cofactor x-sqrt(q) */
+    fmpz_set_si(st_data->cofactor, q);
+    fmpz_sqrt(st_data->cofactor, st_data->cofactor);
+    fmpz_neg(st_data->cofactor, st_data->cofactor);
+    fmpz_set_si(st_data->cofactor+1, 1);
     fmpz_set_si(st_data->cofactor+2, 0);
     break;
 
-  case 3: /* Cofactor 1-q*x^2 */
-    fmpz_set_si(st_data->cofactor, 1);
+  case 3: /* Cofactor x^2-q */
+    fmpz_set_si(st_data->cofactor, -q);
     fmpz_set_si(st_data->cofactor+1, 0);
-    fmpz_set_si(st_data->cofactor+2, -q);
+    fmpz_set_si(st_data->cofactor+2, 1);
     break;
   }
 
@@ -182,7 +185,10 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
   for (i=0; i<=d; i++) {
     fmpz_set_si(st_data->modlist+i, modlist[i]);
     fmpq_set_si(st_data->f+i, d-i, lead);
-    fmpq_mul_fmpz(st_data->f+i, st_data->f+i, st_data->modlist+i);
+    /* In order to apply power sums and Descartes' rule of signs
+       when the modulus is 0, we must pretend that the modulus is 1. */
+    if (modlist[i]) 
+      fmpq_mul_fmpz(st_data->f+i, st_data->f+i, st_data->modlist+i);
   }
 
   fmpz_mat_init(st_data->binom_mat, d+1, d+1);
@@ -303,7 +309,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0) {
   fmpq_mat_init(dy_data->sum_prod, 9, 1);
   dy_data->wlen = 4*d+12;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
-  dy_data->w2len = 5;
+  dy_data->w2len = 6;
   dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
   return(dy_data);
 }
@@ -340,15 +346,17 @@ ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data) {
   return(NULL);
 }
 
+/*
 void extract_pol(int *Q, ps_dynamic_data_t *dy_data) {
   int i;
   fmpz *pol = dy_data->pol;
   for (i=0; i<=dy_data->d; i++)
     Q[i] = fmpz_get_si(pol+i);
 }
+*/
 
 void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data) {
-  int i;
+  int i,j;
   fmpz *sympol = dy_data->sympol;
   for (i=0; i<=2*dy_data->d+2; i++)
     Q[i] = fmpz_get_si(sympol+i);
@@ -389,9 +397,9 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
        interval, and likewise for all choices of the bottom r-1 coefficients
    1: if lower <= upper
    0: otherwise. 
-   All cases include the option n=0, in which case we simply check
-   admissibility of the polynomial (there being no further coefficients
-   to control).
+
+   The case n=0 is allowed. In this case, we return 1 if the polynomial is
+   admissible and 0 otherwise.
 */
 int set_range_from_power_sums(ps_static_data_t *st_data,
 			  ps_dynamic_data_t *dy_data) {
@@ -420,6 +428,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq *t2q = dy_data->w2 + 2;
   fmpq *t3q = dy_data->w2 + 3;
   fmpq *t4q = dy_data->w2 + 4;
+  fmpq *t5q = dy_data->w2 + 5;
 
   /* Subroutines to adjust lower and upper bounds. 
    These use t0q and t4q as persistent scratch space. */
@@ -463,7 +472,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_floor(t0z, t0q);
     if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
   }
-    
+
+  /* Here, we allow lower and upper bounds in the quadratic field
+     Q(sqrt(q)). */
   void change_lower_quad(const fmpq_t val1, const fmpq_t val2) {
     fmpq_div(t0q, val1, f);
     if (val2==NULL) fmpq_ceil(t0z, t0q);
@@ -488,24 +499,31 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   for (i=0; i<=k-1; i++)
     fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
 
-  /* If previous modulus==0, check for roots in [-2 sqrt(q), 2 sqrt(q)]. */
+  
+    r = _fmpz_poly_all_roots_real(tpol, k, dy_data->w+d+1);
+    if (r<=0) return(r-1);
+    
+
+    /* Previously, when modulus=0 we had to check for roots in [-2 sqrt(q), 2 sqrt(q)].
   if (fmpz_is_zero(st_data->modlist+n)) {
     if (q != 1) {
-      /* If q>1, square the roots of the polynomial before finding roots. */
+      // If q>1, square the roots of the polynomial before finding roots.
       for (i=0; i<=k-1; i++) fmpz_mul_si(tpol+k+i, tpol+i, 1-2*(i%2));
       _fmpz_poly_mul(tpol+2*k, tpol, k, tpol+k, k);
       for (i=0; i<=k-1; i++) fmpz_set(tpol+i, tpol+2*k+2*i);
     }
     r = _fmpz_poly_all_roots_in_interval(tpol, k, st_data->a, st_data->b, dy_data->w+d+1);
     if (r<=0) return(r-1);
-    /* Restore tpol. */
+    // Restore tpol.
     for (i=0; i<=k-1; i++)
       fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
   } else {
-    /* Only check for real roots; we'll deal with the interval later. */
+    // Only check for real roots; we'll deal with the interval later. 
     r = _fmpz_poly_all_roots_real(tpol, k, dy_data->w+d+1);
     if (r<=0) return(r-1);
   }
+  */
+
   
   /* If r=1 and k>d, no further coefficients to bound. */
   if (k>d) return(1);
@@ -521,14 +539,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->sum_col, k-i, 0));
   }
   
-  /* If modulus==0, no further work required. */
-  if (fmpz_is_zero(modulus)) {
-    fmpz_zero(lower);
-    fmpz_zero(upper);
-    return(1);
-  }
-
-  /* Initialize bounds using asymmetrized power sums. */
+  /* First, set bounds using asymmetrized power sums. */
   f = st_data->f + n-1;
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
   
@@ -559,8 +570,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     set_lower_quad(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
   }
 
-  /* Apply Descartes' rule of signs at -2*sqrt(q), +2*sqrt(q);
+  /* Second, apply Descartes' rule of signs at -2*sqrt(q), +2*sqrt(q);
      this enforces the roots being in the correct interval (if real). */
+
   fmpq_set_si(t3q, -k, 1);
   fmpq_div_fmpz(t3q, t3q, pol+d);
 
@@ -571,7 +583,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpz_divexact_si(tpol+i, tpol+i, i);
   }
   fmpz_set(tpol, pol+d-k);
-
+  
   if (q == 1) {
     /*
     _fmpz_poly_evaluate_fmpz(t0z, tpol, k, st_data->a);
@@ -616,7 +628,18 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     else change_lower_quad(t1q, t2q);
   }
 
-  /* If q=1, compute additional bounds using power sums. */
+  /* If modulus=0, then return 1 if [lower, upper] contains 0
+     and 0 otherwise. After this, we may assume modulus>0.
+   */
+  if (fmpz_is_zero(modulus)) {
+    if ((fmpz_sgn(lower) > 0) || (fmpz_sgn(upper) < 0)) return(0);
+      fmpz_zero(lower);
+      fmpz_zero(upper);
+      return(1);
+  }
+
+  /* Third, if q=1, compute additional bounds using power sums. 
+  */
   if (q==1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
     /* The k=2 case requires separate attention; this corrects a bug
        in the 2008 implementation.
@@ -679,15 +702,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       }
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
-  /*
-  fmpz_sub(t0z, upper, lower);
-  if (fmpz_cmp_ui(t0z, 10) > 0) {
-    fmpz_print(t0z);
-    printf("\n");
-  }
-  */
     
-  /* Set the new upper bound. */
+  /* Set the new upper bound. Note that modulus>0 at this point. */
   fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n-1, pol+n-1, upper);
   /* Correct the k-th power sum. */
@@ -713,7 +729,7 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 
   int d = st_data->d;
   int verbosity = st_data->verbosity;
-  int node_count = st_data->node_count;
+  int node_limit = st_data->node_limit;
   fmpz *modlist = st_data->modlist;
 
   int ascend = dy_data->ascend;
@@ -730,7 +746,11 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
   while (1) {
     if (ascend > 0) {
       n += 1;
-      if (n>d) { t=0; break; }
+      if (n>d) {
+	/* We have exhausted the entire tree. */
+	t=0;
+	break;
+      }
     } else {
       if (d-n <= verbosity) {
 	_fmpz_vec_print(pol+n, d-n+1);
@@ -742,14 +762,14 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
       if (r > 0) {
 	n -= 1;
 	if (n<0) { 
-	  t=1; 
-	  /* Convert back into symmetric form. */
+	  t=1;
+	  /* We have found a solution! Convert it back into reciprocal form for output. */
 	  _fmpz_vec_zero(sympol, 2*d+3);
 	  fmpz *temp = dy_data->w;
 	  for (i=0; i<=d; i++) {
 	    fmpz_one(temp);
 	    for (j=0; j<=i; j++) {
-	      fmpz_addmul(sympol+d-i+2*j, pol+i, temp);
+	      fmpz_addmul(sympol+2*d-(d-i+2*j), pol+i, temp);
 	      if (j<i) {
 		fmpz_mul_si(temp, temp, st_data->q);
 		fmpz_mul_si(temp, temp, i-j);
@@ -764,7 +784,7 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	continue;
       } else {
 	count += 1;
-	if (node_count != -1 && count >= node_count) { t= -1; break; }
+	if (node_limit != -1 && count >= node_limit) { t= -1; break; }
 	if (r<-1) {
 	  /* Early abort: Sturm test failed on a coefficient determined at 
 	     a previous level. */
