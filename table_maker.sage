@@ -20,11 +20,11 @@ known_jacobian (0,1,-1): 1
 decomposition: ["9.2.-1._3"]
 pricipally_polarizable (0,1,-1): 1
 Brauer Invariants: inv_v( End(A_{FFbar_q})_{QQ} )=(v(\pi)/v(q))*[QQ(pi)_{v}: QQ(pi): v\vert p place of QQ(\pi)], these are stored as elements of QQ.
-Primative models: 
+Primitive models: 
 """
 
 ######################################################################################################
-load("prescribed_roots.sage")
+load("prescribed_roots.pyx")
 #this command should be replaced in the big list
 #polyx =  x^4-x^3+3*x^2-9*x+81
 
@@ -138,10 +138,10 @@ def make_table(g,q):
     F = Qp(p) #p-adic version
     polyRingF.<t> = PolynomialRing(F)
     
-    weil_polys,some_number_i_dont_understand = roots_on_unit_circle(1+(q*x^2)^g)
-    for Lpoly in weil_polys:
-        #create the two types of polynomial objects needed for algorithms 
-        Ppoly = Lpoly.reverse()
+    for ans in WeilPolynomials(2*g, q, 1):
+        #create the two types of polynomial objects needed for algorithms
+        Ppoly = polyRing(ans)
+        Lpoly = Ppoly.reverse()
         coeffs = Lpoly.coefficients(sparse=False)
         Ppolyt = polyRingF(Ppoly) #p-adic (automatically changes variable from x to t) 
         
