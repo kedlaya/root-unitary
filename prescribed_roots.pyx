@@ -3,7 +3,10 @@ Finding polynomials with roots in prescribed regions
 
 AUTHOR:
   -- Kiran S. Kedlaya (2007-05-28): initial version
-  -- Kiran S. Kedlaya (2015-08-29): updated version; switch from NTL to FLINT
+  -- (2015-08-29): switch from NTL to FLINT
+  -- (2017-10-03): consolidate Sage layer into .pyx file
+                   define WeilPolynomials iterator
+                   reverse convention for polynomials
         
 EXAMPLES:
     sage: polRing.<x> = PolynomialRing(Rationals())
@@ -19,7 +22,10 @@ EXAMPLES:
     + 4*x^5 + 5*x^4 + 7*x^3 + 6*x^2 + 5*x + 3]
 
 NOTES:
+    This depends on `trac`:23947: for the trace polynomial construction.
 
+TODO:
+    - Switch from Sturm sequences to real root isolation (e-antic)
 """
 
 #clang c
@@ -35,6 +41,9 @@ from cython.parallel import prange
 from libc.stdlib cimport malloc, free, rand
 cimport cython
 
+from sage.rings.rational_field import QQ
+from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
+
 cdef extern from "power_sums.h":
     ctypedef struct ps_static_data_t:
         pass
@@ -44,11 +53,11 @@ cdef extern from "power_sums.h":
     ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
     		     		     int cofactor, 
                                      int *modlist,
-                                     int verbosity, long node_count)
+                                     int verbosity, long node_limit)
     ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0)
     ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data)
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
-    void extract_pol(int *Q, ps_dynamic_data_t *dy_data)
+#    void extract_pol(int *Q, ps_dynamic_data_t *dy_data)
     void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
@@ -56,7 +65,7 @@ cdef extern from "power_sums.h":
 
 cdef class process_queue:
     cdef int d, verbosity
-    cdef long node_count
+    cdef long node_limit
     cdef public long count
     cdef public int k
     cdef public array.array Q0_array
@@ -71,7 +80,7 @@ cdef class process_queue:
     cdef ps_dynamic_data_t *ps_dy_data
 
     def __init__(self, int d, int n, int lead, int sign, int q, int cofactor,
-                 modlist, node_count, verbosity, Q):
+                 modlist, node_limit, verbosity, Q):
         cdef int i
         self.d = d
         self.k = d
@@ -90,14 +99,14 @@ cdef class process_queue:
             self.verbosity = -1
         else:
             self.verbosity = verbosity
-        if node_count == None:
-            self.node_count = -1
+        if node_limit == None:
+            self.node_limit = -1
         else:
-            self.node_count = node_count
+            self.node_limit = node_limit
         self.count = 0
         self.ps_st_data = ps_static_init(d, lead, sign, q, cofactor,
                                     self.modlist_array.data.as_ints,
-                                         self.verbosity, self.node_count)
+                                         self.verbosity, self.node_limit)
         self.ps_dy_data = ps_dynamic_init(d, self.Q0_array.data.as_ints)
 
     def clear(self):
@@ -151,10 +160,46 @@ cdef class process_queue:
         if (f != None): return None
         else: return(ans)
 
+class WeilPolynomials():
+    def __init__(self, d, q, sign, node_limit=None):
+        self.pol = PolynomialRing(QQ, name='x')
+        x = self.pol.gen()
+        if d%2==0:
+            if sign==1:
+                d2 = d//2
+                num_cofactor = 0
+            else:
+                d2 = d//2 - 1
+                num_cofactor = 3
+        else:
+            d2 = d//2
+            if sign==1: num_cofactor = 1
+            else: num_cofactor = 2
+        self.process = process_queue(d2, 1, 1, 1, q, num_cofactor, 
+                                     [0] + [1]*d2, None, None, x**d2)
+    def __iter__(self):
+        return(self)
+
+    def next(self):
+        if self.process == None:
+            raise StopIteration
+        t = self.process.exhaust_next_answer()
+        if t==0:
+            self.process.clear()
+            self.process = None
+            raise StopIteration
+        if t<0:
+            node_limit = self.process.node_limit()
+            self.process.clear()
+            self.process = None
+            raise RuntimeError, "Node limit (" + str(node_limit) + ") exceeded"
+        return(self.pol(self.process.Qsym_array.tolist()))
+        
 def roots_on_unit_circle(P0, modulus=1, n=1,
                          answer_count=None,
-                         verbosity=None, node_count=None, filter=None,
-                         num_threads=None, output=None):
+                         verbosity=None, node_limit=None, filter=None,
+                         output=None,
+                         num_threads=None, return_nodes=False):
     """
     Find polynomials with roots on the unit circle under extra restrictions.
 
@@ -164,22 +209,25 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
         m -- positive integer or list of positive integers
         n -- positive integer
         answer_count -- positive integer or None
-        node_count -- positive integer or None; if not None, an exception will
+        node_limit -- positive integer or None; if not None, an exception will
             be raised if this many nodes of the tree are encountered.
 	filter -- function or None; if not None, only polynomials for which 
             this function evaluates to True will be returned.
+        return_nodes -- boolean (default False)
 
     OUTPUT:
         list -- a list of all polynomials P with roots on the unit circle
             such that P is congruent to P0 modulo m and shares its highest
             n coefficients with P0. If answer_count is not None, return at
             most answer_count polynomials, otherwise return all of them.
-	integer -- the number of terminal nodes in the tree enumerated
+
+        If return_nodes is True, there is a second return value giving
+	the number of terminal nodes in the tree enumerated
             in order to compute the list.
 
     EXAMPLES:
         sage: pol.<x> = PolynomialRing(Rationals())
-        sage: roots_on_unit_circle(x^5 - 1, 2, 1)
+        sage: roots_on_unit_circle(x^5 - 1, 2, 1, return_nodes=True)
         ([x^5 - 1, x^5 - 2*x^4 + 2*x^3 - 2*x^2 + 2*x - 1], 4)
         sage: roots_on_unit_circle(x^5 - 1, 4, 1)
         ([x^5 - 1], 2)
@@ -188,8 +236,8 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
     polRing = P0.parent()
     x = polRing.gen()
 
-    Q0, cofactor, q = P0.inverse_reciprocal_transform()
-    num_cofactor = [1, x+sqrt(q), x-sqrt(q), x^2-q].index(cofactor)
+    Q0, cofactor, q = P0.trace_polynomial()
+    num_cofactor = [1, x+q.sqrt(), x-q.sqrt(), x**2-q].index(cofactor)
     sign = cmp(Q0.leading_coefficient(), 0)
     Q0 *= sign
     d = Q0.degree()
@@ -206,7 +254,7 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
         modlist += [modlist[-1]] * (d+1 - len(modlist))
 
     process = process_queue(d, n, lead, sign, q, num_cofactor, 
-                            modlist, node_count, verbosity, Q0)
+                            modlist, node_limit, verbosity, Q0)
     ans = []
     anslen = 0
     if (num_threads): # parallel version
@@ -237,8 +285,11 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
             elif t==0:
                 break
             else:
-                raise RuntimeError, "Node count (" + str(process.node_count) + ") exceeded"
+                raise RuntimeError, "Node limit (" + str(process.node_limit) + ") exceeded"
     finally:
         process.clear()
-    if output != None: return(process.count)
-    return(ans, process.count)
+    if output != None:
+        ans = None
+    if return_nodes:
+        return(ans, process.count)
+    return(ans)
