@@ -10,7 +10,7 @@
  */
 
 typedef struct ps_static_data {
-  int d, lead, sign, q, verbosity;
+  int d, lead, sign, q;
   long node_limit;
   fmpz_t a, b;
   fmpz_mat_t binom_mat;
@@ -120,7 +120,7 @@ void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
 ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
 				 int cofactor, 
 				 int *modlist, 
-				 int verbosity, long node_limit) {
+				 long node_limit) {
   int i, j;
   ps_static_data_t *st_data;
   fmpz_poly_t pol;
@@ -137,7 +137,6 @@ ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
   st_data->lead = lead;
   st_data->sign = sign;
   st_data->q = q;
-  st_data->verbosity = verbosity;
   st_data->node_limit = node_limit;
 
   fmpz_init(st_data->a);
@@ -346,15 +345,6 @@ ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data) {
   return(NULL);
 }
 
-/*
-void extract_pol(int *Q, ps_dynamic_data_t *dy_data) {
-  int i;
-  fmpz *pol = dy_data->pol;
-  for (i=0; i<=dy_data->d; i++)
-    Q[i] = fmpz_get_si(pol+i);
-}
-*/
-
 void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data) {
   int i,j;
   fmpz *sympol = dy_data->sympol;
@@ -503,28 +493,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     r = _fmpz_poly_all_roots_real(tpol, k, dy_data->w+d+1);
     if (r<=0) return(r-1);
     
-
-    /* Previously, when modulus=0 we had to check for roots in [-2 sqrt(q), 2 sqrt(q)].
-  if (fmpz_is_zero(st_data->modlist+n)) {
-    if (q != 1) {
-      // If q>1, square the roots of the polynomial before finding roots.
-      for (i=0; i<=k-1; i++) fmpz_mul_si(tpol+k+i, tpol+i, 1-2*(i%2));
-      _fmpz_poly_mul(tpol+2*k, tpol, k, tpol+k, k);
-      for (i=0; i<=k-1; i++) fmpz_set(tpol+i, tpol+2*k+2*i);
-    }
-    r = _fmpz_poly_all_roots_in_interval(tpol, k, st_data->a, st_data->b, dy_data->w+d+1);
-    if (r<=0) return(r-1);
-    // Restore tpol.
-    for (i=0; i<=k-1; i++)
-      fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
-  } else {
-    // Only check for real roots; we'll deal with the interval later. 
-    r = _fmpz_poly_all_roots_real(tpol, k, dy_data->w+d+1);
-    if (r<=0) return(r-1);
-  }
-  */
-
-  
   /* If r=1 and k>d, no further coefficients to bound. */
   if (k>d) return(1);
 
@@ -539,7 +507,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->sum_col, k-i, 0));
   }
   
-  /* First, set bounds using asymmetrized power sums. */
+  /* First, set bounds using symmetrized power sums. */
   f = st_data->f + n-1;
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
   
@@ -570,6 +538,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     set_lower_quad(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
   }
 
+  if (fmpz_cmp(lower, upper) > 0) return(0);
+
   /* Second, apply Descartes' rule of signs at -2*sqrt(q), +2*sqrt(q);
      this enforces the roots being in the correct interval (if real). */
 
@@ -585,29 +555,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz_set(tpol, pol+d-k);
   
   if (q == 1) {
-    /*
-    _fmpz_poly_evaluate_fmpz(t0z, tpol, k, st_data->a);
-    r1 = fmpz_sgn(t0z); // Usually (-1)^(k-1), sometimes 0
-    if (r1 != 1-2*((k-1)%2)) printf("%d %d\n", r1, k-1);
-    _fmpz_poly_evaluate_fmpz(t0z, tpol, k, st_data->b);
-    r2 = fmpz_sgn(t0z); // Usually +1, sometimes 0
-    */
-
     _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->a);    
     fmpq_mul_fmpz(t1q, t3q, t0z);
     if (k%2==1) change_upper(t1q);
     else change_lower(t1q);
-    /*
-    if (r1 >= 0) change_upper(t1q);
-    if (r1 <= 0) change_lower(t1q);
-    */
     
     _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->b);
     fmpq_mul_fmpz(t1q, t3q, t0z);
-    /*
-    if (r2 >= 0) change_lower(t1q);
-    if (r2 <= 0) change_upper(t1q);
-    */
     change_lower(t1q);
   } else {
     for (i=0; 2*i <= k; i++)
@@ -728,7 +682,6 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
   if (dy_data==NULL) return(0);
 
   int d = st_data->d;
-  int verbosity = st_data->verbosity;
   int node_limit = st_data->node_limit;
   fmpz *modlist = st_data->modlist;
 
@@ -752,10 +705,6 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	break;
       }
     } else {
-      if (d-n <= verbosity) {
-	_fmpz_vec_print(pol+n, d-n+1);
-	printf("\n");
-      }
       i = dy_data->n;
       dy_data->n = n;
       r = set_range_from_power_sums(st_data, dy_data);
