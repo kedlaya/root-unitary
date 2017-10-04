@@ -53,18 +53,17 @@ cdef extern from "power_sums.h":
     ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
     		     		     int cofactor, 
                                      int *modlist,
-                                     int verbosity, long node_limit)
+                                     long node_limit)
     ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0)
     ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data)
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
-#    void extract_pol(int *Q, ps_dynamic_data_t *dy_data)
     void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
     int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) nogil
 
 cdef class process_queue:
-    cdef int d, verbosity
+    cdef int d
     cdef long node_limit
     cdef public long count
     cdef public int k
@@ -79,8 +78,8 @@ cdef class process_queue:
     cdef ps_static_data_t *ps_st_data
     cdef ps_dynamic_data_t *ps_dy_data
 
-    def __init__(self, int d, int n, int lead, int sign, int q, int cofactor,
-                 modlist, node_limit, verbosity, Q):
+    def __cinit__(self, int d, int n, int lead, int sign, int q, int cofactor,
+                 modlist, node_limit, Q):
         cdef int i
         self.d = d
         self.k = d
@@ -95,10 +94,6 @@ cdef class process_queue:
         for i in range(d+1):
             self.modlist[i] = modlist[d-i]
             self.Q0[i] = Q[i]
-        if verbosity == None:
-            self.verbosity = -1
-        else:
-            self.verbosity = verbosity
         if node_limit == None:
             self.node_limit = -1
         else:
@@ -106,10 +101,15 @@ cdef class process_queue:
         self.count = 0
         self.ps_st_data = ps_static_init(d, lead, sign, q, cofactor,
                                     self.modlist_array.data.as_ints,
-                                         self.verbosity, self.node_limit)
+                                         self.node_limit)
         self.ps_dy_data = ps_dynamic_init(d, self.Q0_array.data.as_ints)
+        
 
-    def clear(self):
+    def __init__(self, int d, int n, int lead, int sign, int q, int cofactor,
+                 modlist, node_limit, Q):
+        pass
+
+    def __dealloc__(self):
         ps_static_clear(self.ps_st_data)
         ps_dynamic_clear(self.ps_dy_data)
 
@@ -152,7 +152,7 @@ cdef class process_queue:
                         self.count += dy_data_buf[i].count
                         ps_dynamic_clear(dy_data_buf[i])
                         dy_data_buf[i] = NULL
-                if dy_data_buf[i] == NULL:
+                if dy_data_buf[i] == NULL: # Steal work
                     j = (i-k) % np
                     dy_data_buf[i] = ps_dynamic_split(dy_data_buf[j])
         free(dy_data_buf)
@@ -161,22 +161,41 @@ cdef class process_queue:
         else: return(ans)
 
 class WeilPolynomials():
-    def __init__(self, d, q, sign, node_limit=None):
-        self.pol = PolynomialRing(QQ, name='x')
-        x = self.pol.gen()
-        if d%2==0:
-            if sign==1:
-                d2 = d//2
-                num_cofactor = 0
+    """
+    Iterator for Weil polynomials.
+    """
+    def __init__(self, d, q, sign, lead=1, P0=None, modlist=None, node_limit=None):
+        if P0 is None:
+            self.pol = PolynomialRing(QQ, name='x')
+            x = self.pol.gen()
+            if d%2==0:
+                if sign==1:
+                    d2 = d//2
+                    num_cofactor = 0
+                else:
+                    d2 = d//2 - 1
+                    num_cofactor = 3
             else:
-                d2 = d//2 - 1
-                num_cofactor = 3
+                d2 = d//2
+                if sign==1: num_cofactor = 1
+                else: num_cofactor = 2
+            n = 1
+            coeffsign = 1
+            Q0 = x**d2
+            modlist = [0] + [1 for _ in range(d2+1-len(modlist))]
         else:
-            d2 = d//2
-            if sign==1: num_cofactor = 1
-            else: num_cofactor = 2
-        self.process = process_queue(d2, 1, 1, 1, q, num_cofactor, 
-                                     [0] + [1]*d2, None, None, x**d2)
+            self.pol = P0.parent()
+            x = self.pol.gen()
+            Q0, cofactor, q = P0.trace_polynomial()
+            num_cofactor = [1, x+q.sqrt(), x-q.sqrt(), x**2-q].index(cofactor)
+            coeffsign = cmp(Q0.leading_coefficient(), 0)
+            Q0 *= coeffsign
+            lead = Q0.leading_coefficient()
+            d2 = Q0.degree()
+            modlist += [modlist[-1] for _ in range(d2+1 - len(modlist))]
+        self.process = process_queue(d2, n, lead, coeffsign, q, num_cofactor, 
+                                     modlist, node_limit, Q0)        
+
     def __iter__(self):
         return(self)
 
@@ -185,21 +204,37 @@ class WeilPolynomials():
             raise StopIteration
         t = self.process.exhaust_next_answer()
         if t==0:
-            self.process.clear()
+            self.count = self.process.count
             self.process = None
             raise StopIteration
         if t<0:
-            node_limit = self.process.node_limit()
-            self.process.clear()
+            node_limit = self.process.node_limit
+            self.count = self.process.count
             self.process = None
-            raise RuntimeError, "Node limit (" + str(node_limit) + ") exceeded"
+            raise RuntimeError("Node limit (" + str(node_limit) + ") exceeded")
         return(self.pol(self.process.Qsym_array.tolist()))
+
+    def parallel_exhaust(self, num_threads=1, filter=None, output=None, answer_count=None):
+        ans = []
+        anslen = 0
+        ans1 = self.process.parallel_exhaust(num_threads, output)
+        self.count = self.process.count
+        self.process = None
         
+        if output != None:
+            return None
+        for i in ans1:
+            Q2 = self.pol(i)
+            if filter == None or filter(Q2):
+                ans.append(Q2)
+                anslen += 1
+                if answer_count != None and anslen >= answer_count:
+                    break
+        return(ans)
+
 def roots_on_unit_circle(P0, modulus=1, n=1,
-                         answer_count=None,
-                         verbosity=None, node_limit=None, filter=None,
-                         output=None,
-                         num_threads=None, return_nodes=False):
+                         answer_count=None, node_limit=None, filter=None,
+                         output=None, num_threads=None, return_nodes=False):
     """
     Find polynomials with roots on the unit circle under extra restrictions.
 
@@ -230,66 +265,20 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
         sage: roots_on_unit_circle(x^5 - 1, 2, 1, return_nodes=True)
         ([x^5 - 1, x^5 - 2*x^4 + 2*x^3 - 2*x^2 + 2*x - 1], 4)
         sage: roots_on_unit_circle(x^5 - 1, 4, 1)
-        ([x^5 - 1], 2)
+        [x^5 - 1]
         
     """
-    polRing = P0.parent()
-    x = polRing.gen()
-
-    Q0, cofactor, q = P0.trace_polynomial()
-    num_cofactor = [1, x+q.sqrt(), x-q.sqrt(), x**2-q].index(cofactor)
-    sign = cmp(Q0.leading_coefficient(), 0)
-    Q0 *= sign
-    d = Q0.degree()
-    lead = Q0.leading_coefficient()
-
-    count = 0
-
     try:
         modlist = list(modulus)
     except TypeError:
         modlist = [modulus]
-    modlist = [0]*n + modlist
-    if len(modlist) < d+1:
-        modlist += [modlist[-1]] * (d+1 - len(modlist))
+    modlist = [0 for _ in range(n)] + modlist
 
-    process = process_queue(d, n, lead, sign, q, num_cofactor, 
-                            modlist, node_limit, verbosity, Q0)
-    ans = []
-    anslen = 0
-    if (num_threads): # parallel version
-        ans1 = process.parallel_exhaust(num_threads, output)
-        if output != None:
-            return process.count
-        for i in ans1:
-            Q2 = polRing(i)
-            if filter == None or filter(Q2):
-                ans.append(Q2)
-                anslen += 1
-                if answer_count != None and anslen >= answer_count:
-                    break
-        process.clear()
-        return(ans, process.count)
-
-    try:
-        while True:
-            t = process.exhaust_next_answer()
-            if t>0:
-                Q2 = polRing(process.Qsym_array.tolist())
-                if filter == None or filter(Q2):
-                    if output != None: output.write(str(list(Q2)))
-                    else: ans.append(Q2)
-                    anslen += 1
-                    if answer_count != None and anslen >= answer_count:
-                        break
-            elif t==0:
-                break
-            else:
-                raise RuntimeError, "Node limit (" + str(process.node_limit) + ") exceeded"
-    finally:
-        process.clear()
-    if output != None:
-        ans = None
-    if return_nodes:
-        return(ans, process.count)
-    return(ans)
+    temp = WeilPolynomials(None, None, None, None, P0, modlist, node_limit)
+    if (num_threads):
+        ans = temp.parallel_exhaust(num_threads, filter, output, answer_count)
+    else:
+        ans = [i for i in list(temp) if filter(i)]
+    if not return_nodes:
+        return ans
+    return(ans, temp.count)
