@@ -1,5 +1,5 @@
-"""
-Finding polynomials with roots in prescribed regions
+r"""
+Iterator for Weil polynomials
 
 AUTHOR:
   -- Kiran S. Kedlaya (2007-05-28): initial version
@@ -8,14 +8,12 @@ AUTHOR:
                    define WeilPolynomials iterator
                    reverse convention for polynomials
         
-EXAMPLES:
+EXAMPLES::
     sage: polRing.<x> = PolynomialRing(Rationals())
     sage: P0 = 3*x^21 + 5*x^20 + 6*x^19 + 7*x^18 + 5*x^17 + 4*x^16 + 2*x^15 - 
     ....: x^14 - 3*x^13 - 5*x^12 - 5*x^11 - 5*x^10 - 5*x^9 - 3*x^8 - x^7 + 
     ....: 2*x^6 + 4*x^5 + 5*x^4 + 7*x^3 + 6*x^2 + 5*x + 3
     sage: ans, count = roots_on_unit_circle(P0, 3^2, 1)
-    sage: print "Number of terminal nodes:", count
-    Number of terminal nodes: 1404
     sage: print ans
     [3*x^21 + 5*x^20 + 6*x^19 + 7*x^18 + 5*x^17 + 4*x^16 + 2*x^15 - x^14
     - 3*x^13 - 5*x^12 - 5*x^11 - 5*x^10 - 5*x^9 - 3*x^8 - x^7 + 2*x^6
@@ -25,7 +23,8 @@ NOTES:
     This depends on `trac`:23947: for the trace polynomial construction.
 
 TODO:
-    - Switch from Sturm sequences to real root isolation (e-antic)
+    - Pass coefficients as FLINT integers rather than C integers
+    - Implement real root isolation (e-antic)
 """
 
 #clang c
@@ -36,9 +35,8 @@ TODO:
 #cfile power_sums.c
 
 from cpython cimport array
-import array
 from cython.parallel import prange
-from libc.stdlib cimport malloc, free, rand
+from libc.stdlib cimport malloc, free
 cimport cython
 
 from sage.rings.rational_field import QQ
@@ -113,14 +111,21 @@ cdef class process_queue:
         ps_static_clear(self.ps_st_data)
         ps_dynamic_clear(self.ps_dy_data)
 
-    cpdef int exhaust_next_answer(self):
+    cpdef int serial_exhaust(self):
         cdef int t
         t = next_pol(self.ps_st_data, self.ps_dy_data)
         extract_symmetrized_pol(self.Qsym_array.data.as_ints, self.ps_dy_data)
         self.count = self.ps_dy_data.count
         return(t)
 
-    cpdef object parallel_exhaust(process_queue self, int num_processes, f=None):
+    cpdef object parallel_exhaust(self, int num_processes, postprocess=None):
+        """
+        Exhaust the tree in parallel.
+
+        If postprocess is specified, it is taken to be a function into which
+        each result is fed (as a list of coefficients); the return value consists of 
+        the list of resulting values (excluding any values of None).
+        """
         cdef ps_dynamic_data_t **dy_data_buf
         cdef int i, j, k, m, d = self.d, t=1, np = num_processes
         ans = []
@@ -144,10 +149,11 @@ cdef class process_queue:
                         t += 1
                         extract_symmetrized_pol(self.Qsym_array.data.as_ints,
                                                 dy_data_buf[i])
-                        if (f != None):
-                            f.write(str(list(self.Qsym_array)))
-                            f.write("\n")
-                        else: ans.append(list(self.Qsym_array))
+                        temp = list(self.Qsym_array)
+                        if postprocess != None:
+                            temp = postprocess(temp)
+                        if temp != None:
+                            ans.append(temp)
                     else:
                         self.count += dy_data_buf[i].count
                         ps_dynamic_clear(dy_data_buf[i])
@@ -157,14 +163,31 @@ cdef class process_queue:
                     dy_data_buf[i] = ps_dynamic_split(dy_data_buf[j])
         free(dy_data_buf)
         free(res)
-        if (f != None): return None
-        else: return(ans)
+        return ans
 
 class WeilPolynomials():
+    r"""
+    Iterator for Weil polynomials, i.e., integer polynomials with all complex roots
+    having a particular absolute value.
+
+    By default, Weil polynomials are computed using a serial depth-first search.
+    Alternatively, if num_threads is specified, a parallel search (using the specified
+    number of threads) is carried out at creation time. See `parallel_exhaust` for 
+    additional modalities.
+
+    EXAMPLES:
+
     """
-    Iterator for Weil polynomials.
-    """
-    def __init__(self, d, q, sign, lead=1, P0=None, modlist=None, node_limit=None):
+    def __init__(self, d, q, sign, lead=1, P0=None, modlist=None, node_limit=None,
+                 num_threads=None):
+        r"""
+        Initialize an iterator for Weil polynomials.
+
+        INPUT:
+
+            num_threads (optional; default None): if set, use a parallel exhaust
+            to precompute the values of the iterator.
+        """
         if P0 is None:
             self.pol = PolynomialRing(QQ, name='x')
             x = self.pol.gen()
@@ -194,15 +217,23 @@ class WeilPolynomials():
             d2 = Q0.degree()
             modlist += [modlist[-1] for _ in range(d2+1 - len(modlist))]
         self.process = process_queue(d2, n, lead, coeffsign, q, num_cofactor, 
-                                     modlist, node_limit, Q0)        
+                                     modlist, node_limit, Q0)
+        if num_threads is None:
+            self.ans = None
+        else:
+            self.parallel_exhaust(num_threads)
 
     def __iter__(self):
         return(self)
 
     def next(self):
-        if self.process == None:
+        if self.ans is not None:
+            if len(self.ans) == 0:
+                raise StopIteration
+            return self.pol(self.ans.pop())
+        if self.process is None:
             raise StopIteration
-        t = self.process.exhaust_next_answer()
+        t = self.process.serial_exhaust()
         if t==0:
             self.count = self.process.count
             self.process = None
@@ -212,25 +243,22 @@ class WeilPolynomials():
             self.count = self.process.count
             self.process = None
             raise RuntimeError("Node limit (" + str(node_limit) + ") exceeded")
-        return(self.pol(self.process.Qsym_array.tolist()))
+        return self.pol(self.process.Qsym_array.tolist())
 
-    def parallel_exhaust(self, num_threads=1, filter=None, output=None, answer_count=None):
-        ans = []
-        anslen = 0
-        ans1 = self.process.parallel_exhaust(num_threads, output)
-        self.count = self.process.count
-        self.process = None
-        
-        if output != None:
-            return None
-        for i in ans1:
-            Q2 = self.pol(i)
-            if filter == None or filter(Q2):
-                ans.append(Q2)
-                anslen += 1
-                if answer_count != None and anslen >= answer_count:
-                    break
-        return(ans)
+    def parallel_exhaust(self, num_threads=1, postprocess=None):
+        r"""
+        Precompute the remaining values using a multithreaded exhaust.
+
+        The order of the resulting values is not specified.
+
+        If postprocess is specified, it is taken to be a function into which
+        each result is fed (as a list of coefficients); the return value consists 
+        of the list of resulting values (excluding any values of None).
+        """
+        if self.process is not None:
+            self.ans = self.process.parallel_exhaust(num_threads, postprocess)
+            self.count = self.process.count
+            self.process = None        
 
 def roots_on_unit_circle(P0, modulus=1, n=1,
                          answer_count=None, node_limit=None, filter=None,
@@ -260,7 +288,7 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
 	the number of terminal nodes in the tree enumerated
             in order to compute the list.
 
-    EXAMPLES:
+    EXAMPLES::
         sage: pol.<x> = PolynomialRing(Rationals())
         sage: roots_on_unit_circle(x^5 - 1, 2, 1, return_nodes=True)
         ([x^5 - 1, x^5 - 2*x^4 + 2*x^3 - 2*x^2 + 2*x - 1], 4)
@@ -275,10 +303,15 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
     modlist = [0 for _ in range(n)] + modlist
 
     temp = WeilPolynomials(None, None, None, None, P0, modlist, node_limit)
-    if (num_threads):
-        ans = temp.parallel_exhaust(num_threads, filter, output, answer_count)
-    else:
-        ans = [i for i in list(temp) if filter(i)]
+    if (num_threads): temp.parallel_exhaust(num_threads, answer_count)
+    ans = []
+    anslen = 0
+    for i in temp:
+        if filter == None or filter(i):
+            ans.append(i)
+            anslen += 1
+            if answer_count != None and anslen >= answer_count:
+                break    
     if not return_nodes:
         return ans
     return(ans, temp.count)

@@ -29,7 +29,7 @@ typedef struct ps_dynamic_data {
 ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
 				 int cofactor, 
 				 int *modlist,
-				 int verbosity, long _count);
+				 long node_limit);
 ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0);
 void ps_static_clear(ps_static_data_t *st_data);
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data);
