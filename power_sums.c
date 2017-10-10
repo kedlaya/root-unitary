@@ -357,6 +357,7 @@ long extract_count(ps_dynamic_data_t *dy_data) {
 }
 
 void ps_static_clear(ps_static_data_t *st_data) {
+  if (st_data == NULL) return(NULL);
   int i, d = st_data->d;
   fmpz_clear(st_data->a);
   fmpz_clear(st_data->b);
@@ -371,6 +372,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
 }
 
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
+  if (dy_data == NULL) return(NULL);
   int d = dy_data->d;
   _fmpz_vec_clear(dy_data->pol, d+1);
   _fmpz_vec_clear(dy_data->sympol, 2*d+3);
