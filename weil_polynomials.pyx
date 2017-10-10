@@ -10,11 +10,8 @@ AUTHOR:
         
 EXAMPLES::
     sage: polRing.<x> = PolynomialRing(Rationals())
-    sage: P0 = 3*x^21 + 5*x^20 + 6*x^19 + 7*x^18 + 5*x^17 + 4*x^16 + 2*x^15 - 
-    ....: x^14 - 3*x^13 - 5*x^12 - 5*x^11 - 5*x^10 - 5*x^9 - 3*x^8 - x^7 + 
-    ....: 2*x^6 + 4*x^5 + 5*x^4 + 7*x^3 + 6*x^2 + 5*x + 3
-    sage: ans, count = roots_on_unit_circle(P0, 3^2, 1)
-    sage: print ans
+    sage: P0 = polRing([3,5,6,7,5,4,2,-1,-3,-5,-5,-5,-5,-3,-1,2,4,5,7,6,5,3])
+    sage: roots_on_unit_circle(P0, 3^2, 1)
     [3*x^21 + 5*x^20 + 6*x^19 + 7*x^18 + 5*x^17 + 4*x^16 + 2*x^15 - x^14
     - 3*x^13 - 5*x^12 - 5*x^11 - 5*x^10 - 5*x^9 - 3*x^8 - x^7 + 2*x^6
     + 4*x^5 + 5*x^4 + 7*x^3 + 6*x^2 + 5*x + 3]
@@ -24,7 +21,6 @@ NOTES:
 
 TODO:
     - Pass coefficients as FLINT integers rather than C integers
-    - Check that all temporary memory is properly deallocated
     - Implement real root isolation (e-antic)
 """
 
@@ -63,19 +59,20 @@ cdef extern from "power_sums.h":
 
 # Data structure to manage parallel depth-first search.
 cdef class dfs_manager:
-    cdef int d
-    cdef long node_limit
+    cdef public int d
     cdef public long count
     cdef public int k
-    cdef public array.array Q0_array
-    cdef int[:] Q0
     cdef public array.array Qsym_array
+
+    cdef array.array Q0_array
+    cdef int[:] Q0
     cdef int[:] Qsym
     cdef int[:] modlist
-    cdef public array.array modlist_array
+    cdef array.array modlist_array
     cdef int sign
     cdef int cofactor
     cdef int num_threads
+    cdef long node_limit
     cdef ps_static_data_t *ps_st_data
     cdef ps_dynamic_data_t **dy_data_buf
 
@@ -225,7 +222,7 @@ class WeilPolynomials():
 
 def roots_on_unit_circle(P0, modulus=1, n=1,
                          answer_count=None, node_limit=None, filter=None,
-                         output=None, num_threads=1, return_nodes=False):
+                         num_threads=1, return_nodes=False):
     """
     Find polynomials with roots on the unit circle under extra restrictions.
 
@@ -265,8 +262,7 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
         modlist = [modulus]
     modlist = [0 for _ in range(n)] + modlist
 
-    temp = WeilPolynomials(None, None, None, None, P0, modlist, node_limit)
-    if (num_threads): temp.parallel_exhaust(num_threads, answer_count)
+    temp = WeilPolynomials(None, None, None, None, P0, modlist, node_limit, num_threads)
     ans = []
     anslen = 0
     for i in temp:
