@@ -5,7 +5,7 @@ l.append(1+x)
 l.append(1-x)
 t = time.time()
 for i in range(1, 11):
-    ans, count = roots_on_unit_circle(x^(2*i)+1, num_threads=512)
+    ans = list(WeilPolynomials(2*i, 1, 1, num_threads=512))
     for j in ans:
         l.append(j * (1+x))
         l.append(j * (1-x))
