@@ -24,7 +24,7 @@ Primitive models:
 """
 
 ######################################################################################################
-load("prescribed_roots.pyx")
+load("weil_polynomials.pyx")
 #this command should be replaced in the big list
 #polyx =  x^4-x^3+3*x^2-9*x+81
 
