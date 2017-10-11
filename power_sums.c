@@ -21,8 +21,8 @@ typedef struct ps_static_data {
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
-  int d, n, ascend;
-  long count;
+  int d, n, ascend, flag;
+  long node_count;
   fmpq_mat_t sum_col, sum_prod;
   fmpz *pol, *sympol, *upper;
 
@@ -117,7 +117,7 @@ void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
 
 /* Memory allocation and release.
  */
-ps_static_data_t *ps_static_init(int d, int lead, int sign, int q,
+ps_static_data_t *ps_static_init(int d, int sign, int q, int lead,
 				 int cofactor, 
 				 int *modlist, 
 				 long node_limit) {
@@ -291,7 +291,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0) {
 
   /* Initialize mutable quantities */
   dy_data->n = d;
-  dy_data->count = 0;
+  dy_data->node_count = 0;
   dy_data->ascend = 0;
   dy_data->pol = _fmpz_vec_init(d+1);
   dy_data->sympol = _fmpz_vec_init(2*d+3);
@@ -319,7 +319,7 @@ ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data) {
 
   dy_data2 = ps_dynamic_init(d, NULL);
   dy_data2->n = dy_data->n;
-  dy_data2->count = dy_data->count;
+  dy_data2->node_count = dy_data->node_count;
   dy_data2->ascend = dy_data->ascend;
   _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
   _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
@@ -339,22 +339,26 @@ ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data) {
       fmpz_set(dy_data->upper+i, dy_data->pol+i);
       dy_data2->n = i-1;
       dy_data2->ascend = 1;
-      dy_data2->count = 0;
+      dy_data2->node_count = 0;
       return(dy_data2);
   }
   return(NULL);
 }
 
+/*
 void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data) {
   int i,j;
   fmpz *sympol = dy_data->sympol;
   for (i=0; i<=2*dy_data->d+2; i++)
     Q[i] = fmpz_get_si(sympol+i);
 }
+*/
 
+/*
 long extract_count(ps_dynamic_data_t *dy_data) {
   return(dy_data->count);
 }
+*/
 
 void ps_static_clear(ps_static_data_t *st_data) {
   if (st_data == NULL) return(NULL);
@@ -674,13 +678,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
 }
 
-/* Return values:
+/* Return value sent back in dy_data->flag:
     1: if a solution has been found
     0: if the tree has been exhausted
    -1: if the maximum number of nodes has been reached
 */
 
-int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
+void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
   if (dy_data==NULL) return(0);
 
   int d = st_data->d;
@@ -689,7 +693,7 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 
   int ascend = dy_data->ascend;
   int n = dy_data->n;
-  int count = dy_data->count;
+  int count = dy_data->node_count;
   fmpz *upper = dy_data->upper;
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
@@ -765,6 +769,6 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
   }
   dy_data->ascend = (n<0);
   dy_data->n = n;
-  dy_data->count = count;
-  return(t);
+  dy_data->node_count = count;
+  dy_data->flag=t;
 }

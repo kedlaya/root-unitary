@@ -28,42 +28,48 @@ from cython.parallel import prange
 from libc.stdlib cimport malloc, free
 cimport cython
 
-from same.rings.integer import Integer
+from sage.rings.integer cimport Integer
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
+from sage.libs.gmp.mpz cimport *
 from sage.libs.gmp.types cimport *
+from sage.libs.flint.types cimport *
+from sage.libs.flint.fmpz cimport *
+from sage.libs.flint.fmpz_poly cimport *
 
 cdef extern from "power_sums.h":
     ctypedef struct ps_static_data_t:
         pass
     ctypedef struct ps_dynamic_data_t:
         long count
+        fmpz *sympol # Holds a return value
 
-    ps_static_data_t *ps_static_init(int d, int q, int sign, mpz_t lead,
+    ps_static_data_t *ps_static_init(int d, int q, int sign, int lead,
     		     		     int cofactor, 
                                      int *modlist,
                                      long node_limit)
     ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0)
-    ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data)
+#    ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data)
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
-    void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data)
+#    void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
-    int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) nogil
+    void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) nogil
 
 # Data structure to manage parallel depth-first search.
 cdef class dfs_manager:
     cdef public int d
     cdef public long count
     cdef public int k
-    cdef public array.array Qsym_array
-
+    
     cdef array.array Q0_array
+#    cdef array.array Qsym_array
     cdef int[:] Q0
     cdef int[:] Qsym
     cdef int[:] modlist
     cdef array.array modlist_array
     cdef int sign
+    cdef int lead
     cdef int cofactor
     cdef int num_threads
     cdef long node_limit
@@ -72,17 +78,17 @@ cdef class dfs_manager:
 
 # Minimal memory allocation.
     def __cinit__(self, int d, int num_threads):
-        cdef int i
         self.d = d
         self.k = d
         self.num_threads = num_threads
         self.Q0_array = array.array('i', [0,] * (d+1))
-        self.Qsym_array = array.array('i', [0,] * (2*d+3))
+ #       self.Qsym_array = array.array('i', [0,] * (2*d+3))
         self.modlist_array = array.array('i', [0,] * (d+1))
         self.dy_data_buf = <ps_dynamic_data_t **>malloc(num_threads*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
+        for i in range(self.num_threads):
+            self.dy_data_buf[i] = NULL
 
-    def __init__(self, int d, int n, mpz_t lead, int sign, int q, int cofactor,
-                 int num_threads, modlist, node_limit, Q):
+    def __init__(self, int d, int num_threads):
         pass
 
     def __dealloc__(self):
@@ -96,12 +102,14 @@ cdef class dfs_manager:
 
 # This method is needed because __cinit__ requires Python calling conventions,
 # and so cannot accept pure C types such as mpz_t. 
-    def populate(self, int n, mpz_t lead, int sign, int q, int cofactor,
+    cpdef void populate(self, int n, int lead, int sign, int q, int cofactor,
                  int num_threads, modlist, node_limit, Q):
+        cdef int i, d = self.d
+        self.lead = lead
         self.sign = sign
         self.cofactor = cofactor
         self.Q0 = self.Q0_array
-        self.Qsym = self.Qsym_array
+#        self.Qsym = self.Qsym_array
         self.modlist = self.modlist_array
         for i in range(d+1):
             self.modlist[i] = modlist[d-i]
@@ -124,8 +132,9 @@ cdef class dfs_manager:
         """
         cdef int i, j, k, m, d = self.d, t=1, np = self.num_threads
         cdef long ans_count = 100*np
+        cdef mpz_t z
+        cdef Integer temp
         ans = []
-        cdef int *res = <int *>malloc(np*sizeof(int)) # Must be Python-free to avoid GIL
 
         k=0
         while (t>0 and len(ans) < ans_count):
@@ -134,16 +143,24 @@ cdef class dfs_manager:
             with nogil: # Drop GIL for this parallel loop
                 for i in prange(np, schedule='dynamic', num_threads=np):
                     if self.dy_data_buf[i] != NULL:
-                        res[i] = next_pol(self.ps_st_data, self.dy_data_buf[i])
+                        next_pol(self.ps_st_data, self.dy_data_buf[i])
             for i in range(np):
                 if self.dy_data_buf[i] != NULL:
-                    if res[i] > 0:
+                    if self.dy_data_buf[i].flag > 0:
                         t += 1
-                        extract_symmetrized_pol(self.Qsym_array.data.as_ints,
-                                                self.dy_data_buf[i])
-                        ans.append(list(self.Qsym_array))
-                    elif res[i] < 0:
-                        free(res)
+                        l = []
+                        # Convert a vector of fmpz's into mpz's and then Integers.
+                        for j in range(2*d+1):
+                            flint_mpz_init_set_readonly(z, &self.dy_data_buf[i].sympol[j])
+                            temp = Integer(0)
+                            mpz_set(temp.value, z)
+                            l.append(temp)
+                            flint_mpz_clear_readonly(z)
+                        ans.append(l)
+#                        extract_symmetrized_pol(self.Qsym_array.data.as_ints,
+#                                                self.dy_data_buf[i])
+#                        ans.append(list(self.Qsym_array))
+                    elif self.dy_data_buf[i].flag < 0:
                         raise RuntimeError("Node limit (" + str(self.node_limit) + ") exceeded")
                     else: 
                         self.count += self.dy_data_buf[i].count
@@ -152,7 +169,6 @@ cdef class dfs_manager:
                 if self.dy_data_buf[i] == NULL: # Steal work
                     j = (i-k) % np
                     self.dy_data_buf[i] = ps_dynamic_split(self.dy_data_buf[j])
-        free(res)
         return ans
 
 class WeilPolynomials():
@@ -221,7 +237,7 @@ class WeilPolynomials():
             except TypeError:
                 leadlist = [lead]
             if modlist is None:
-                modlist = [0 for _ in range(len(lead))]
+                modlist = [0 for _ in range(len(leadlist))]
             modlist += [1 for _ in range(d2+1-len(modlist))]
         else:
             self.pol = P0.parent()
@@ -233,7 +249,8 @@ class WeilPolynomials():
             lead = Q0.leading_coefficient()
             d2 = Q0.degree()
             modlist += [modlist[-1] for _ in range(d2+1 - len(modlist))]
-        self.process = dfs_manager(d2, n, lead, coeffsign, q, num_cofactor, 
+        self.process = dfs_manager(d2, num_threads)
+        self.process.populate(n, lead, coeffsign, q, num_cofactor, 
                                      num_threads, modlist, node_limit, Q0)
         self.ans = []
 
