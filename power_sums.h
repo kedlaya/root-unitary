@@ -3,14 +3,14 @@
 #include <fmpq_mat.h>
 
 typedef struct ps_static_data {
-  int d, lead, sign, q, verbosity;
+  int d, sign, q;
   long node_limit;
-  fmpz_t a, b;
+  fmpz_t a, b, lead;
   fmpz_mat_t binom_mat;
+  fmpz *cofactor;
   fmpz *modlist;
   fmpq_mat_t *sum_mats;
   fmpq_t *f;
-  fmpz_poly_t cofactor;
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
@@ -26,11 +26,9 @@ typedef struct ps_dynamic_data {
   slong w2len; /* = 5 */
 } ps_dynamic_data_t;
 
-ps_static_data_t *ps_static_init(int d, int sign, int q, int lead,
-				 int cofactor, 
-				 int *modlist,
-				 long node_limit);
-ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0);
+ps_static_data_t *ps_static_init(int d, int q, int coeffsign, fmpz_t lead,
+				 int cofactor, fmpz *modlist, long node_limit);
+ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist);
 void ps_static_clear(ps_static_data_t *st_data);
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data);
 void extract_pol(int *Q, ps_dynamic_data_t *dy_data);

@@ -10,9 +10,9 @@
  */
 
 typedef struct ps_static_data {
-  int d, lead, sign, q;
+  int d, sign, q;
   long node_limit;
-  fmpz_t a, b;
+  fmpz_t a, b, lead;
   fmpz_mat_t binom_mat;
   fmpz *cofactor;
   fmpz *modlist;
@@ -117,9 +117,9 @@ void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
 
 /* Memory allocation and release.
  */
-ps_static_data_t *ps_static_init(int d, int sign, int q, int lead,
+ps_static_data_t *ps_static_init(int d, int q, int coeffsign, fmpz_t lead,
 				 int cofactor, 
-				 int *modlist, 
+				 fmpz *modlist,
 				 long node_limit) {
   int i, j;
   ps_static_data_t *st_data;
@@ -134,8 +134,7 @@ ps_static_data_t *ps_static_init(int d, int sign, int q, int lead,
   st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
 
   st_data->d = d;
-  st_data->lead = lead;
-  st_data->sign = sign;
+  st_data->sign = coeffsign;
   st_data->q = q;
   st_data->node_limit = node_limit;
 
@@ -148,6 +147,8 @@ ps_static_data_t *ps_static_init(int d, int sign, int q, int lead,
     fmpz_set_si(st_data->a, 0);
     fmpz_set_si(st_data->b, 4*q);    
   }
+  fmpz_init(st_data->lead);
+  fmpz_set(st_data->lead, lead);
 
   st_data->cofactor = _fmpz_vec_init(3);
   switch (cofactor) {
@@ -179,14 +180,15 @@ ps_static_data_t *ps_static_init(int d, int sign, int q, int lead,
     break;
   }
 
-  st_data->modlist =_fmpz_vec_init(d+1);
+  st_data->modlist = _fmpz_vec_init(d+1);
   st_data->f = _fmpq_vec_init(d+1);
   for (i=0; i<=d; i++) {
-    fmpz_set_si(st_data->modlist+i, modlist[i]);
-    fmpq_set_si(st_data->f+i, d-i, lead);
+    fmpz_set(st_data->modlist+i, modlist+d-i);
+    fmpq_set_si(st_data->f+i, d-i, 1);
+    fmpq_div_fmpz(st_data->f+i, st_data->f+i, st_data->lead);
     /* In order to apply power sums and Descartes' rule of signs
        when the modulus is 0, we must pretend that the modulus is 1. */
-    if (modlist[i]) 
+    if (!fmpz_is_zero(st_data->modlist+i))
       fmpq_mul_fmpz(st_data->f+i, st_data->f+i, st_data->modlist+i);
   }
 
@@ -282,7 +284,7 @@ ps_static_data_t *ps_static_init(int d, int sign, int q, int lead,
   return(st_data);
 }
 
-ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0) {
+ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   ps_dynamic_data_t *dy_data;
   int i;
 
@@ -295,9 +297,9 @@ ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0) {
   dy_data->ascend = 0;
   dy_data->pol = _fmpz_vec_init(d+1);
   dy_data->sympol = _fmpz_vec_init(2*d+3);
-  if (Q0 != NULL) 
+  if (coefflist != NULL)
     for (i=0; i<=d; i++) 
-      fmpz_set_si(dy_data->pol+i, Q0[i]);
+      fmpz_set(dy_data->pol+i, coefflist+i);
   
   fmpq_mat_init(dy_data->sum_col, d+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->sum_col, 0, 0), d, 1);
@@ -365,6 +367,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
   int i, d = st_data->d;
   fmpz_clear(st_data->a);
   fmpz_clear(st_data->b);
+  fmpz_clear(st_data->lead);
   _fmpz_vec_clear(st_data->cofactor, 3);
   fmpz_mat_clear(st_data->binom_mat);
   _fmpq_vec_clear(st_data->f, d+1);

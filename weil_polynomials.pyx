@@ -7,12 +7,12 @@ AUTHOR:
   -- (2017-10-03): consolidate Sage layer into .pyx file
                    define WeilPolynomials iterator
                    reverse convention for polynomials
+                   pass multiprecision integers to/from C
         
 NOTES:
     This depends on `trac`:23947: for the trace polynomial construction.
 
 TODO:
-    - Pass coefficients as FLINT integers rather than C integers
     - Implement real root isolation (e-antic)
 """
 
@@ -32,23 +32,25 @@ from sage.rings.integer cimport Integer
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.libs.gmp.types cimport *
-from sage.libs.gmp.mpz cimport mpz_set
-from sage.libs.flint.types cimport fmpz
+from sage.libs.gmp.mpz cimport *
+from sage.libs.flint.types cimport *
 from sage.libs.flint.fmpz cimport *
+from sage.libs.flint.fmpz_vec cimport *
 
 cdef extern from "power_sums.h":
     ctypedef struct ps_static_data_t:
         pass
+
     ctypedef struct ps_dynamic_data_t:
         int flag
         long node_count
         fmpz *sympol # Holds a return value
 
-    ps_static_data_t *ps_static_init(int d, int q, int sign, int lead,
+    ps_static_data_t *ps_static_init(int d, int q, int coeffsign, fmpz_t lead,
     		     		     int cofactor, 
-                                     int *modlist,
+                                     fmpz *modlist,
                                      long node_limit)
-    ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0)
+    ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist)
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
@@ -66,21 +68,27 @@ cdef class dfs_manager:
     def __cinit__(self, int d, q, coefflist, modlist, int sign, int cofactor,
                         int node_limit, int num_threads):
         cdef int i
+        cdef fmpz_t temp_lead
+        cdef fmpz *temp_array
         self.count = 0
         self.d = d
         self.num_threads = num_threads
         self.dy_data_buf = <ps_dynamic_data_t **>malloc(num_threads*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
         for i in range(self.num_threads):
             self.dy_data_buf[i] = NULL
-        cdef array.array Q0_array = array.array('i', [0,] * (d+1))
-        cdef array.array modlist_array = array.array('i', [0,] * (d+1))
-        for i in range(self.d+1):
-            modlist_array[i] = modlist[d-i]
-            Q0_array[i] = coefflist[i]
         self.node_limit = node_limit
-        self.ps_st_data = ps_static_init(d, q, sign, coefflist[-1], cofactor,
-                                    modlist_array.data.as_ints, node_limit)
-        self.dy_data_buf[0] = ps_dynamic_init(d, Q0_array.data.as_ints)
+        fmpz_init(temp_lead)
+        fmpz_set_mpz(temp_lead, Integer(coefflist[-1]).value)
+        temp_array = _fmpz_vec_init(d+1)
+        for i in range(d+1):
+            fmpz_set_mpz(temp_array+i, Integer(modlist[i]).value)
+        self.ps_st_data = ps_static_init(d, q, sign, temp_lead, cofactor,
+                                    temp_array, node_limit)
+        fmpz_clear(temp_lead)
+        for i in range(d+1):
+            fmpz_set_mpz(temp_array+i, Integer(coefflist[i]).value)
+        self.dy_data_buf[0] = ps_dynamic_init(d, temp_array)
+        _fmpz_vec_clear(temp_array, d+1)
         for i in range(1, self.num_threads):
             self.dy_data_buf[i] = NULL
 
