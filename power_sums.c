@@ -770,5 +770,5 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
   dy_data->ascend = (n<0);
   dy_data->n = n;
   dy_data->node_count = count;
-  dy_data->flag=t;
+  dy_data->flag = t;
 }

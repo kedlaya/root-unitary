@@ -31,17 +31,17 @@ cimport cython
 from sage.rings.integer cimport Integer
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
-from sage.libs.gmp.mpz cimport *
 from sage.libs.gmp.types cimport *
-from sage.libs.flint.types cimport *
+from sage.libs.gmp.mpz cimport mpz_set
+from sage.libs.flint.types cimport fmpz
 from sage.libs.flint.fmpz cimport *
-from sage.libs.flint.fmpz_poly cimport *
 
 cdef extern from "power_sums.h":
     ctypedef struct ps_static_data_t:
         pass
     ctypedef struct ps_dynamic_data_t:
-        long count
+        int flag
+        long node_count
         fmpz *sympol # Holds a return value
 
     ps_static_data_t *ps_static_init(int d, int q, int sign, int lead,
@@ -49,46 +49,43 @@ cdef extern from "power_sums.h":
                                      int *modlist,
                                      long node_limit)
     ps_dynamic_data_t *ps_dynamic_init(int d, int *Q0)
-#    ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data)
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
-#    void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
     void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) nogil
 
 # Data structure to manage parallel depth-first search.
 cdef class dfs_manager:
-    cdef public int d
-    cdef public long count
-    cdef public int k
-    
-    cdef array.array Q0_array
-#    cdef array.array Qsym_array
-    cdef int[:] Q0
-    cdef int[:] Qsym
-    cdef int[:] modlist
-    cdef array.array modlist_array
-    cdef int sign
-    cdef int lead
-    cdef int cofactor
+    cdef public long count   
+    cdef int d
     cdef int num_threads
     cdef long node_limit
     cdef ps_static_data_t *ps_st_data
     cdef ps_dynamic_data_t **dy_data_buf
 
-# Minimal memory allocation.
-    def __cinit__(self, int d, int num_threads):
+    def __cinit__(self, int d, q, coefflist, modlist, int sign, int cofactor,
+                        int node_limit, int num_threads):
+        cdef int i
+        self.count = 0
         self.d = d
-        self.k = d
         self.num_threads = num_threads
-        self.Q0_array = array.array('i', [0,] * (d+1))
- #       self.Qsym_array = array.array('i', [0,] * (2*d+3))
-        self.modlist_array = array.array('i', [0,] * (d+1))
         self.dy_data_buf = <ps_dynamic_data_t **>malloc(num_threads*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
         for i in range(self.num_threads):
             self.dy_data_buf[i] = NULL
+        cdef array.array Q0_array = array.array('i', [0,] * (d+1))
+        cdef array.array modlist_array = array.array('i', [0,] * (d+1))
+        for i in range(self.d+1):
+            modlist_array[i] = modlist[d-i]
+            Q0_array[i] = coefflist[i]
+        self.node_limit = node_limit
+        self.ps_st_data = ps_static_init(d, q, sign, coefflist[-1], cofactor,
+                                    modlist_array.data.as_ints, node_limit)
+        self.dy_data_buf[0] = ps_dynamic_init(d, Q0_array.data.as_ints)
+        for i in range(1, self.num_threads):
+            self.dy_data_buf[i] = NULL
 
-    def __init__(self, int d, int num_threads):
+    def __init__(self, d, q, coefflist, modlist, sign, cofactor,
+                        node_limit, num_threads):
         pass
 
     def __dealloc__(self):
@@ -100,37 +97,11 @@ cdef class dfs_manager:
             free(self.dy_data_buf)
             self.dy_data_buf = NULL
 
-# This method is needed because __cinit__ requires Python calling conventions,
-# and so cannot accept pure C types such as mpz_t. 
-    cpdef void populate(self, int n, int lead, int sign, int q, int cofactor,
-                 int num_threads, modlist, node_limit, Q):
-        cdef int i, d = self.d
-        self.lead = lead
-        self.sign = sign
-        self.cofactor = cofactor
-        self.Q0 = self.Q0_array
-#        self.Qsym = self.Qsym_array
-        self.modlist = self.modlist_array
-        for i in range(d+1):
-            self.modlist[i] = modlist[d-i]
-            self.Q0[i] = Q[i]
-        if node_limit == None:
-            self.node_limit = -1
-        else:
-            self.node_limit = node_limit
-        self.count = 0
-        self.ps_st_data = ps_static_init(d, q, sign, lead, cofactor,
-                                    self.modlist_array.data.as_ints,
-                                         self.node_limit)
-        self.dy_data_buf[0] = ps_dynamic_init(d, self.Q0_array.data.as_ints)
-        for i in range(1, self.num_threads):
-            self.dy_data_buf[i] = NULL
-
     cpdef object advance_exhaust(self):
         """
         Advance the tree exhaustion.
         """
-        cdef int i, j, k, m, d = self.d, t=1, np = self.num_threads
+        cdef int i, j, k, d = self.d, t=1, np = self.num_threads
         cdef long ans_count = 100*np
         cdef mpz_t z
         cdef Integer temp
@@ -150,20 +121,17 @@ cdef class dfs_manager:
                         t += 1
                         l = []
                         # Convert a vector of fmpz's into mpz's and then Integers.
-                        for j in range(2*d+1):
+                        for j in range(2*d+3):
                             flint_mpz_init_set_readonly(z, &self.dy_data_buf[i].sympol[j])
                             temp = Integer(0)
                             mpz_set(temp.value, z)
                             l.append(temp)
                             flint_mpz_clear_readonly(z)
                         ans.append(l)
-#                        extract_symmetrized_pol(self.Qsym_array.data.as_ints,
-#                                                self.dy_data_buf[i])
-#                        ans.append(list(self.Qsym_array))
                     elif self.dy_data_buf[i].flag < 0:
                         raise RuntimeError("Node limit (" + str(self.node_limit) + ") exceeded")
-                    else: 
-                        self.count += self.dy_data_buf[i].count
+                    else:
+                        self.count += self.dy_data_buf[i].node_count
                         ps_dynamic_clear(self.dy_data_buf[i])
                         self.dy_data_buf[i] = NULL
                 if self.dy_data_buf[i] == NULL: # Steal work
@@ -199,8 +167,7 @@ class WeilPolynomials():
         sage: print(ans1 == ans2)
         True
     """
-    def __init__(self, d, q, sign=1, lead=1, P0=None, modlist=None, node_limit=None,
-                 num_threads=1):
+    def __init__(self, d, q, sign=1, lead=1, node_limit=None, num_threads=1):
         r"""
         Initialize an iterator for Weil polynomials.
 
@@ -209,49 +176,64 @@ class WeilPolynomials():
             -- ``d`` - degree of the Weil polynomials
             -- ``q`` - square absolute value of the roots
             -- ``sign`` - sign of the functional equation (default: 1)
-            -- ``lead`` - one or more initial coefficients (default: 1)
+            -- ``lead`` - one or more leading coefficients; see below (default: 1)
             -- ``node_limit`` -- if specified, maximum number of nodes to allow in
                    a single tree traversal without raising a RuntimeError
             -- ``num_threads`` -- number of threads to use for parallel computation
                    (default: 1)
+
+        If ``lead`` cannot be parsed as a list, it is treated as a single integer
+        which will be the leading coefficient of all returned polynomials. Otherwise,
+        each entry is parsed either as a single integer, which is a prescribed coefficient,
+        or a pair `(i,j)` in which `i` is a coefficient which is prescribed modulo `j`.
+        Unless `d` is even and `sign` is 1, the values of `j` are required to be monotone
+        under reverse divisibility (that is, the first value must be a multiple of the second
+        and so on, with omitted values taken to be 0).
+
         """
-        if P0 is None:
-            self.pol = PolynomialRing(QQ, name='x')
-            x = self.pol.gen()
-            if d%2==0:
-                if sign==1:
-                    d2 = d//2
-                    num_cofactor = 0
-                else:
-                    d2 = d//2 - 1
-                    num_cofactor = 3
-            else:
+        self.pol = PolynomialRing(QQ, name='x')
+        x = self.pol.gen()
+        d = Integer(d)
+        if sign != 1 and sign != -1:
+            return ValueError("Invalid sign")
+        if d%2==0:
+            if sign==1:
                 d2 = d//2
-                if sign==1: num_cofactor = 1
-                else: num_cofactor = 2
-            n = 1
-            coeffsign = 1
-            Q0 = x**d2
-            try:
-                leadlist = list(lead)
-            except TypeError:
-                leadlist = [lead]
-            if modlist is None:
-                modlist = [0 for _ in range(len(leadlist))]
-            modlist += [1 for _ in range(d2+1-len(modlist))]
+                num_cofactor = 0
+            else:
+                d2 = d//2 - 1
+                num_cofactor = 3
         else:
-            self.pol = P0.parent()
-            x = self.pol.gen()
-            Q0, cofactor, q = P0.trace_polynomial()
-            num_cofactor = [1, x+q.sqrt(), x-q.sqrt(), x**2-q].index(cofactor)
-            coeffsign = cmp(Q0.leading_coefficient(), 0)
-            Q0 *= coeffsign
-            lead = Q0.leading_coefficient()
-            d2 = Q0.degree()
-            modlist += [modlist[-1] for _ in range(d2+1 - len(modlist))]
-        self.process = dfs_manager(d2, num_threads)
-        self.process.populate(n, lead, coeffsign, q, num_cofactor, 
-                                     num_threads, modlist, node_limit, Q0)
+            d2 = d//2
+            if sign==1: num_cofactor = 1
+            else: num_cofactor = 2
+        try:
+            leadlist = list(lead)
+        except TypeError:
+            leadlist = [(lead, 0)]
+        coefflist = []
+        modlist = []
+        for i in leadlist:
+            try:
+                (j,k) = i
+            except TypeError:
+                (j,k) = (i,0)
+            j = Integer(j)
+            k = Integer(k)
+            if len(modlist) == 0 and k != 0:
+                raise ValueError("Leading coefficient must be specified exactly")
+            if num_cofactor != 0 and len(modlist) > 0 and modlist[-1]%k != 0:
+                raise ValueError("Invalid moduli")
+            coefflist.append(j)
+            modlist.append(k)
+        for _ in range(d2+1-len(coefflist)):
+            coefflist.append(0)
+            modlist.append(1)
+        coeffsign = cmp(coefflist[0], 0)
+        coefflist = map(lambda x: x*coeffsign, coefflist)
+        coefflist.reverse()
+        self.process = dfs_manager(d2, q, coefflist, modlist, coeffsign, num_cofactor, 
+                                     (-1 if node_limit is None else node_limit), num_threads)
         self.ans = []
 
     def __iter__(self):
@@ -316,13 +298,18 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
         [x^5 - 1]
         
     """
-    try:
-        modlist = list(modulus)
-    except TypeError:
-        modlist = [modulus]
-    modlist = [0 for _ in range(n)] + modlist
+    pol = P0.parent()
+    x = pol.gen()
+    Q0, cofactor, q = P0.trace_polynomial()
+#    num_cofactor = [1, x+q.sqrt(), x-q.sqrt(), x**2-q].index(cofactor)
+    d = Q0.degree()
+    coefflist = list(Q0)
+    coefflist.reverse()
+    modlist = [0 for _ in range(n)] + [modulus for _ in range(d+1-n)]
+    lead = [(coefflist[i], modlist[i]) for i in range(d+1)]
 
-    temp = WeilPolynomials(None, None, None, None, P0, modlist, node_limit, num_threads)
+    temp = WeilPolynomials(P0.degree(), q, cofactor.constant_coefficient().sign(),
+                           lead, node_limit, num_threads)
     ans = []
     anslen = 0
     for i in temp:
