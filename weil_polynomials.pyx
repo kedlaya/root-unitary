@@ -20,20 +20,19 @@ TODO:
 #cinclude $SAGE_LOCAL/include/flint/
 #clib gomp
 #cargs -fopenmp
-#cfile all_roots_in_interval.c
+#cfile all_real_roots.c
 #cfile power_sums.c
 
-from cpython cimport array
+cimport cython
 from cython.parallel import prange
 from libc.stdlib cimport malloc, free
-cimport cython
 
-from sage.rings.integer cimport Integer
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
-from sage.libs.gmp.types cimport *
-from sage.libs.gmp.mpz cimport *
-from sage.libs.flint.types cimport *
+
+from sage.rings.integer cimport Integer
+from sage.libs.gmp.types cimport mpz_t
+from sage.libs.gmp.mpz cimport mpz_set
 from sage.libs.flint.fmpz cimport *
 from sage.libs.flint.fmpz_vec cimport *
 
@@ -46,7 +45,7 @@ cdef extern from "power_sums.h":
         long node_count
         fmpz *sympol # Holds a return value
 
-    ps_static_data_t *ps_static_init(int d, int q, int coeffsign, fmpz_t lead,
+    ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
     		     		     int cofactor, 
                                      fmpz *modlist,
                                      long node_limit)
@@ -66,9 +65,10 @@ cdef class dfs_manager:
     cdef ps_dynamic_data_t **dy_data_buf
 
     def __cinit__(self, int d, q, coefflist, modlist, int sign, int cofactor,
-                        int node_limit, int num_threads):
+                        long node_limit, int num_threads):
         cdef int i
         cdef fmpz_t temp_lead
+        cdef fmpz_t temp_q
         cdef fmpz *temp_array
         self.count = 0
         self.d = d
@@ -79,18 +79,23 @@ cdef class dfs_manager:
         self.node_limit = node_limit
         fmpz_init(temp_lead)
         fmpz_set_mpz(temp_lead, Integer(coefflist[-1]).value)
+        fmpz_init(temp_q)
+        fmpz_set_mpz(temp_q, Integer(q).value)
         temp_array = _fmpz_vec_init(d+1)
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(modlist[i]).value)
-        self.ps_st_data = ps_static_init(d, q, sign, temp_lead, cofactor,
+        self.ps_st_data = ps_static_init(d, temp_q, sign, temp_lead, cofactor,
                                     temp_array, node_limit)
         fmpz_clear(temp_lead)
+        fmpz_clear(temp_q)
+
+        # Initialize the thread pool, but assign work to only one thread.
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(coefflist[i]).value)
         self.dy_data_buf[0] = ps_dynamic_init(d, temp_array)
-        _fmpz_vec_clear(temp_array, d+1)
         for i in range(1, self.num_threads):
             self.dy_data_buf[i] = NULL
+        _fmpz_vec_clear(temp_array, d+1)
 
     def __init__(self, d, q, coefflist, modlist, sign, cofactor,
                         node_limit, num_threads):
@@ -126,9 +131,10 @@ cdef class dfs_manager:
             for i in range(np):
                 if self.dy_data_buf[i] != NULL:
                     if self.dy_data_buf[i].flag > 0:
+                        # This thread found a solution.
                         t += 1
                         l = []
-                        # Convert a vector of fmpz's into mpz's and then Integers.
+                        # Convert a vector of fmpz's into mpz's, then Integers.
                         for j in range(2*d+3):
                             flint_mpz_init_set_readonly(z, &self.dy_data_buf[i].sympol[j])
                             temp = Integer(0)
@@ -139,6 +145,7 @@ cdef class dfs_manager:
                     elif self.dy_data_buf[i].flag < 0:
                         raise RuntimeError("Node limit (" + str(self.node_limit) + ") exceeded")
                     else:
+                        # This thread completed its work.
                         self.count += self.dy_data_buf[i].node_count
                         ps_dynamic_clear(self.dy_data_buf[i])
                         self.dy_data_buf[i] = NULL
@@ -259,6 +266,9 @@ class WeilPolynomials():
         return self.pol(self.ans.pop())
 
     def node_count(self):
+        r"""
+        Return the number of terminal nodes found in the tree, excluding actual solutions.
+        """
         if self.process is None:
             return self.count
         return self.process.count

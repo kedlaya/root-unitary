@@ -4,15 +4,15 @@
 #include <fmpq_mat.h>
 #include <arith.h>
 
-#include "all_roots_in_interval.h"
+#include "all_real_roots.h"
 
-/* Primary data structures.
+/* Primary data structures for tree exhaustion.
  */
 
 typedef struct ps_static_data {
-  int d, sign, q;
+  int d, sign;
   long node_limit;
-  fmpz_t a, b, lead;
+  fmpz_t a, b, lead, q;
   fmpz_mat_t binom_mat;
   fmpz *cofactor;
   fmpz *modlist;
@@ -57,7 +57,7 @@ void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
    For efficiency, we do not assume a and b are canonical;
    we must thus be careful about signs. */
 void fmpq_floor_quad(fmpz_t res, const fmpq_t a,
-		     const fmpq_t b, int q) {
+		     const fmpq_t b, const fmpz_t q) {
   if (b==NULL) fmpq_floor(res, a);
   else {
     fmpz *anum = fmpq_numref(a);
@@ -71,7 +71,7 @@ void fmpq_floor_quad(fmpz_t res, const fmpq_t a,
     
     fmpz_mul(res, aden, bnum);
     fmpz_mul(res, res, res);
-    fmpz_mul_si(res, res, q);
+    fmpz_mul(res, res, q);
     if (bnum_s*bden_s >= 0) fmpz_sqrt_f(res, res);
     else {
       fmpz_sqrt_c(res, res);
@@ -87,7 +87,7 @@ void fmpq_floor_quad(fmpz_t res, const fmpq_t a,
 
 /* Set res to ceil(a + b sqrt(q)). */
 void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
-		     const fmpq_t b, int q) {
+		     const fmpq_t b, const fmpz_t q) {
   if (b==NULL) fmpq_ceil(res, a);
   else {
     fmpz *anum = fmpq_numref(a);
@@ -101,7 +101,7 @@ void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
 
     fmpz_mul(res, aden, bnum);
     fmpz_mul(res, res, res);
-    fmpz_mul_si(res, res, q);
+    fmpz_mul(res, res, q);
     if (bnum_s*bden_s >= 0) fmpz_sqrt_c(res, res);
     else {
       fmpz_sqrt_f(res, res);
@@ -117,7 +117,7 @@ void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
 
 /* Memory allocation and release.
  */
-ps_static_data_t *ps_static_init(int d, int q, int coeffsign, fmpz_t lead,
+ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 				 int cofactor, 
 				 fmpz *modlist,
 				 long node_limit) {
@@ -135,17 +135,18 @@ ps_static_data_t *ps_static_init(int d, int q, int coeffsign, fmpz_t lead,
 
   st_data->d = d;
   st_data->sign = coeffsign;
-  st_data->q = q;
+  fmpz_init(st_data->q);
+  fmpz_set(st_data->q, q);
   st_data->node_limit = node_limit;
 
   fmpz_init(st_data->a);
   fmpz_init(st_data->b);
-  if (q==1) {
+  if (fmpz_is_one(st_data->q)) {
     fmpz_set_si(st_data->a, -2);
     fmpz_set_si(st_data->b, 2);
   } else {
     fmpz_set_si(st_data->a, 0);
-    fmpz_set_si(st_data->b, 4*q);    
+    fmpz_mul_si(st_data->b, st_data->q, 4);    
   }
   fmpz_init(st_data->lead);
   fmpz_set(st_data->lead, lead);
@@ -159,14 +160,14 @@ ps_static_data_t *ps_static_init(int d, int q, int coeffsign, fmpz_t lead,
     break;
 
   case 1: /* Cofactor x+sqrt(q) */
-    fmpz_set_si(st_data->cofactor, q);
+    fmpz_set(st_data->cofactor, st_data->q);
     fmpz_sqrt(st_data->cofactor, st_data->cofactor);
     fmpz_set_si(st_data->cofactor+1, 1);
     fmpz_set_si(st_data->cofactor+2, 0);
     break;
 
   case 2:  /* Cofactor x-sqrt(q) */
-    fmpz_set_si(st_data->cofactor, q);
+    fmpz_set(st_data->cofactor, st_data->q);
     fmpz_sqrt(st_data->cofactor, st_data->cofactor);
     fmpz_neg(st_data->cofactor, st_data->cofactor);
     fmpz_set_si(st_data->cofactor+1, 1);
@@ -174,7 +175,7 @@ ps_static_data_t *ps_static_init(int d, int q, int coeffsign, fmpz_t lead,
     break;
 
   case 3: /* Cofactor x^2-q */
-    fmpz_set_si(st_data->cofactor, -q);
+    fmpz_neg(st_data->cofactor, st_data->q);
     fmpz_set_si(st_data->cofactor+1, 0);
     fmpz_set_si(st_data->cofactor+2, 1);
     break;
@@ -215,8 +216,8 @@ ps_static_data_t *ps_static_init(int d, int q, int coeffsign, fmpz_t lead,
 	fmpq_div_fmpz(k1, k1, m);
 	fmpz_set_ui(m, 2);
 	fmpq_mul_fmpz(k1, k1, m);
-	if (q != 1 && i%2==j%2) {
-	  fmpz_set_ui(m, q);
+	if (!fmpz_is_one(st_data->q) && i%2==j%2) {
+	  fmpz_set(m, st_data->q);
 	  fmpz_pow_ui(m, m, (i-j)/2); 
 	  fmpq_mul_fmpz(k1, k1, m);
 	}
@@ -347,27 +348,13 @@ ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data) {
   return(NULL);
 }
 
-/*
-void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data) {
-  int i,j;
-  fmpz *sympol = dy_data->sympol;
-  for (i=0; i<=2*dy_data->d+2; i++)
-    Q[i] = fmpz_get_si(sympol+i);
-}
-*/
-
-/*
-long extract_count(ps_dynamic_data_t *dy_data) {
-  return(dy_data->count);
-}
-*/
-
 void ps_static_clear(ps_static_data_t *st_data) {
   if (st_data == NULL) return(NULL);
   int i, d = st_data->d;
   fmpz_clear(st_data->a);
   fmpz_clear(st_data->b);
   fmpz_clear(st_data->lead);
+  fmpz_clear(st_data->q);
   _fmpz_vec_clear(st_data->cofactor, 3);
   fmpz_mat_clear(st_data->binom_mat);
   _fmpq_vec_clear(st_data->f, d+1);
@@ -406,9 +393,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   int d = st_data->d;
   int n = dy_data->n;
   int k = d+1-n;
-  int q = st_data->q;
   fmpz *modulus = st_data->modlist + n-1;
   fmpz *pol = dy_data->pol;
+  fmpz *q = st_data->q;
   fmpq *f;
     
   /* Allocate temporary variables from persistent scratch space. */
@@ -498,9 +485,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   for (i=0; i<=k-1; i++)
     fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
 
-  
-    r = _fmpz_poly_all_roots_real(tpol, k, dy_data->w+d+1);
-    if (r<=0) return(r-1);
+  /* TODO: try using real root isolation instead of Sturm sequences. */
+  r = _fmpz_poly_all_real_roots(tpol, k, dy_data->w+d+1);
+  if (r<=0) return(r-1);
     
   /* If r=1 and k>d, no further coefficients to bound. */
   if (k>d) return(1);
@@ -529,7 +516,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
   else if (k%2==0) {
     fmpq_set_si(t1q, 2*d, 1);
-    fmpz_set_si(t0z, q);
+    fmpz_set(t0z, q);
     fmpz_pow_ui(t0z, t0z, k/2);
     fmpq_mul_fmpz(t1q, t1q, t0z);
     fmpq_sub(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
@@ -539,7 +526,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   } else {
     fmpq_zero(t1q); 
     fmpq_set_si(t2q, 2*d, 1);
-    fmpz_set_si(t0z, q);
+    fmpz_set(t0z, q);
     fmpz_pow_ui(t0z, t0z, k/2);
     fmpq_mul_fmpz(t2q, t2q, t0z);
     set_upper_quad(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
@@ -577,7 +564,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpz_set(tpol2+i, tpol+2*i);
     for (i=0; 2*i+1 <= k; i++)
       fmpz_set(tpol3+i, tpol+2*i+1);
-    fmpz_set_si(t2z, 4*q);
+    fmpz_mul_si(t2z, q, 4);
     _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, t2z);
     _fmpz_poly_evaluate_fmpz(t1z, tpol3, (k+1) / 2, t2z);
     fmpz_mul_si(t1z, t1z, 2);
