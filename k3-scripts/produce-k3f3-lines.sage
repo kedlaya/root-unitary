@@ -7,9 +7,10 @@ t = time.time()
 c = 0
 for i in range(1, 11):
     wp = WeilPolynomials(2*i, 3, sign=1, lead=3, num_threads=512)
-    ans += [j for j in wp if not j.has_cyclotomic_factor()]
+    l = [j for j in wp if not j.has_cyclotomic_factor()]
+    ans += l
     c += wp.count
-    print len(temp), "polynomials added"
+    print len(l), "polynomials added"
     print c, "nodes enumerated"
     print "time so far: ", time.time() - t, " seconds"
 

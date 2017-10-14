@@ -1,0 +1,19 @@
+This directory consists of various test scripts for the WeilPolynomials package.
+These include some tests based on the paper
+
+K.S. Kedlaya, Search techniques for root-unitary polynomials, in 
+    Computational Arithmetic Geometry, Contemporary Mathematics 463, 
+    American Mathematical Society, 2008, 71-82.
+
+roots_on_unit_circle.sage: Provide a wrapper around WeilPolynomials to
+    duplicate the call syntax used in the 2008 paper.
+
+search-test.sage: Reproduce the computations from the 2008 paper.
+
+test-roots-from-file.sage: Test whether lines in a file define Weil polynomials.
+
+aux.sage: Miscellaneous auxiliary functions which are no longer used.
+    Some of these have been incorporated into Sage.
+
+
+
