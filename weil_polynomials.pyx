@@ -244,8 +244,10 @@ class WeilPolynomials():
         coeffsign = cmp(coefflist[0], 0)
         coefflist = map(lambda x: x*coeffsign, coefflist)
         coefflist.reverse()
+	if node_limit is None:
+	    node_limit = -1
         self.process = dfs_manager(d2, q, coefflist, modlist, coeffsign, num_cofactor, 
-                                     (-1 if node_limit is None else node_limit), num_threads)
+                                     node_limit, num_threads)
         self.ans = []
 
     def __iter__(self):
