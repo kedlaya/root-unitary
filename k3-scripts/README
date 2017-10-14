@@ -3,6 +3,14 @@ to identify candidates for the zeta functions of K3 surfaces over finite
 fields. Note that some of these scripts depend on prescribed_roots.sage in the
 parent directory, so that script should be loaded first.
 
+Some of these (in an earlier version) were used to generate data for the paper:
+
+K.S. Kedlaya and A.V. Sutherland, A census of zeta functions of
+    quartic K3 surfaces over F_2, LMS Journal of Computing 19
+    special issue A (2016), 1-11.
+
+See the directory k3-quartic-f2 for additional data and scripts.
+
 produce-k3f1-lines.sage: Script to generate monic integer polynomials of 
 degrees 1, 3, ..., 21 with all roots on the unit circle.
 
@@ -23,4 +31,5 @@ produce-k3f3-full-filtered.sage: Script to reconstructed full zeta functions of
 K3 surfaces over F_3 from the transcendental parts, then apply the Artin-Tate
 and nonnegativity conditions.
 
-
+produce k3-f5-lines.sage: Script to produce candidate zeta functions of K3
+surfaces over F_5. To save space, we only record the transcendental part.

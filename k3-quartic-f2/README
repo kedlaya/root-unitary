@@ -1,10 +1,11 @@
 These files accompany the paper
 
 K.S. Kedlaya and A.V. Sutherland, A census of zeta functions of
-    quartic K3 surfaces over F_2, preprint (2015).
+    quartic K3 surfaces over F_2, LMS Journal of Computing 19
+    special issue A (2016), 1-11.
 
-Note that some scripts depend on "prescribed_roots.sage" in the parent
-directory, which must be loaded first.
+See also the directory k3-scripts for the scripts used to produce the files
+k3f2-lines.txt and k3f2-full-filtered.txt.
 
 =======
 Files in this directory:
