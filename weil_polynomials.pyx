@@ -54,7 +54,7 @@ cdef extern from "power_sums.h":
 
 # Data structure to manage parallel depth-first search.
 cdef class dfs_manager:
-    cdef public long count   
+    cdef public long count
     cdef int d
     cdef int num_threads
     cdef long node_limit
@@ -234,7 +234,7 @@ class WeilPolynomials():
             k = Integer(k)
             if len(modlist) == 0 and k != 0:
                 raise ValueError("Leading coefficient must be specified exactly")
-            if num_cofactor != 0 and len(modlist) > 0 and modlist[-1]%k != 0:
+            if num_cofactor != 0 and len(modlist) > 0 and ((not k and modlist[-1]) or (k and modlist[-1]%k != 0)):
                 raise ValueError("Invalid moduli")
             coefflist.append(j)
             modlist.append(k)

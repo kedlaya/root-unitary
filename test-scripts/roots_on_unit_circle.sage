@@ -65,4 +65,4 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
                 break    
     if not return_nodes:
         return ans
-    return(ans, temp.count)
+    return(ans, temp.node_count())
