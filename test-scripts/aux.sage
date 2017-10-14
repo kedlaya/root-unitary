@@ -1,6 +1,19 @@
 """
 Polynomial filter functions
 """
+def ej_test(pol): # Elsenhans-Jahnel condition based on Artin-Tate formula
+    """
+    Test a polynomial for the Elsenhans-Jahnel condition.
+
+    EXAMPLES::
+
+    """
+    polRing = pol.parent()
+    x = polRing.gen()
+
+    pol1 = pol[0].sign() * pol // (1-x)^pol.ord(1-x)
+    return(pol1(-1).is_square())
+
 def has_cyclotomic_factor(pol, assume_irreducible=False):
     """
     Return True if the given polynomial has a nontrivial cyclotomic factor.
