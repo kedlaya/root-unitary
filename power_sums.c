@@ -716,7 +716,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	    for (j=0; j<=i; j++) {
 	      fmpz_addmul(sympol+2*d-(d-i+2*j), pol+i, temp);
 	      if (j<i) {
-		fmpz_mul_si(temp, temp, st_data->q);
+		fmpz_mul(temp, temp, st_data->q);
 		fmpz_mul_si(temp, temp, i-j);
 		fmpz_divexact_si(temp, temp, j+1);
 	      }
