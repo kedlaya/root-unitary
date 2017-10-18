@@ -1,5 +1,5 @@
-This package implements a search strategy for root-unitary polynomials 
-(polynomials with all roots on the unit circle) described in:
+This package implements a search strategy for Weil polynomials
+(integer polynomials with all roots on a fixed circle) described in:
 
 K.S. Kedlaya, Search techniques for root-unitary polynomials, in 
     Computational Arithmetic Geometry, Contemporary Mathematics 463, 
@@ -8,36 +8,32 @@ K.S. Kedlaya, Search techniques for root-unitary polynomials, in
 plus some additional improvements described in:
 
 K.S. Kedlaya and A.V. Sutherland, A census of zeta functions of
-    quartic K3 surfaces over F_2, preprint (2015).
+    quartic K3 surfaces over F_2, LMS Journal of Computing 19
+    special issue A (2016), 1-11.
 
-There are currently six source files:
+The source files for the main package are:
 
--- prescribed_roots.sage: Sage code for user interaction
--- prescribed_roots_pyx.spyx: Cython intermediate layer wrapping C code
--- all_roots_in_interval.c: C code, using FLINT library, to test whether 
-    a polynomial has its roots in a given interval (Sturm's theorem)
+-- weil_polynomials.pyx: Cython source file for Sage, providing the
+   class WeilPolynomials to iterate over Weil polynomials
+-- all_real_roots.c: C code (using FLINT) to test whether 
+    a polynomial has all real roots (Sturm's theorem)
 -- all_roots_in_interval.h: associated header file
--- power_sums.c: C code, using FLINT library, to enumerate the tree based on
-    Sturm's theorem and additional bounds computed from power sums
+-- power_sums.c: C code (using FLINT) to enumerate the tree based on
+    Rolle's theorem, Sturm's theorem, and bounds computed from power sums
 -- power_sums.h: associated header file
 
 From a Sage prompt, type
-  sage: load("prescribed_roots.sage")
+  sage: load("weil_polynomials.pyx")
 and everything should compile automatically.
 
-There is one test script in this directory:
-
--- search-test.sage: Run computations from the 2008 paper
-
-The scripts in the k3-scripts directory generate certain lists associated to
-K3 surfaces. See the README file in that directory for more information.
-
-The k3-quartic-f2 directory contains scripts and data files associated to
-smooth quartic K3 surfaces over F_2. See the README file in that directory
-and the paper "A census of zeta functions..." for more information.
+There are also some test scripts. See the READMDE files in the following directories:
+-- test-scripts: Miscellaneous tests
+-- av-scripts: Build tables associated to abelian varieties
+-- k3-scripts: Build tables associated to K3 surfaces
+-- k3-quartic-f2: Scripts and data associated to smooth quartic surfaces over F2
 
 POSSIBLE TODO LIST: 
 -- Improve parallel computation in the current Cython model.
 -- Port from Sage (based on Python) to Nemo (based on Julia).
--- Add some floating-point computations to isolate roots, thus reducing
-    the dependence on Sturm's theorem.
+-- Use real root isolation instead of (or in addition to) Sturm's theorem. One
+   possible implementation, again using FLINT, is available in e-antic.
