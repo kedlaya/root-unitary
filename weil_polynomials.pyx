@@ -1,3 +1,20 @@
+#*****************************************************************************
+#       Copyright (C) 2017 Kiran S. Kedlaya <kskedl@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#                  http://www.gnu.org/licenses/
+#*****************************************************************************
+
+#encoding=utf8
+#distutils: language = c
+#distutils: libraries = gomp
+#distutils: sources = power_sums.c
+#distutils: include_dirs = /home/kedlaya/sage/local/include/flint .
+#distutils: extra_compile_args = -fopenmp
+
 r"""
 Iterator for Weil polynomials.
 
@@ -22,22 +39,6 @@ AUTHOR:
                    pass multiprecision integers to/from C
 """
 
-#clang c
-#cinclude $SAGE_LOCAL/include/flint/
-#clib gomp
-#cargs -fopenmp
-#cfile power_sums.c
-
-#*****************************************************************************
-#       Copyright (C) 2017 Kiran S. Kedlaya <kskedl@gmail.com>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 2 of the License, or
-# (at your option) any later version.
-#                  http://www.gnu.org/licenses/
-#*****************************************************************************
-
 cimport cython
 from cython.parallel import prange
 from libc.stdlib cimport malloc, free
@@ -50,6 +51,7 @@ from sage.libs.gmp.types cimport mpz_t
 from sage.libs.gmp.mpz cimport mpz_set
 from sage.libs.flint.fmpz cimport *
 from sage.libs.flint.fmpz_vec cimport *
+from cysignals.signals cimport sig_on, sig_off
 
 cdef extern from "power_sums.h":
     ctypedef struct ps_static_data_t:
@@ -61,9 +63,7 @@ cdef extern from "power_sums.h":
         fmpz *sympol    # Return value (a polynomial)
 
     ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-    		     		     int cofactor, 
-                                     fmpz *modlist,
-                                     long node_limit)
+    		     		     int cofactor, fmpz *modlist, long node_limit)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist)
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
     void ps_static_clear(ps_static_data_t *st_data)
@@ -140,9 +140,11 @@ cdef class dfs_manager:
             t = 0
             if np>1: k = k%(np-1) + 1
             with nogil: # Drop GIL for this parallel loop
+                sig_on()
                 for i in prange(np, schedule='dynamic', num_threads=np):
                     if self.dy_data_buf[i] != NULL:
                         next_pol(self.ps_st_data, self.dy_data_buf[i])
+                sig_off()
             for i in range(np):
                 if self.dy_data_buf[i] != NULL:
                     if self.dy_data_buf[i].flag > 0:
