@@ -210,9 +210,7 @@ void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
 
 /* Memory allocation and initialization. */
 ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-				 int cofactor, 
-				 fmpz *modlist,
-				 long node_limit) {
+				 int cofactor, fmpz *modlist, long node_limit) {
   int i, j;
   ps_static_data_t *st_data;
   fmpz_poly_t pol;

@@ -1,7 +1,3 @@
-#include <fmpz_poly.h>
-#include <fmpq.h>
-#include <fmpq_mat.h>
-
 typedef struct ps_static_data {
   int d, sign;
   long node_limit;

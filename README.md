@@ -37,7 +37,6 @@ There are also some test scripts. See the READMDE files in the following directo
 
 POSSIBLE TODO LIST: 
 -- Improve parallel computation in the current Cython model.
--- Add csignals support for Control-C interruption.
 -- Add a port from Sage (based on Python) to Nemo (based on Julia).
 -- Use real root isolation instead of (or in addition to) Sturm's theorem. One
    possible implementation, again using FLINT, is available in e-antic.
