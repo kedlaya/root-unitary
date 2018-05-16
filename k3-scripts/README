@@ -1,6 +1,6 @@
 This directory includes scripts, based on the code in the parent directory,
 to identify candidates for the zeta functions of K3 surfaces over finite 
-fields. Note that some of these scripts depend on prescribed_roots.sage in the
+fields. Note that some of these scripts depend on weil_polynomials.pyx in the
 parent directory, so that script should be loaded first.
 
 Some of these (in an earlier version) were used to generate data for the paper:
