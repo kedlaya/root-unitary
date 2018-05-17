@@ -132,6 +132,9 @@ def create_line(Lpoly, polydata, simple = True):
         factor, power = factors[0]
         invs, places, newton_slopes = find_invs_places_and_slopes(polydata.p, polydata.r, factor)
         e = lcm([a.denominator() for a in invs])
+        # When q is not a square, the cases 1-qx^2 and 1+qx^2 must be handled separately.
+        if (not is_square(polydata.q)) and factor.degree() == 2 and factor[1] == 0:
+            e = 2
         if e != power:
             return ""
         angle_numbers = map(float, sorted(angles(Lpoly)))
