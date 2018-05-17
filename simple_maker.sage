@@ -133,7 +133,7 @@ def create_line(Lpoly, polydata, simple = True):
         invs, places, newton_slopes = find_invs_places_and_slopes(polydata.p, polydata.r, factor)
         e = lcm([a.denominator() for a in invs])
         # When q is not a square, the case 1-qx^2 must be handled separately.
-        if (not is_square(polydata.q)) and factor.degree() == 2 and factor[1] == 0 and factor[2]<0:
+        if (not is_square(polydata.q)) and factor.degree() == 2 and factor[1] == 0 and factor[0] < 0:
             e = 2
         if e != power:
             return ""
