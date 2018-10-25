@@ -1,5 +1,5 @@
 #*****************************************************************************
-#       Copyright (C) 2017 Kiran S. Kedlaya <kskedl@gmail.com>
+#       Copyright (C) 2018 Kiran S. Kedlaya <kskedl@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -218,10 +218,9 @@ class WeilPolynomials():
         which will be the leading coefficient of all returned polynomials. 
         Otherwise, each entry is parsed either as a single integer, which is a 
         prescribed coefficient, or a pair `(i,j)` in which `i` is a coefficient
-        which is prescribed modulo `j`. Unless `d` is even and `sign` is 1, the 
-        values of `j` are required to be monotone under reverse divisibility 
-        (that is, the first value must be a multiple of the second and so on, 
-        with omitted values taken to be 0).
+        which is prescribed modulo `j`. The values of `j` are required to be monotone 
+        under reverse divisibility; that is, the first value must be a multiple of 
+        the second and so on, with omitted values taken to be 0.
 
         """
         self.pol = PolynomialRing(QQ, name='x')
@@ -237,6 +236,8 @@ class WeilPolynomials():
                 d2 = d//2 - 1
                 num_cofactor = 3
         else:
+            if not q.is_square():
+                return ValueError("Degree must be even if q is not a square")
             d2 = d//2
             if sign==1: num_cofactor = 1
             else: num_cofactor = 2
@@ -255,11 +256,24 @@ class WeilPolynomials():
             k = Integer(k)
             if len(modlist) == 0 and k != 0:
                 raise ValueError("Leading coefficient must be specified exactly")
-            if num_cofactor != 0 and len(modlist) > 0 and \
-            ((not k and modlist[-1]) or (k and modlist[-1]%k != 0)):
+            if len(modlist) > 0 and ((k != 0 and modlist[-1]%k != 0) or (k == 0 and modlist[-1] != 0)):
                 raise ValueError("Invalid moduli")
             coefflist.append(j)
             modlist.append(k)
+        # Remove cofactor from initial coefficients
+        if num_cofactor == 1: #cofactor x + sqrt(q)
+            for i in range(1, len(coefflist)):
+                coefflist[i] -= coefflist[i-1]*q.sqrt()
+        elif num_cofactor == 2: #cofactor x + sqrt(q)
+            for i in range(1, len(coefflist)):
+                coefflist[i] += coefflist[i-1]*q.sqrt()
+        elif num_cofactor == 3: #cofactor x^2 - q
+            for i in range(2, len(coefflist)):
+                coefflist[i] += coefflist[i-2]*q
+        # Asymmetrize initial coefficients
+        for i in range(len(coefflist)):
+            for j in range(1, (len(coefflist)-i+1)//2):
+                coefflist[i+2*j] -= (d2-i).binomial(j)*coefflist[i]
         for _ in range(d2+1-len(coefflist)):
             coefflist.append(0)
             modlist.append(1)

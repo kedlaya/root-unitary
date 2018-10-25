@@ -30,7 +30,7 @@ From a Sage prompt, type
 ```
 and everything should compile automatically.
 
-There are also some test scripts. See the READMDE files in the following directories:
+There are also some test scripts. See the README files in the following directories:
 * test-scripts: Miscellaneous tests
 * av-scripts: Build tables associated to abelian varieties
 * k3-scripts: Build tables associated to K3 surfaces
