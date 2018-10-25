@@ -198,6 +198,15 @@ class WeilPolynomials():
         sage: ans2.sort()
         sage: print(ans1 == ans2)
         True
+
+    Generating Weil polynomials with prescribed initial coefficients::
+
+        sage: iter = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+        sage: iter.next()
+        3*x^10 + x^9 + x^8 - x^6 - 3*x^5 - x^4 + x^2 + x + 3
+        sage: iter = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
+        sage: iter.next()
+        3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
     """
     def __init__(self, d, q, sign=1, lead=1, node_limit=None, num_threads=1):
         r"""
@@ -228,6 +237,8 @@ class WeilPolynomials():
         d = Integer(d)
         if sign != 1 and sign != -1:
             return ValueError("Invalid sign")
+        if not q.is_integer() or q<=0:
+            return ValueError("q must be a positive integer")
         if d%2==0:
             if sign==1:
                 d2 = d//2
