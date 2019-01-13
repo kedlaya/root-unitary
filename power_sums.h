@@ -5,6 +5,7 @@ typedef struct ps_static_data {
   fmpz_mat_t binom_mat;
   fmpz *cofactor;
   fmpz *modlist;
+  fmpq_mat_t *hausdorff_mats;
   fmpq_mat_t *sum_mats;
   fmpq_t *f;
 } ps_static_data_t;
