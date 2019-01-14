@@ -760,31 +760,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       }
     }
     
-  if (q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
-
-    /* Additional quadratic conditions. */
-    /* These should eventually be subsumed by log convexity. */
-    /* Warning: t1q, t2q, t3q are being reassigned, and hence no longer point to scratch memory. */
-    /*    t1q = fmpq_mat_entry(dy_data->sum_prod, 1, 0);
-    t2q = fmpq_mat_entry(dy_data->sum_prod, 2, 0);
-    t3q = fmpq_mat_entry(dy_data->sum_prod, 3, 0);
-    if (fmpq_sgn(t3q) > 0) { // t0q <- t1q - t2q^2/t3q
-      fmpq_mul(t0q, t2q, t2q);
-      fmpq_div(t0q, t0q, t3q);
-      fmpq_sub(t0q, t1q, t0q);
-      change_upper(t0q, NULL);
-    }
-    t1q = fmpq_mat_entry(dy_data->sum_prod, 4, 0);
-    t2q = fmpq_mat_entry(dy_data->sum_prod, 5, 0);
-    t3q = fmpq_mat_entry(dy_data->sum_prod, 6, 0);
-    if (((k%2 == 0) && (fmpq_sgn(t3q) > 0)) || ((k%2 == 1) && (fmpq_sgn(t3q) < 0))) {
-      fmpq_mul(t0q, t2q, t2q);
-      fmpq_div(t0q, t0q, t3q);
-      fmpq_sub(t0q, t1q, t0q);
-      if (k%2 == 0) change_upper(t0q, NULL);
-      else change_lower(t0q, NULL);
-      } */
-  }
   if (fmpz_cmp(lower, upper) > 0) return(0);
     
   /* Set the new upper bound. Note that modulus>0 at this point. */
