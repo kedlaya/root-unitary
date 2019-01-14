@@ -574,6 +574,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   for (i=0; i<=k-1; i++)
     fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
 
+  /* Condition: by Rolle's theorem, tpol must have real roots. */
   /* TODO: try using real root isolation instead of Sturm sequences. */
   r = _fmpz_poly_all_real_roots(tpol, k, dy_data->w+d+1);
   if (r<=0) return(r-1);
@@ -594,7 +595,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->sum_col, k-i, 0));
   }
   
-  /* First, bound the symmetrized power sums. */
+  /* Condition: the k-th symmetrized power sum must lie in [-2, 2]. */
   f = st_data->f + n-1;
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
 
@@ -626,12 +627,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     set_lower(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
     }
     
-  /* Second, apply Descartes' rule of signs at -2*sqrt(q), +2*sqrt(q);
-     this enforces the roots being in the correct interval (if real). */
-  
-  fmpq_set_si(t3q, -k, 1);
-  fmpq_div_fmpz(t3q, t3q, pol+d);
-
   /* Currently tpol is the divided n-th derivative of pol.
      Undo one derivative, then evaluate at the endpoints. */
   for (i=k; i>=1; i--) {
@@ -640,6 +635,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
   fmpz_set(tpol, pol+d-k);
   
+  /* Condition: Descartes' rule of signs applies at at -2*sqrt(q), +2*sqrt(q). */
+  
+  fmpq_set_si(t3q, -k, 1);
+  fmpq_div_fmpz(t3q, t3q, pol+d);
+
   /* if (q_is_1) {
     _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->a);    
     fmpq_mul_fmpz(t1q, t3q, t0z);
@@ -678,21 +678,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       return(1);
   }
 
-  /* Third, if q=1, compute additional bounds using conditions on power sums. 
-  */
-
-  if (q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
-
-    /* Use the Hausdorff moment criterion, imposed by having roots in [-2, 2]. */
-    for (i=0; i<=k; i++) {
-      fmpq_zero(t1q);
-      for (j=0; j<=k; j++)
-	fmpq_addmul(t1q, fmpq_mat_entry(dy_data->sum_col, j, 0),
-		    fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
-      if (i%2==0) change_upper(t1q, NULL);
-      else change_lower(t1q, NULL); 
-    }
-
     /* Use nonnegativity of the Hankel determinant, imposed by having real roots. 
        Todo: find a more efficient way to compute these using orthogonal polynomials. */
     if (k%2==0) {
@@ -720,6 +705,21 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 	fmpq_sub(t0q, t1q, t0q);
 	change_upper(t0q, NULL);
       }
+    }
+
+  /* Third, if q=1, compute additional bounds using conditions on power sums. 
+  */
+
+  if (q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
+
+    /* Use the Hausdorff moment criterion, imposed by having roots in [-2, 2]. */
+    for (i=0; i<=k; i++) {
+      fmpq_zero(t0q);
+      for (j=0; j<=k; j++)
+	fmpq_addmul(t0q, fmpq_mat_entry(dy_data->sum_col, j, 0),
+		    fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
+      if (i%2==0) change_upper(t0q, NULL);
+      else change_lower(t0q, NULL); 
     }
 
     /* Additional quadratic conditions. */
