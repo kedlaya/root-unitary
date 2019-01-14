@@ -678,7 +678,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       return(1);
   }
 
-    /* Use nonnegativity of the Hankel determinant, imposed by having real roots. 
+    /* Condition: the Hankel determinant is nonnegative because all roots are real. 
        Todo: find a more efficient way to compute these using orthogonal polynomials. */
     if (k%2==0) {
       fmpq_mat_one(dy_data->hankel_mat);
@@ -694,25 +694,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       if (fmpq_sgn(t3q) > 0) {
 	fmpq_div(t0q, t0q, t3q);
 	change_upper(t0q, NULL);
-      }
-		  
-      t1q = fmpq_mat_entry(dy_data->sum_col, k, 0);
-      t2q = fmpq_mat_entry(dy_data->sum_col, k-1, 0);
-      t3q = fmpq_mat_entry(dy_data->sum_col, k-2, 0);
-      if (fmpq_sgn(t3q) > 0) { // t0q <- t1q - t2q^2/t3q
-	fmpq_mul(t0q, t2q, t2q);
-	fmpq_div(t0q, t0q, t3q);
-	fmpq_sub(t0q, t1q, t0q);
-	change_upper(t0q, NULL);
-      }
+      } else if (fmpq_sgn(t0q) < 0) return(0);  
     }
-
-  /* Third, if q=1, compute additional bounds using conditions on power sums. 
-  */
 
   if (q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
 
-    /* Use the Hausdorff moment criterion, imposed by having roots in [-2, 2]. */
+    /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
     for (i=0; i<=k; i++) {
       fmpq_zero(t0q);
       for (j=0; j<=k; j++)
