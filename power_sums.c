@@ -704,6 +704,18 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       else change_lower(t1q, NULL); 
     }
 
+    if (k%2==0) {
+      t1q = fmpq_mat_entry(dy_data->sum_col, k, 0);
+      t2q = fmpq_mat_entry(dy_data->sum_col, k-1, 0);
+      t3q = fmpq_mat_entry(dy_data->sum_col, k-2, 0);
+      if (fmpq_sgn(t3q) > 0) { // t0q <- t1q - t2q^2/t3q
+	fmpq_mul(t0q, t2q, t2q);
+	fmpq_div(t0q, t0q, t3q);
+	fmpq_sub(t0q, t1q, t0q);
+	change_upper(t0q, NULL);
+      }
+    }
+
     t1q = fmpq_mat_entry(dy_data->sum_prod, 3, 0);
     t2q = fmpq_mat_entry(dy_data->sum_prod, 4, 0);
     t3q = fmpq_mat_entry(dy_data->sum_prod, 5, 0);
