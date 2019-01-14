@@ -297,14 +297,16 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 
     for (j=0; j<=i; j++)
       for (k=0; k<=i; k++) {
-	  // The coefficient of t^k in (t-2)^j (t+2)^{i-j}.
+	// The coefficient of t^k in (t-2 sqrt(q))^j (t+2 sqrt(q))^{i-j}, rounding down the exponent of q.
 	k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], j, k);
 	for (l=0; l<=j; l++) if (k-l >=0 && k-l<=i-j) {
-	    fmpz_mul(m, fmpz_mat_entry(st_data->binom_mat, j, l), fmpz_mat_entry(st_data->binom_mat, i-j, k-l));
-	    fmpz_mul_2exp(m, m, i-k);
+	    fmpz_mul(m, fmpz_mat_entry(st_data->binom_mat, j, l),
+		     fmpz_mat_entry(st_data->binom_mat, i-j, k-l));
 	    if ((j-l)%2==1) fmpq_neg(m, m);
 	    fmpq_add_fmpz(k1, k1, m);
-	}
+	  }
+	fmpz_mul_2exp(k1, k1, i-k);
+	for (l=0; l<(i-k)/2; l++) fmpz_mul(k1, k1, q);
       }
   }
 
@@ -697,17 +699,24 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       } else if (fmpq_sgn(t0q) < 0) return(0);  
     }
 
+    /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
+    /* Todo: rewrite in terms of a matrix multiplication. */
+    for (i=0; i<=k; i++) {
+      fmpq_zero(t1q);
+      fmpq_zero(t2q);
+      for (j=0; j<=k; j++) {
+	if ((k-j)%2==0) fmpq_addmul(t1q, fmpq_mat_entry(dy_data->sum_col, j, 0),
+		    fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
+	else fmpq_addmul(t2q, fmpq_mat_entry(dy_data->sum_col, j, 0),
+		    fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
+      }
+      if (i%2==0) change_upper(t1q, t2q);
+      else change_lower(t1q, t2q); 
+    }
+
   if (q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
 
-    /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
-    for (i=0; i<=k; i++) {
-      fmpq_zero(t0q);
-      for (j=0; j<=k; j++)
-	fmpq_addmul(t0q, fmpq_mat_entry(dy_data->sum_col, j, 0),
-		    fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
-      if (i%2==0) change_upper(t0q, NULL);
-      else change_lower(t0q, NULL); 
-    }
+    /* Warning: t1q, t2q, t3q will be reassigned, and hence are no longer available for scratch. */
 
     /* Additional quadratic conditions. */
     t1q = fmpq_mat_entry(dy_data->sum_prod, 1, 0);
@@ -719,21 +728,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpq_sub(t0q, t1q, t0q);
       change_upper(t0q, NULL);
     }
-
     t1q = fmpq_mat_entry(dy_data->sum_prod, 4, 0);
     t2q = fmpq_mat_entry(dy_data->sum_prod, 5, 0);
     t3q = fmpq_mat_entry(dy_data->sum_prod, 6, 0);
-    if ((k%2 == 0) && (fmpq_sgn(t3q) > 0)) {
+    if (((k%2 == 0) && (fmpq_sgn(t3q) > 0)) || ((k%2 == 1) && (fmpq_sgn(t3q) < 0))) {
       fmpq_mul(t0q, t2q, t2q);
       fmpq_div(t0q, t0q, t3q);
       fmpq_sub(t0q, t1q, t0q);
-      change_upper(t0q, NULL);
-    } else if ((k%2 == 1) && (fmpq_sgn(t3q) < 0)) {
-      fmpq_mul(t0q, t2q, t2q);
-      fmpq_div(t0q, t0q, t3q);
-      fmpq_sub(t0q, t1q, t0q);
-      change_lower(t0q, NULL);
-      }
+      if (k%2 == 0) change_upper(t0q, NULL);
+      else change_lower(t0q, NULL);
+    }
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
     
@@ -749,7 +753,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz_add(pol+n-1, pol+n-1, lower);
 
   return(1);
-
 }
 
 /* Return value sent back in dy_data->flag:
