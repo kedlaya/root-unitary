@@ -299,11 +299,11 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
       for (k=0; k<=i; k++) {
 	  // The coefficient of t^k in (t-2)^j (t+2)^{i-j}.
 	k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], j, k);
-	for (l=0; l<=k && l<=j && k-l<=i-j; l++) {
-	  fmpz_mul(m, fmpz_mat_entry(st_data->binom_mat, j, l), fmpz_mat_entry(st_data->binom_mat, k-l, i-j));
-	  fmpz_mul_2exp(m, m, i-k);
-	  if ((j-l)%2==0) fmpq_add_fmpz(k1, k1, m);
-	  else fmpq_sub_fmpz(k1, k1, m);
+	for (l=0; l<=j; l++) if (k-l<=i-j) {
+	    fmpz_mul(m, fmpz_mat_entry(st_data->binom_mat, j, l), fmpz_mat_entry(st_data->binom_mat, i-j, k-l));
+	    fmpz_mul_2exp(m, m, i-k);
+	    if ((j-l)%2==1) fmpq_neg(m, m);
+	    fmpq_add_fmpz(k1, k1, m);
 	}
       }
   }
@@ -535,19 +535,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq *t5q = dy_data->w2 + 5;
 
   /* Embedded subroutines to adjust lower and upper bounds. 
-   These use t0q and t4q as persistent scratch space. */
+   These use t0q and t4q as persistent scratch space.
+   The pair (val1, val2) stands for val1 + val2*sqrt(q);
+   passing NULL for val2 is a faster variant of passing 0. */
 
-  void set_lower(const fmpq_t val) {
-    fmpq_div(t0q, val, f);
-    fmpq_ceil(lower, t0q);
-  }
-  
-  void set_upper(const fmpq_t val) {
-    fmpq_div(t0q, val, f);
-    fmpq_floor(upper, t0q);
-  }
-
-  void set_lower_quad(const fmpq_t val1, const fmpq_t val2) {
+  void set_lower(const fmpq_t val1, const fmpq_t val2) {
     fmpq_div(t0q, val1, f);
     if (val2==NULL) fmpq_ceil(lower, t0q);
     else {
@@ -556,7 +548,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     }
   }
   
-  void set_upper_quad(const fmpq_t val1, const fmpq_t val2) {
+  void set_upper(const fmpq_t val1, const fmpq_t val2) {
     fmpq_div(t0q, val1, f);
     if (val2==NULL) fmpq_floor(upper, t0q);
     else {
@@ -565,21 +557,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     }
   }
 
-  void change_lower(const fmpq_t val) {
-    fmpq_div(t0q, val, f);
-    fmpq_ceil(t0z, t0q);
-    if (fmpz_cmp(t0z, lower) > 0) fmpz_set(lower, t0z);
-  }
-  
-  void change_upper(const fmpq_t val) {
-    fmpq_div(t0q, val, f);
-    fmpq_floor(t0z, t0q);
-    if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
-  }
-
-  /* Here, we allow lower and upper bounds in the quadratic field
-     Q(sqrt(q)). */
-  void change_lower_quad(const fmpq_t val1, const fmpq_t val2) {
+  void change_lower(const fmpq_t val1, const fmpq_t val2) {
     fmpq_div(t0q, val1, f);
     if (val2==NULL) fmpq_ceil(t0z, t0q);
     else {
@@ -589,7 +567,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (fmpz_cmp(t0z, lower) > 0) fmpz_set(lower, t0z);
   }
   
-  void change_upper_quad(const fmpq_t val1, const fmpq_t val2) {
+  void change_upper(const fmpq_t val1, const fmpq_t val2) {
     fmpq_div(t0q, val1, f);
     if (val2==NULL) fmpq_floor(t0z, t0q);
     else {
@@ -611,6 +589,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* If r=1 and k>d, no further coefficients to bound. */
   if (k>d) return(1);
 
+  q_is_1 = !fmpz_cmp_ui(q, 1);
+
   /* Compute the k-th asymmetrized power sum, answer in sum_col[k]. */
   f = fmpq_mat_entry(dy_data->sum_col, k, 0);
   fmpq_set_si(f, -k, 1);
@@ -622,17 +602,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->sum_col, k-i, 0));
   }
   
-  /* First, set bounds using symmetrized power sums. */
+  /* First, bound the symmetrized power sums. */
   f = st_data->f + n-1;
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
 
-  q_is_1 = !fmpz_cmp_ui(q, 1);
   /* if (q_is_1) {
     fmpq_set_si(t1q, 2*d, 1);
     fmpq_sub(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
-    set_lower(t0q);
+    set_lower(t0q, NULL);
     fmpq_add(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
-    set_upper(t0q);
+    set_upper(t0q, NULL);
   }
   else */
   if (k%2==0) {
@@ -641,43 +620,23 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpz_pow_ui(t0z, t0z, k/2);
     fmpq_mul_fmpz(t1q, t1q, t0z);
     fmpq_sub(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
-    set_lower(t0q);
+    set_lower(t0q, NULL);
     fmpq_add(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
-    set_upper(t0q);
+    set_upper(t0q, NULL);
   } else {
     fmpq_zero(t1q); 
     fmpq_set_si(t2q, 2*d, 1);
     fmpz_set(t0z, q);
     fmpz_pow_ui(t0z, t0z, k/2);
     fmpq_mul_fmpz(t2q, t2q, t0z);
-    set_upper_quad(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
+    set_upper(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
     fmpq_neg(t2q, t2q);
-    set_lower_quad(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
-  }
+    set_lower(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
+    }
 
   /* Second, apply Descartes' rule of signs at -2*sqrt(q), +2*sqrt(q);
      this enforces the roots being in the correct interval (if real). */
-  /* Todo: add more general Hausdorff moment conditions:
-     the average of 
-     (2-t)^i(2+t)^(k-i) = sum_{j,r} 2^(j+r) t^(k-j-r) (-1)^(i-j) binom{i}{j} binom{k-i}{r}
-     as t varies over the roots should be nonnegative. */
-
-  if (q_is_1)
-    for (i=0; i<=k; i++) {
-      fmpq_zero(t0q);
-      for (j=0; j<=i; j++) 
-	for (r=0; r<=k-i; r++) {
-	  fmpq_set(t1q, fmpq_mat_entry(dy_data->sum_col, k-j-r, 0));
-	  fmpq_mul_fmpz(t1q, t1q, fmpz_mat_entry(st_data->binom_mat, i, j));
-	  fmpq_mul_fmpz(t1q, t1q, fmpz_mat_entry(st_data->binom_mat, k-i, r));
-	  fmpz_mul_2exp(t1q, t1q, j+r);
-	  if (j%2==1) fmpz_neg(t1q, t1q);
-	  fmpq_add(t0q, t0q, t1q);
-	}
-      if (i%2==0) change_upper(t0q);
-      else change_lower(t0q);
-    }
-
+  
   fmpq_set_si(t3q, -k, 1);
   fmpq_div_fmpz(t3q, t3q, pol+d);
 
@@ -689,15 +648,15 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
   fmpz_set(tpol, pol+d-k);
   
-  /*if (q_is_1) {
+  /* if (q_is_1) {
     _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->a);    
     fmpq_mul_fmpz(t1q, t3q, t0z);
-    if (k%2==1) change_upper(t1q);
-    else change_lower(t1q);
+    if (k%2==1) change_upper(t1q, NULL);
+    else change_lower(t1q, NULL);
     
     _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->b);
     fmpq_mul_fmpz(t1q, t3q, t0z);
-    change_lower(t1q);
+    change_lower(t1q, NULL);
     } else */ {
     for (i=0; 2*i <= k; i++)
       fmpz_set(tpol2+i, tpol+2*i);
@@ -710,11 +669,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_mul_fmpz(t1q, t3q, t0z);
     fmpq_mul_fmpz(t2q, t3q, t1z);
 
-    change_lower_quad(t1q, t2q);
+    change_lower(t1q, t2q);
 
     fmpq_neg(t2q, t2q);
-    if (k%2==1) change_upper_quad(t1q, t2q);
-    else change_lower_quad(t1q, t2q);
+    if (k%2==1) change_upper(t1q, t2q);
+    else change_lower(t1q, t2q);
   }
 
   /* If modulus=0, then return 1 if [lower, upper] contains 0
@@ -729,28 +688,55 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   /* Third, if q=1, compute additional bounds using linear/quadratic conditions on power sums. 
   */
-  if (!q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
+
+  if (q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
     /* Todo: separate linear from quadratic conditions.
        Linear conditions are redundant with the Hausdorff moment condition. */
 
-    /* Linear condition, should be removed. */
-    fmpq_add(t1q, fmpq_mat_entry(dy_data->sum_prod, 1, 0),
-	     fmpq_mat_entry(dy_data->sum_prod, 2, 0));
-    fmpq_set_si(t2q, 4*d, 1);
-    fmpq_sub(t0q, t1q, t2q);
-    // fmpq_sub_si(t3q, t1q, 4*d);
-    if (k==2) fmpq_div_fmpz(t0q, t0q, st_data->b); // b=2
-    change_lower(t0q);
-    fmpq_add(t0q, t1q, t2q);
-    // fmpq_add_si(t3q, t1q, 4*d);
-    if (k==2) fmpq_div_fmpz(t0q, t0q, st_data->b); // b=2
-    change_upper(t0q);
-    /* End remove */
-    
     /* The k=2 case requires separate attention; this corrects a bug
        in the 2008 implementation.
     */
 
+    /*
+    for (i=0; i<=k; i++) {
+      fmpq_zero(t0q);
+      for (j=0; j<=i; j++)
+	for (r=0; r<=k-i; r++) {
+	  fmpq_set(t1q, fmpq_mat_entry(dy_data->sum_col, k-j-r, 0));
+	  fmpq_mul_fmpz(t1q, t1q, fmpz_mat_entry(st_data->binom_mat, i, j));
+	  fmpq_mul_fmpz(t1q, t1q, fmpz_mat_entry(st_data->binom_mat, k-i, r));
+	  fmpz_mul_2exp(t1q, t1q, j+r);
+	  if (j%2==1) fmpz_neg(t1q, t1q);
+	  fmpq_add(t0q, t0q, t1q);
+	  }
+      if (i%2==0) change_upper(t0q, NULL);
+      else change_lower(t0q, NULL);
+      } */
+
+    for (i=0; i<=k; i++) {
+      fmpq_zero(t0q);
+      for (j=0; j<=k; j++)
+	fmpq_addmul(t0q, fmpq_mat_entry(dy_data->sum_col, j, 0),
+		    fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
+      if (i%2==0) change_upper(t0q, NULL);
+      else change_lower(t0q, NULL); 
+    }
+    
+    /* Linear condition, should be removed. */
+    /*    fmpq_add(t1q, fmpq_mat_entry(dy_data->sum_prod, 1, 0),
+		 fmpq_mat_entry(dy_data->sum_prod, 2, 0));
+    fmpq_set_si(t2q, 4*d, 1);
+    fmpq_sub(t0q, t1q, t2q);
+    // fmpq_sub_si(t3q, t1q, 4*d);
+    if (k==2) fmpq_div_fmpz(t0q, t0q, st_data->b); // b=2
+    change_lower(t0q, NULL);
+    fmpq_add(t0q, t1q, t2q);
+    // fmpq_add_si(t3q, t1q, 4*d);
+    if (k==2) fmpq_div_fmpz(t0q, t0q, st_data->b); // b=2
+    change_upper(t0q, NULL);
+    */
+    /* End remove */
+    
     /* t1q, t2q, t3q are no longer needed, so can be reassigned. */
     t1q = fmpq_mat_entry(dy_data->sum_prod, 3, 0);
     t2q = fmpq_mat_entry(dy_data->sum_prod, 4, 0);
@@ -759,14 +745,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpq_mul(t0q, t2q, t2q);
       fmpq_div(t0q, t0q, t3q);
       fmpq_sub(t0q, t1q, t0q);
-      change_upper(t0q);
+      change_upper(t0q, NULL);
     }
     /* Linear condition, should be removed. */
+    /*
     fmpq_set_si(t3q, -4, 1);
     fmpq_mul(t0q, t3q, t2q);
     // fmpq_mul_si(t0q, t2q, -4);
     fmpq_add(t0q, t0q, t1q);
-    change_lower(t0q);
+    change_lower(t0q, NULL);
+    */
     /* End remove */
 
     t1q = fmpq_mat_entry(dy_data->sum_prod, 6, 0);
@@ -776,28 +764,30 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpq_mul(t0q, t2q, t2q);
       fmpq_div(t0q, t0q, t3q);
       fmpq_sub(t0q, t1q, t0q);
-      change_upper(t0q);
+      change_upper(t0q, NULL);
     } else if ((k%2 == 1) && (fmpq_sgn(t3q) < 0)) {
       fmpq_mul(t0q, t2q, t2q);
       fmpq_div(t0q, t0q, t3q);
       fmpq_sub(t0q, t1q, t0q);
-      change_lower(t0q);
+      change_lower(t0q, NULL);
     }
     /* Linear condition, should be removed. */
+    /*
     fmpq_set_si(t0q, 4, 1);
     fmpq_mul(t0q, t0q, t2q);
     // fmpq_mul_si(t0q, t2q, 4);
     fmpq_add(t0q, t0q, t1q);
-    if (k%2 == 0) change_lower(t0q);
-    else change_upper(t0q);
+    if (k%2 == 0) change_lower(t0q, NULL);
+    else change_upper(t0q, NULL);
     
     if (k%2 == 0) {
 	fmpq_set_si(t0q, -4, 1);
 	fmpq_mul(t0q, t0q, fmpq_mat_entry(dy_data->sum_col, k-2, 0));
       // fmpq_mul_si(t0q, fmpq_mat_entry(dy_data->sum_col, k-2, 0), -4);
 	fmpq_add(t0q, t0q, fmpq_mat_entry(dy_data->sum_col, k, 0));
-	change_lower(t0q);	
+	change_lower(t0q, NULL);	
       }
+    */
     /* End remove */
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
