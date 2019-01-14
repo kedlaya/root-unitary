@@ -690,28 +690,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   */
 
   if (q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
-    /* Todo: separate linear from quadratic conditions.
-       Linear conditions are redundant with the Hausdorff moment condition. */
-
-    /* The k=2 case requires separate attention; this corrects a bug
-       in the 2008 implementation.
-    */
-
-    /*
-    for (i=0; i<=k; i++) {
-      fmpq_zero(t0q);
-      for (j=0; j<=i; j++)
-	for (r=0; r<=k-i; r++) {
-	  fmpq_set(t1q, fmpq_mat_entry(dy_data->sum_col, k-j-r, 0));
-	  fmpq_mul_fmpz(t1q, t1q, fmpz_mat_entry(st_data->binom_mat, i, j));
-	  fmpq_mul_fmpz(t1q, t1q, fmpz_mat_entry(st_data->binom_mat, k-i, r));
-	  fmpz_mul_2exp(t1q, t1q, j+r);
-	  if (j%2==1) fmpz_neg(t1q, t1q);
-	  fmpq_add(t0q, t0q, t1q);
-	  }
-      if (i%2==0) change_upper(t0q, NULL);
-      else change_lower(t0q, NULL);
-      } */
 
     for (i=0; i<=k; i++) {
       fmpq_zero(t0q);
@@ -722,22 +700,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       else change_lower(t0q, NULL); 
     }
     
-    /* Linear condition, should be removed. */
-    /*    fmpq_add(t1q, fmpq_mat_entry(dy_data->sum_prod, 1, 0),
-		 fmpq_mat_entry(dy_data->sum_prod, 2, 0));
-    fmpq_set_si(t2q, 4*d, 1);
-    fmpq_sub(t0q, t1q, t2q);
-    // fmpq_sub_si(t3q, t1q, 4*d);
-    if (k==2) fmpq_div_fmpz(t0q, t0q, st_data->b); // b=2
-    change_lower(t0q, NULL);
-    fmpq_add(t0q, t1q, t2q);
-    // fmpq_add_si(t3q, t1q, 4*d);
-    if (k==2) fmpq_div_fmpz(t0q, t0q, st_data->b); // b=2
-    change_upper(t0q, NULL);
-    */
-    /* End remove */
-    
-    /* t1q, t2q, t3q are no longer needed, so can be reassigned. */
     t1q = fmpq_mat_entry(dy_data->sum_prod, 3, 0);
     t2q = fmpq_mat_entry(dy_data->sum_prod, 4, 0);
     t3q = fmpq_mat_entry(dy_data->sum_prod, 5, 0);
@@ -747,15 +709,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpq_sub(t0q, t1q, t0q);
       change_upper(t0q, NULL);
     }
-    /* Linear condition, should be removed. */
-    /*
-    fmpq_set_si(t3q, -4, 1);
-    fmpq_mul(t0q, t3q, t2q);
-    // fmpq_mul_si(t0q, t2q, -4);
-    fmpq_add(t0q, t0q, t1q);
-    change_lower(t0q, NULL);
-    */
-    /* End remove */
 
     t1q = fmpq_mat_entry(dy_data->sum_prod, 6, 0);
     t2q = fmpq_mat_entry(dy_data->sum_prod, 7, 0);
@@ -771,24 +724,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpq_sub(t0q, t1q, t0q);
       change_lower(t0q, NULL);
     }
-    /* Linear condition, should be removed. */
-    /*
-    fmpq_set_si(t0q, 4, 1);
-    fmpq_mul(t0q, t0q, t2q);
-    // fmpq_mul_si(t0q, t2q, 4);
-    fmpq_add(t0q, t0q, t1q);
-    if (k%2 == 0) change_lower(t0q, NULL);
-    else change_upper(t0q, NULL);
-    
-    if (k%2 == 0) {
-	fmpq_set_si(t0q, -4, 1);
-	fmpq_mul(t0q, t0q, fmpq_mat_entry(dy_data->sum_col, k-2, 0));
-      // fmpq_mul_si(t0q, fmpq_mat_entry(dy_data->sum_col, k-2, 0), -4);
-	fmpq_add(t0q, t0q, fmpq_mat_entry(dy_data->sum_col, k, 0));
-	change_lower(t0q, NULL);	
-      }
-    */
-    /* End remove */
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
     
