@@ -428,7 +428,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
 
 ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data) {
   ps_dynamic_data_t *dy_data2;
-  int i, d = dy_data->d;
+  int d = dy_data->d;
 
   dy_data2 = ps_dynamic_init(d, NULL);
   dy_data2->n = dy_data->n;
@@ -537,7 +537,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* Embedded subroutines to adjust lower and upper bounds. 
    These use t0q and t4q as persistent scratch space.
    The pair (val1, val2) stands for val1 + val2*sqrt(q);
-   passing NULL for val2 is a faster variant of passing 0. */
+   passing NULL for val2 is a faster variant of passing 0. 
+
+  Usage: if f is a monic linear function of the k-th power sum, then
+  set_upper(f) or change_upper(f) imposes the condition f >= 0;
+  set_lower(f) or change_lower(f) imposes the condition f <= 0.*/
 
   void set_lower(const fmpq_t val1, const fmpq_t val2) {
     fmpq_div(t0q, val1, f);
