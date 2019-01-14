@@ -117,7 +117,7 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
-  fmpq_mat_t sum_col, sum_prod, hankel_mat;
+  fmpq_mat_t sum_col, sum_prod, hankel_mat, hausdorff_sums1, hausdorff_sums2;
   fmpz *pol, *sympol, *upper;
 
   /* Scratch space */
@@ -403,6 +403,8 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   fmpq_mat_init(dy_data->sum_col, d+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->sum_col, 0, 0), d, 1);
   fmpq_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
+  fmpq_mat_init(dy_data->hausdorff_sums1, d+1, d+1);
+  fmpq_mat_init(dy_data->hausdorff_sums2, d+1, d+1);
 
   dy_data->upper = _fmpz_vec_init(d+1);
 
@@ -426,9 +428,12 @@ ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data) {
   _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
   _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
   fmpq_mat_set(dy_data2->sum_col, dy_data->sum_col);
+  fmpq_mat_set(dy_data2->hausdorff_sums1, dy_data->hausdorff_sums1);
+  fmpq_mat_set(dy_data2->hausdorff_sums2, dy_data->hausdorff_sums2);
   return(dy_data2);
 }
 
+/* Split off a subtree. */
 ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data) {
   if (dy_data==NULL) return(NULL);
 
@@ -477,6 +482,8 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   fmpq_mat_clear(dy_data->sum_col);
   fmpq_mat_clear(dy_data->sum_prod);
   fmpq_mat_clear(dy_data->hankel_mat);
+  fmpq_mat_clear(dy_data->hausdorff_sums1);
+  fmpq_mat_clear(dy_data->hausdorff_sums2);
   _fmpz_vec_clear(dy_data->w, dy_data->wlen);
   _fmpq_vec_clear(dy_data->w2, dy_data->w2len);
   free(dy_data);
@@ -711,15 +718,54 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 		    fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
       }
       if (i%2==0) change_upper(t1q, t2q);
-      else change_lower(t1q, t2q); 
+      else change_lower(t1q, t2q);
+      fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums1, k, i), t1q);
+      fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums2, k, i), t2q);
+      /* Condition: log convexity based on Cauchy-Schwarz. */
+      if (q_is_1 && k>=2 && i<=k-2) {
+	fmpq_add(t1q, t1q, t2q);
+	fmpq_add(t2q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-1,i),
+		 fmpq_mat_entry(dy_data->hausdorff_sums2, k-1,i));
+	fmpq_add(t3q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-2,i),
+		 fmpq_mat_entry(dy_data->hausdorff_sums2, k-2,i));
+	if (fmpq_sgn(t3q) > 0) { // t0q <- t1q - t2q^2/t3q
+	  fmpq_mul(t0q, t2q, t2q);
+	  fmpq_div(t0q, t0q, t3q);
+	  fmpq_sub(t0q, t1q, t0q);
+	  change_upper(t0q, NULL);
+	} else if (fmpq_sgn(t3q) < 0) {
+	  fmpq_mul(t0q, t2q, t2q);
+	  fmpq_div(t0q, t0q, t3q);
+	  fmpq_sub(t0q, t1q, t0q);
+	  change_lower(t0q, NULL);
+	}
+      }
+      if (q_is_1 && k>=2 && i>=2) {
+	fmpq_add(t1q, t1q, t2q);
+	fmpq_add(t2q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-1,i-1),
+		 fmpq_mat_entry(dy_data->hausdorff_sums2, k-1,i-1));
+	fmpq_add(t3q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-2,i-2),
+		 fmpq_mat_entry(dy_data->hausdorff_sums2, k-2,i-2));
+	if (fmpq_sgn(t3q) > 0) { // t0q <- t1q - t2q^2/t3q
+	  fmpq_mul(t0q, t2q, t2q);
+	  fmpq_div(t0q, t0q, t3q);
+	  fmpq_sub(t0q, t1q, t0q);
+	  change_upper(t0q, NULL);
+	} else if (fmpq_sgn(t3q) < 0) {
+	  fmpq_mul(t0q, t2q, t2q);
+	  fmpq_div(t0q, t0q, t3q);
+	  fmpq_sub(t0q, t1q, t0q);
+	  change_lower(t0q, NULL);
+	}
+      }
     }
-
+    
   if (q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
 
-    /* Warning: t1q, t2q, t3q will be reassigned, and hence are no longer available for scratch. */
-
     /* Additional quadratic conditions. */
-    t1q = fmpq_mat_entry(dy_data->sum_prod, 1, 0);
+    /* These should eventually be subsumed by log convexity. */
+    /* Warning: t1q, t2q, t3q are being reassigned, and hence no longer point to scratch memory. */
+    /*    t1q = fmpq_mat_entry(dy_data->sum_prod, 1, 0);
     t2q = fmpq_mat_entry(dy_data->sum_prod, 2, 0);
     t3q = fmpq_mat_entry(dy_data->sum_prod, 3, 0);
     if (fmpq_sgn(t3q) > 0) { // t0q <- t1q - t2q^2/t3q
@@ -737,7 +783,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpq_sub(t0q, t1q, t0q);
       if (k%2 == 0) change_upper(t0q, NULL);
       else change_lower(t0q, NULL);
-    }
+      } */
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
     
@@ -748,6 +794,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   t1q = fmpq_mat_entry(dy_data->sum_col, k, 0);
   fmpq_mul_fmpz(t0q, f, lower);
   fmpq_sub(t1q, t1q, t0q);
+  for (i=0; i<=k; i++) {
+    t1q = fmpq_mat_entry(dy_data->hausdorff_sums1, k, i);
+    fmpq_sub(t1q, t1q, t0q);
+  }
   /* Set the new polynomial value. */
   fmpz_mul(lower, lower, modulus);
   fmpz_add(pol+n-1, pol+n-1, lower);
@@ -841,6 +891,10 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	/* Update the (d-n)-th power sum. */
 	tq = fmpq_mat_entry(dy_data->sum_col, d-n, 0);
 	fmpq_sub(tq, tq, st_data->f+n);
+	for (i=0; i<=d-n; i++) {
+	  tq = fmpq_mat_entry(dy_data->hausdorff_sums1, d-n, i);
+	  fmpq_sub(tq, tq, st_data->f+n);
+	}
       }
     }
   }

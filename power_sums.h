@@ -13,7 +13,7 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
-  fmpq_mat_t sum_col, sum_prod, hankel_mat;
+  fmpq_mat_t sum_col, sum_prod, hankel_mat, hausdorff_sums1, hausdorff_sums2;
   fmpz *pol, *sympol, *upper;
 
   /* Scratch space */
