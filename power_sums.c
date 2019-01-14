@@ -117,7 +117,7 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
-  fmpq_mat_t sum_col, sum_prod, hankel_mat, hausdorff_sums1, hausdorff_sums2;
+  fmpq_mat_t sum_col, sum_prod, hankel_mat, hankel_dets, hausdorff_sums1, hausdorff_sums2;
   fmpz *pol, *sympol, *upper;
 
   /* Scratch space */
@@ -403,6 +403,8 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   fmpq_mat_init(dy_data->sum_col, d+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->sum_col, 0, 0), d, 1);
   fmpq_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
+  fmpq_mat_init(dy_data->hankel_dets, d/2+1, 1);
+  fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets, 0, 0), d, 1);
   fmpq_mat_init(dy_data->hausdorff_sums1, d+1, d+1);
   fmpq_mat_init(dy_data->hausdorff_sums2, d+1, d+1);
 
@@ -428,6 +430,7 @@ ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data) {
   _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
   _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
   fmpq_mat_set(dy_data2->sum_col, dy_data->sum_col);
+  fmpq_mat_set(dy_data2->hankel_dets, dy_data->hankel_dets);
   fmpq_mat_set(dy_data2->hausdorff_sums1, dy_data->hausdorff_sums1);
   fmpq_mat_set(dy_data2->hausdorff_sums2, dy_data->hausdorff_sums2);
   return(dy_data2);
@@ -482,6 +485,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   fmpq_mat_clear(dy_data->sum_col);
   fmpq_mat_clear(dy_data->sum_prod);
   fmpq_mat_clear(dy_data->hankel_mat);
+  fmpq_mat_clear(dy_data->hankel_dets);
   fmpq_mat_clear(dy_data->hausdorff_sums1);
   fmpq_mat_clear(dy_data->hausdorff_sums2);
   _fmpz_vec_clear(dy_data->w, dy_data->wlen);
@@ -689,40 +693,42 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
     /* Condition: the Hankel determinant is nonnegative because all roots are real. 
        Todo: find a more efficient way to compute these using orthogonal polynomials. */
-    if (k%2==0) {
-      fmpq_mat_one(dy_data->hankel_mat);
-      for (i=0; i<=k/2-1; i++)
-	for (j=0; j<=k/2-1; j++)
-	  fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j), fmpq_mat_entry(dy_data->sum_col, i+j, 0));
-      fmpq_mat_det(t3q, dy_data->hankel_mat);
-      for (i=0; i<=k/2; i++) {
-	  fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, k/2), fmpq_mat_entry(dy_data->sum_col, i+k/2, 0));
-	  fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, k/2, i), fmpq_mat_entry(dy_data->sum_col, i+k/2, 0));
-      }
-      fmpq_mat_det(t0q, dy_data->hankel_mat);
-      if (fmpq_sgn(t3q) > 0) {
-	fmpq_div(t0q, t0q, t3q);
-	change_upper(t0q, NULL);
-      } else if (fmpq_sgn(t0q) < 0) return(0);  
+  if (k%2==0) {
+    fmpq_mat_one(dy_data->hankel_mat);
+    for (i=0; i<=k/2; i++)
+      for (j=0; j<=k/2; j++)
+	fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j), fmpq_mat_entry(dy_data->sum_col, i+j, 0));
+    fmpq_mat_det(t0q, dy_data->hankel_mat);
+    fmpq_set(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0), t0q);
+    fmpq_set(t3q, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
+    if (fmpq_sgn(t3q) > 0) {
+      fmpq_div(t0q, t0q, t3q);
+      change_upper(t0q, NULL);
+    } else if (fmpq_sgn(t0q) < 0) return(0);  
+  } 
+  
+  if (fmpz_cmp(lower, upper) > 0) return(0);
+    
+  /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
+  /* Todo: rewrite in terms of matrix multiplication. */
+  for (i=0; i<=k; i++) {
+    fmpq_zero(t1q);
+    fmpq_zero(t2q);
+    for (j=0; j<=k; j++) {
+      if ((k-j)%2==0) fmpq_addmul(t1q, fmpq_mat_entry(dy_data->sum_col, j, 0),
+				  fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
+      else fmpq_addmul(t2q, fmpq_mat_entry(dy_data->sum_col, j, 0),
+		       fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
     }
-
-    /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
-    /* Todo: rewrite in terms of a matrix multiplication. */
-    for (i=0; i<=k; i++) {
-      fmpq_zero(t1q);
-      fmpq_zero(t2q);
-      for (j=0; j<=k; j++) {
-	if ((k-j)%2==0) fmpq_addmul(t1q, fmpq_mat_entry(dy_data->sum_col, j, 0),
-		    fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
-	else fmpq_addmul(t2q, fmpq_mat_entry(dy_data->sum_col, j, 0),
-		    fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
-      }
-      if (i%2==0) change_upper(t1q, t2q);
-      else change_lower(t1q, t2q);
-      fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums1, k, i), t1q);
-      fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums2, k, i), t2q);
-      /* Condition: log convexity based on Cauchy-Schwarz. */
-      if (q_is_1 && k>=2 && i<=k-2) {
+    if (i%2==0) change_upper(t1q, t2q);
+    else change_lower(t1q, t2q);
+    fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums1, k, i), t1q);
+    fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums2, k, i), t2q);
+    
+    /* Condition: log convexity based on Cauchy-Schwarz. */
+    /* Todo: extend to q != 1. */
+    if (q_is_1 && k>=2) {
+      if (i<=k-2) {
 	fmpq_add(t1q, t1q, t2q);
 	fmpq_add(t2q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-1,i),
 		 fmpq_mat_entry(dy_data->hausdorff_sums2, k-1,i));
@@ -740,7 +746,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 	  change_lower(t0q, NULL);
 	}
       }
-      if (q_is_1 && k>=2 && i>=2) {
+      if (i>=2) {
 	fmpq_add(t1q, t1q, t2q);
 	fmpq_add(t2q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-1,i-1),
 		 fmpq_mat_entry(dy_data->hausdorff_sums2, k-1,i-1));
@@ -759,19 +765,24 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 	}
       }
     }
+  }
     
   if (fmpz_cmp(lower, upper) > 0) return(0);
     
   /* Set the new upper bound. Note that modulus>0 at this point. */
   fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n-1, pol+n-1, upper);
-  /* Correct the k-th power sum. */
+  /* Correct the k-th power sum and related quantities. */
   t1q = fmpq_mat_entry(dy_data->sum_col, k, 0);
   fmpq_mul_fmpz(t0q, f, lower);
   fmpq_sub(t1q, t1q, t0q);
   for (i=0; i<=k; i++) {
     t1q = fmpq_mat_entry(dy_data->hausdorff_sums1, k, i);
     fmpq_sub(t1q, t1q, t0q);
+  }
+  if (k%2==0) {
+    t1q = fmpq_mat_entry(dy_data->hankel_dets, k/2, 0);
+    fmpq_submul(t1q, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0), t0q);
   }
   /* Set the new polynomial value. */
   fmpz_mul(lower, lower, modulus);
@@ -863,9 +874,13 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
       if (fmpz_cmp(pol+n, upper+n) > 0) ascend = 1;
       else {
 	ascend = 0;
-	/* Update the (d-n)-th power sum. */
+	/* Update the (d-n)-th power sum and related quantities. */
 	tq = fmpq_mat_entry(dy_data->sum_col, d-n, 0);
 	fmpq_sub(tq, tq, st_data->f+n);
+	if ((d-n)%2==0) {
+	  tq = fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2, 0);
+	  fmpq_submul(tq, st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2-1, 0));
+	}
 	for (i=0; i<=d-n; i++) {
 	  tq = fmpq_mat_entry(dy_data->hausdorff_sums1, d-n, i);
 	  fmpq_sub(tq, tq, st_data->f+n);
