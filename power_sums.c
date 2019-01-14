@@ -711,13 +711,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       for (i=0; i<=k/2-1; i++)
 	for (j=0; j<=k/2-1; j++)
 	  fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j), fmpq_mat_entry(dy_data->sum_col, i+j, 0));
-      fmpq_mat_det(t0q, dy_data->hankel_mat);
-      for (i=0; i<k/2; i++) {
-	fmpq_zero(fmpq_mat_entry(dy_data->hankel_mat, i, k/2));
-	fmpq_zero(fmpq_mat_entry(dy_data->hankel_mat, k/2, i));
-      }
-      fmpq_one(fmpq_mat_entry(dy_data->hankel_mat, k/2, k/2));
       fmpq_mat_det(t3q, dy_data->hankel_mat);
+      for (i=0; i<=k/2; i++) {
+	  fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, k/2), fmpq_mat_entry(dy_data->sum_col, i+k/2, 0));
+	  fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, k/2, i), fmpq_mat_entry(dy_data->sum_col, i+k/2, 0));
+      }
+      fmpq_mat_det(t0q, dy_data->hankel_mat);
       if (fmpq_sgn(t3q) > 0) {
 	fmpq_div(t0q, t0q, t3q);
 	change_upper(t0q, NULL);
