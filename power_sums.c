@@ -117,7 +117,7 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
-  fmpq_mat_t sum_col, sum_prod;
+  fmpq_mat_t sum_col, sum_prod, hankel_mat;
   fmpz *pol, *sympol, *upper;
 
   /* Scratch space */
@@ -414,6 +414,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   
   fmpq_mat_init(dy_data->sum_col, d+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->sum_col, 0, 0), d, 1);
+  fmpq_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
 
   dy_data->upper = _fmpz_vec_init(d+1);
 
@@ -487,6 +488,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   _fmpz_vec_clear(dy_data->upper, d+1);
   fmpq_mat_clear(dy_data->sum_col);
   fmpq_mat_clear(dy_data->sum_prod);
+  fmpq_mat_clear(dy_data->hankel_mat);
   _fmpz_vec_clear(dy_data->w, dy_data->wlen);
   _fmpq_vec_clear(dy_data->w2, dy_data->w2len);
   free(dy_data);
@@ -705,6 +707,22 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     }
 
     if (k%2==0) {
+      fmpq_mat_one(dy_data->hankel_mat);
+      for (i=0; i<=k/2-1; i++)
+	for (j=0; j<=k/2-1; j++)
+	  fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j), fmpq_mat_entry(dy_data->sum_col, i+j, 0));
+      fmpq_mat_det(t0q, dy_data->hankel_mat);
+      for (i=0; i<k/2; i++) {
+	fmpq_zero(fmpq_mat_entry(dy_data->hankel_mat, i, k/2));
+	fmpq_zero(fmpq_mat_entry(dy_data->hankel_mat, k/2, i));
+      }
+      fmpq_one(fmpq_mat_entry(dy_data->hankel_mat, k/2, k/2));
+      fmpq_mat_det(t3q, dy_data->hankel_mat);
+      if (fmpq_sgn(t3q) > 0) {
+	fmpq_div(t0q, t0q, t3q);
+	change_upper(t0q, NULL);
+      }
+		  
       t1q = fmpq_mat_entry(dy_data->sum_col, k, 0);
       t2q = fmpq_mat_entry(dy_data->sum_col, k-1, 0);
       t3q = fmpq_mat_entry(dy_data->sum_col, k-2, 0);
@@ -739,7 +757,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpq_div(t0q, t0q, t3q);
       fmpq_sub(t0q, t1q, t0q);
       change_lower(t0q, NULL);
-    }
+      }
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
     
