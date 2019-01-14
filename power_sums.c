@@ -311,7 +311,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   st_data->sum_mats = (fmpq_mat_t *)malloc((d+1)*sizeof(fmpq_mat_t));
   for (i=0; i<=d; i++) {
 
-    fmpq_mat_init(st_data->sum_mats[i], 9, d+1);
+    fmpq_mat_init(st_data->sum_mats[i], 7, d+1);
     fmpq_mat_zero(st_data->sum_mats[i]);
 
     arith_chebyshev_t_polynomial(pol, i);
@@ -335,54 +335,40 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 
       /* The other rows are currently used only when q==1. */
       
-      /* Row 1: coeffs of row 0 from matrix i-2, multiplied by -2. */
-      if (i >= 2) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 1, j);
-	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-2], 0, j));
-	fmpz_set_si(m, -2);
-	fmpq_mul_fmpz(k1, k1, m);
-      }
-
-      /* Row 2: coeffs of row 0 from matrix i-2, shifted by 2. */
-      if (i>= 2 && j >= 2) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 2, j);
-	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-2], 0, j-2));
-      }
-
-      /* Row 3: coeffs of (2+x)^i. */
+      /* Row 1: coeffs of (2+x)^i. */
       if (j<= i) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 3, j);
+	k1 = fmpq_mat_entry(st_data->sum_mats[i], 1, j);
 	fmpq_set_fmpz_frac(k1, fmpz_mat_entry(st_data->binom_mat, i, j), const1);
 	fmpq_mul_2exp(k1, k1, i-j);
       }
       
-      /* Row 4: coeffs of (2+x)^(i-1). */
+      /* Row 2: coeffs of (2+x)^(i-1). */
       if (i >= 1) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 4, j);
-	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-1], 3, j));	
+	k1 = fmpq_mat_entry(st_data->sum_mats[i], 2, j);
+	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-1], 1, j));	
       }
 
-      /* Row 5: coeffs of (2+x)^(i-2). */
+      /* Row 3: coeffs of (2+x)^(i-2). */
       if (i>=2)	{
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 5, j);
-	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-2], 3, j));	
+	k1 = fmpq_mat_entry(st_data->sum_mats[i], 3, j);
+	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-2], 1, j));	
       }
 
-      /* Row 6: coeffs of (-2+x)^i. */
-      k1 = fmpq_mat_entry(st_data->sum_mats[i], 6, j);
-      fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i], 3, j));
+      /* Row 4: coeffs of (-2+x)^i. */
+      k1 = fmpq_mat_entry(st_data->sum_mats[i], 4, j);
+      fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i], 1, j));
       if ((i-j)%2==1) fmpq_neg(k1, k1);
 
-      /* Row 7: coeffs of (-2+x)^(i-1). */
+      /* Row 5: coeffs of (-2+x)^(i-1). */
       if (i >= 1) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 7, j);
-	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-1], 6, j));	
+	k1 = fmpq_mat_entry(st_data->sum_mats[i], 5, j);
+	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-1], 4, j));	
       }
 
-      /* Row 8: coeffs of (-2+x)^(i-2). */
+      /* Row 6: coeffs of (-2+x)^(i-2). */
       if (i >= 2) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 8, j);
-	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-2], 6, j));
+	k1 = fmpq_mat_entry(st_data->sum_mats[i], 6, j);
+	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-2], 4, j));
       }
 
     }
@@ -419,7 +405,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   dy_data->upper = _fmpz_vec_init(d+1);
 
   /* Allocate scratch space */
-  fmpq_mat_init(dy_data->sum_prod, 9, 1);
+  fmpq_mat_init(dy_data->sum_prod, 7, 1);
   dy_data->wlen = 4*d+12;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
   dy_data->w2len = 6;
@@ -692,11 +678,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       return(1);
   }
 
-  /* Third, if q=1, compute additional bounds using linear/quadratic conditions on power sums. 
+  /* Third, if q=1, compute additional bounds using conditions on power sums. 
   */
 
   if (q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
 
+    /* Use the Hausdorff moment criterion, imposed by having roots in [-2, 2]. */
     for (i=0; i<=k; i++) {
       fmpq_zero(t1q);
       for (j=0; j<=k; j++)
@@ -706,6 +693,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       else change_lower(t1q, NULL); 
     }
 
+    /* Use nonnegativity of the Hankel determinant, imposed by having real roots. 
+       Todo: find a more efficient way to compute these using orthogonal polynomials. */
     if (k%2==0) {
       fmpq_mat_one(dy_data->hankel_mat);
       for (i=0; i<=k/2-1; i++)
@@ -733,9 +722,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       }
     }
 
-    t1q = fmpq_mat_entry(dy_data->sum_prod, 3, 0);
-    t2q = fmpq_mat_entry(dy_data->sum_prod, 4, 0);
-    t3q = fmpq_mat_entry(dy_data->sum_prod, 5, 0);
+    /* Additional quadratic conditions. */
+    t1q = fmpq_mat_entry(dy_data->sum_prod, 1, 0);
+    t2q = fmpq_mat_entry(dy_data->sum_prod, 2, 0);
+    t3q = fmpq_mat_entry(dy_data->sum_prod, 3, 0);
     if (fmpq_sgn(t3q) > 0) { // t0q <- t1q - t2q^2/t3q
       fmpq_mul(t0q, t2q, t2q);
       fmpq_div(t0q, t0q, t3q);
@@ -743,9 +733,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       change_upper(t0q, NULL);
     }
 
-    t1q = fmpq_mat_entry(dy_data->sum_prod, 6, 0);
-    t2q = fmpq_mat_entry(dy_data->sum_prod, 7, 0);
-    t3q = fmpq_mat_entry(dy_data->sum_prod, 8, 0);
+    t1q = fmpq_mat_entry(dy_data->sum_prod, 4, 0);
+    t2q = fmpq_mat_entry(dy_data->sum_prod, 5, 0);
+    t3q = fmpq_mat_entry(dy_data->sum_prod, 6, 0);
     if ((k%2 == 0) && (fmpq_sgn(t3q) > 0)) {
       fmpq_mul(t0q, t2q, t2q);
       fmpq_div(t0q, t0q, t3q);
