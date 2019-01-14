@@ -1,5 +1,6 @@
 /*
-  Low-level code to exhaust over trees of Weil polynomials
+  Low-level code to exhaust over trees of Weil polynomials.
+  This code does not implement parallelism; see the Cython wrapper.
 
 */
 
@@ -455,10 +456,10 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   free(dy_data);
 }
 
-/* The following is the key subroutine: given some initial coefficients, it
-   computes a lower and upper bound for the next coefficient. */
+/* The following is the key subroutine: given some initial coefficients, compute
+   a lower and upper bound for the next coefficient, or detect a dead end.
 
-/* Return values: 
+   Return values: 
    -r, r<0: if the n-th truncated polynomial does not have roots in the
        interval, and likewise for all choices of the bottom r-1 coefficients
    1: if lower <= upper
@@ -610,7 +611,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
   fmpz_set(tpol, pol+d-k);
   
-  /* Condition: Descartes' rule of signs applies at at -2*sqrt(q), +2*sqrt(q). */
+  /* Condition: Descartes' rule of signs applies at -2*sqrt(q), +2*sqrt(q). */
   
   fmpq_set_si(t3q, -k, 1);
   fmpq_div_fmpz(t3q, t3q, pol+d);
@@ -688,7 +689,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums2, k, i), t2q);
     
     /* Condition: log convexity based on Cauchy-Schwarz. */
-    /* Todo: extend to q != 1. */
+    /* Todo: extend to q != 1 without losing too much efficiency. */
     if (q_is_1 && k>=2) {
       if (i<=k-2) {
 	fmpq_add(t1q, t1q, t2q);
