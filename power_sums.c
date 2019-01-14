@@ -313,13 +313,13 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   st_data->sum_mats = (fmpq_mat_t *)malloc((d+1)*sizeof(fmpq_mat_t));
   for (i=0; i<=d; i++) {
 
-    fmpq_mat_init(st_data->sum_mats[i], 7, d+1);
+    fmpq_mat_init(st_data->sum_mats[i], 1, d+1);
     fmpq_mat_zero(st_data->sum_mats[i]);
 
     arith_chebyshev_t_polynomial(pol, i);
     for (j=0; j<=d; j++) {
       
-      /* Row 0: coeffs of 2*(i-th Chebyshev polynomial)(x/2). 
+      /* Coefficients of 2*(i-th Chebyshev polynomial)(x/2). 
          If q != 1, the coeff of x^j is multiplied by q^{floor(i-j)/2}. */
       if (j <= i) {
 	k1 = fmpq_mat_entry(st_data->sum_mats[i], 0, j);
@@ -333,44 +333,6 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 	  fmpz_pow_ui(m, m, (i-j)/2); 
 	  fmpq_mul_fmpz(k1, k1, m);
 	}
-      }
-
-      /* The other rows are currently used only when q==1. */
-      
-      /* Row 1: coeffs of (2+x)^i. */
-      if (j<= i) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 1, j);
-	fmpq_set_fmpz_frac(k1, fmpz_mat_entry(st_data->binom_mat, i, j), const1);
-	fmpq_mul_2exp(k1, k1, i-j);
-      }
-      
-      /* Row 2: coeffs of (2+x)^(i-1). */
-      if (i >= 1) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 2, j);
-	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-1], 1, j));	
-      }
-
-      /* Row 3: coeffs of (2+x)^(i-2). */
-      if (i>=2)	{
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 3, j);
-	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-2], 1, j));	
-      }
-
-      /* Row 4: coeffs of (-2+x)^i. */
-      k1 = fmpq_mat_entry(st_data->sum_mats[i], 4, j);
-      fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i], 1, j));
-      if ((i-j)%2==1) fmpq_neg(k1, k1);
-
-      /* Row 5: coeffs of (-2+x)^(i-1). */
-      if (i >= 1) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 5, j);
-	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-1], 4, j));	
-      }
-
-      /* Row 6: coeffs of (-2+x)^(i-2). */
-      if (i >= 2) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 6, j);
-	fmpq_set(k1, fmpq_mat_entry(st_data->sum_mats[i-2], 4, j));
       }
 
     }
@@ -411,7 +373,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   dy_data->upper = _fmpz_vec_init(d+1);
 
   /* Allocate scratch space */
-  fmpq_mat_init(dy_data->sum_prod, 7, 1);
+  fmpq_mat_init(dy_data->sum_prod, 1, 1);
   dy_data->wlen = 4*d+12;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
   dy_data->w2len = 6;
