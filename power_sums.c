@@ -292,14 +292,14 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   st_data->hausdorff_mats = (fmpq_mat_t *)malloc((d+1)*sizeof(fmpq_mat_t));
   for (i=0; i<=d; i++) {
 
-    fmpq_mat_init(st_data->hausdorff_mats[i], i+1, d+1);
+    fmpq_mat_init(st_data->hausdorff_mats[i], i+1, i+1);
     fmpq_mat_zero(st_data->hausdorff_mats[i]);
 
     for (j=0; j<=i; j++)
       for (k=0; k<=i; k++) {
 	  // The coefficient of t^k in (t-2)^j (t+2)^{i-j}.
 	k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], j, k);
-	for (l=0; l<=j; l++) if (k-l<=i-j) {
+	for (l=0; l<=j; l++) if (k-l >=0 && k-l<=i-j) {
 	    fmpz_mul(m, fmpz_mat_entry(st_data->binom_mat, j, l), fmpz_mat_entry(st_data->binom_mat, i-j, k-l));
 	    fmpz_mul_2exp(m, m, i-k);
 	    if ((j-l)%2==1) fmpq_neg(m, m);
@@ -633,7 +633,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_neg(t2q, t2q);
     set_lower(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
     }
-
+    
   /* Second, apply Descartes' rule of signs at -2*sqrt(q), +2*sqrt(q);
      this enforces the roots being in the correct interval (if real). */
   
@@ -692,14 +692,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   if (q_is_1 && (fmpz_cmp(lower, upper) <= 0) && k >= 2) {
 
     for (i=0; i<=k; i++) {
-      fmpq_zero(t0q);
+      fmpq_zero(t1q);
       for (j=0; j<=k; j++)
-	fmpq_addmul(t0q, fmpq_mat_entry(dy_data->sum_col, j, 0),
+	fmpq_addmul(t1q, fmpq_mat_entry(dy_data->sum_col, j, 0),
 		    fmpq_mat_entry(st_data->hausdorff_mats[k], i, j));
-      if (i%2==0) change_upper(t0q, NULL);
-      else change_lower(t0q, NULL); 
+      if (i%2==0) change_upper(t1q, NULL);
+      else change_lower(t1q, NULL); 
     }
-    
+
     t1q = fmpq_mat_entry(dy_data->sum_prod, 3, 0);
     t2q = fmpq_mat_entry(dy_data->sum_prod, 4, 0);
     t3q = fmpq_mat_entry(dy_data->sum_prod, 5, 0);
