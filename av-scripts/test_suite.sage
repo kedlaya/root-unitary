@@ -2,7 +2,7 @@ polRing.<x> = PolynomialRing(ZZ)
 
 t = True
 CF = ComplexField(53)
-for p in primes(25):
+for p in primes(10):
     print(p)
     l = []
     for i in range(1,5):

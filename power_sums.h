@@ -1,7 +1,3 @@
-#include <fmpz_poly.h>
-#include <fmpq.h>
-#include <fmpq_mat.h>
-
 typedef struct ps_static_data {
   int d, sign;
   long node_limit;
@@ -9,6 +5,7 @@ typedef struct ps_static_data {
   fmpz_mat_t binom_mat;
   fmpz *cofactor;
   fmpz *modlist;
+  fmpq_mat_t *hausdorff_mats;
   fmpq_mat_t *sum_mats;
   fmpq_t *f;
 } ps_static_data_t;
@@ -16,7 +13,8 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
-  fmpq_mat_t sum_col, sum_prod;
+  fmpq_mat_t sum_col, sum_prod, hankel_mat, hankel_dets,
+    hausdorff_prod, hausdorff_sums1, hausdorff_sums2;
   fmpz *pol, *sympol, *upper;
 
   /* Scratch space */

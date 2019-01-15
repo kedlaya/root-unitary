@@ -6,7 +6,7 @@ ans = [polRing(3)]
 t = time.time()
 c = 0
 for i in range(1, 11):
-    wp = WeilPolynomials(2*i, 3, sign=1, lead=3, num_threads=512)
+    wp = WeilPolynomials(2*i, 1, sign=1, lead=3, num_threads=512)
     l = [j for j in wp if not j.has_cyclotomic_factor()]
     ans += l
     c += wp.count
