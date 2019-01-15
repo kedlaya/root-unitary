@@ -577,23 +577,17 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->sum_col, k-i, 0));
   }
   
-  /* Condition: the k-th symmetrized power sum must lie in [-2, 2]. */
+  /* Condition: the k-th symmetrized power sum must lie in [-2*sqrt(q), 2*sqrt(q)]. */
   f = st_data->f + n-1;
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
 
-  /* if (q_is_1) {
-    fmpq_set_si(t1q, 2*d, 1);
-    fmpq_sub(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
-    set_lower(t0q, NULL);
-    fmpq_add(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
-    set_upper(t0q, NULL);
-  }
-  else */
   if (k%2==0) {
     fmpq_set_si(t1q, 2*d, 1);
-    fmpz_set(t0z, q);
-    fmpz_pow_ui(t0z, t0z, k/2);
-    fmpq_mul_fmpz(t1q, t1q, t0z);
+    if (!q_is_1) {
+      fmpz_set(t0z, q);
+      fmpz_pow_ui(t0z, t0z, k/2);
+      fmpq_mul_fmpz(t1q, t1q, t0z);
+    }
     fmpq_sub(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
     set_lower(t0q, NULL);
     fmpq_add(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
@@ -601,16 +595,17 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   } else {
     fmpq_zero(t1q); 
     fmpq_set_si(t2q, 2*d, 1);
-    fmpz_set(t0z, q);
-    fmpz_pow_ui(t0z, t0z, k/2);
-    fmpq_mul_fmpz(t2q, t2q, t0z);
+    if (!q_is_1) {
+      fmpz_set(t0z, q);
+      fmpz_pow_ui(t0z, t0z, k/2);
+      fmpq_mul_fmpz(t2q, t2q, t0z);
+    }
     set_upper(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
     fmpq_neg(t2q, t2q);
     set_lower(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
     }
     
-  /* Currently tpol is the divided n-th derivative of pol.
-     Undo one derivative, then evaluate at the endpoints. */
+  /* Undo one derivative on tpol. */
   for (i=k; i>=1; i--) {
     fmpz_mul_si(tpol+i, tpol+i-1, n);
     fmpz_divexact_si(tpol+i, tpol+i, i);
@@ -622,33 +617,22 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_set_si(t3q, -k, 1);
   fmpq_div_fmpz(t3q, t3q, pol+d);
 
-  /* if (q_is_1) {
-    _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->a);    
-    fmpq_mul_fmpz(t1q, t3q, t0z);
-    if (k%2==1) change_upper(t1q, NULL);
-    else change_lower(t1q, NULL);
-    
-    _fmpz_poly_evaluate_fmpz(t0z, tpol, k+1, st_data->b);
-    fmpq_mul_fmpz(t1q, t3q, t0z);
-    change_lower(t1q, NULL);
-    } else */ {
-    for (i=0; 2*i <= k; i++)
-      fmpz_set(tpol2+i, tpol+2*i);
-    for (i=0; 2*i+1 <= k; i++)
-      fmpz_set(tpol3+i, tpol+2*i+1);
-    fmpz_mul_si(t2z, q, 4);
-    _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, t2z);
-    _fmpz_poly_evaluate_fmpz(t1z, tpol3, (k+1) / 2, t2z);
-    fmpz_mul_si(t1z, t1z, 2);
-    fmpq_mul_fmpz(t1q, t3q, t0z);
-    fmpq_mul_fmpz(t2q, t3q, t1z);
-
-    change_lower(t1q, t2q);
-
-    fmpq_neg(t2q, t2q);
-    if (k%2==1) change_upper(t1q, t2q);
-    else change_lower(t1q, t2q);
-  }
+  for (i=0; 2*i <= k; i++)
+    fmpz_set(tpol2+i, tpol+2*i);
+  for (i=0; 2*i+1 <= k; i++)
+    fmpz_set(tpol3+i, tpol+2*i+1);
+  fmpz_mul_si(t2z, q, 4);
+  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, t2z);
+  _fmpz_poly_evaluate_fmpz(t1z, tpol3, (k+1) / 2, t2z);
+  fmpz_mul_si(t1z, t1z, 2);
+  fmpq_mul_fmpz(t1q, t3q, t0z);
+  fmpq_mul_fmpz(t2q, t3q, t1z);
+  
+  change_lower(t1q, t2q);
+  
+  fmpq_neg(t2q, t2q);
+  if (k%2==1) change_upper(t1q, t2q);
+  else change_lower(t1q, t2q);
 
   /* If modulus=0, then return 1 if [lower, upper] contains 0
      and 0 otherwise. After this, we may assume modulus>0.
@@ -660,13 +644,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       return(1);
   }
 
-    /* Condition: the Hankel determinant is nonnegative because all roots are real. 
+  /* Condition: the Hankel determinant is nonnegative because all roots are real. 
        Todo: find a more efficient way to compute these using orthogonal polynomials. */
   if (k%2==0) {
     fmpq_mat_one(dy_data->hankel_mat);
     for (i=0; i<=k/2; i++)
       for (j=0; j<=k/2; j++)
-	fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j), fmpq_mat_entry(dy_data->sum_col, i+j, 0));
+	fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j),
+		 fmpq_mat_entry(dy_data->sum_col, i+j, 0));
     fmpq_mat_det(t0q, dy_data->hankel_mat);
     fmpq_set(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0), t0q);
     fmpq_set(t3q, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
@@ -675,11 +660,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       change_upper(t0q, NULL);
     } else if (fmpq_sgn(t0q) < 0) return(0);  
   } 
-  
+
   if (fmpz_cmp(lower, upper) > 0) return(0);
     
   /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
-  /* Todo: rewrite in terms of matrix multiplication. */
   fmpq_mat_mul(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], dy_data->sum_col);
   for (i=0; i<=k; i++) {
     fmpq_set(t1q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i, 0));
