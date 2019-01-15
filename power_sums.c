@@ -126,7 +126,7 @@ typedef struct ps_dynamic_data {
   fmpz *w;
   int wlen; /* = 4*d+12 */
   fmpq *w2;
-  int w2len; /* = 6 */
+  int w2len; /* = 5 */
 } ps_dynamic_data_t;
 
 /* Set res to floor(a). */
@@ -382,7 +382,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   fmpq_mat_init(dy_data->sum_prod, 1, 1);
   dy_data->wlen = 4*d+12;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
-  dy_data->w2len = 6;
+  dy_data->w2len = 5;
   dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
   return(dy_data);
 }
@@ -502,7 +502,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq *t2q = dy_data->w2 + 2;
   fmpq *t3q = dy_data->w2 + 3;
   fmpq *t4q = dy_data->w2 + 4;
-  fmpq *t5q = dy_data->w2 + 5;
 
   /* Embedded subroutines to adjust lower and upper bounds. 
    These use t0q and t4q as persistent scratch space.
@@ -550,6 +549,20 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     }
     if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
   }
+
+  /* Impose the condition that val1*val3 >= val2, assuming that val1 is a linear monic function
+     of the k-th power sum and val2, val3 do not depend on this sum. */
+  void impose_quadratic_condition(const fmpq_t val1, const fmpq_t val2, const fmpq_t val3) {
+    int s = fmpq_sgn(val3);
+    if (s) {
+      fmpq_mul(t0q, val2, val2);
+      fmpq_div(t0q, t0q, val3);
+      fmpq_sub(t0q, val1, t0q);
+      if (s>0) change_upper(t0q, NULL);
+      else change_lower(t0q, NULL);
+    }
+  }
+
   /* End embedded subroutines */
     
   /* Compute the divided n-th derivative of pol, answer in tpol. */
@@ -644,7 +657,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       return(1);
   }
 
-  /* Condition: the Hankel determinant is nonnegative because all roots are real. 
+ /* Condition: the Hankel determinant is nonnegative because all roots are real. 
        Todo: find a more efficient way to compute these using orthogonal polynomials. */
   if (k%2==0) {
     fmpq_mat_one(dy_data->hankel_mat);
@@ -658,11 +671,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (fmpq_sgn(t3q) > 0) {
       fmpq_div(t0q, t0q, t3q);
       change_upper(t0q, NULL);
-    } else if (fmpq_sgn(t0q) < 0) return(0);  
+      }
+    else if (fmpq_sgn(t0q) < 0) return(0);
+    else change_upper(t0q, NULL);
+    /*    else impose_quadratic_condition(fmpq_mat_entry(dy_data->sum_col, k, 0),
+				    fmpq_mat_entry(dy_data->sum_col, k-1, 0),
+				    fmpq_mat_entry(dy_data->sum_col, k-2, 0)); */
   } 
 
   if (fmpz_cmp(lower, upper) > 0) return(0);
-    
+
   /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
   fmpq_mat_mul(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], dy_data->sum_col);
   for (i=0; i<=k; i++) {
@@ -672,52 +690,36 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     else change_lower(t1q, t2q);
     fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums1, k, i), t1q);
     fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums2, k, i), t2q);
-    
-    /* Condition: log convexity based on Cauchy-Schwarz. */
-    /* Todo: extend to q != 1 without losing too much efficiency. */
-    if (q_is_1 && k>=2) {
-      if (i<=k-2) {
-	fmpq_add(t1q, t1q, t2q);
-	fmpq_add(t2q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-1,i),
-		 fmpq_mat_entry(dy_data->hausdorff_sums2, k-1,i));
-	fmpq_add(t3q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-2,i),
-		 fmpq_mat_entry(dy_data->hausdorff_sums2, k-2,i));
-	if (fmpq_sgn(t3q) > 0) { // t0q <- t1q - t2q^2/t3q
-	  fmpq_mul(t0q, t2q, t2q);
-	  fmpq_div(t0q, t0q, t3q);
-	  fmpq_sub(t0q, t1q, t0q);
-	  change_upper(t0q, NULL);
-	} else if (fmpq_sgn(t3q) < 0) {
-	  fmpq_mul(t0q, t2q, t2q);
-	  fmpq_div(t0q, t0q, t3q);
-	  fmpq_sub(t0q, t1q, t0q);
-	  change_lower(t0q, NULL);
-	}
-      }
-      if (i>=2) {
-	fmpq_add(t1q, t1q, t2q);
-	fmpq_add(t2q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-1,i-1),
-		 fmpq_mat_entry(dy_data->hausdorff_sums2, k-1,i-1));
-	fmpq_add(t3q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-2,i-2),
-		 fmpq_mat_entry(dy_data->hausdorff_sums2, k-2,i-2));
-	if (fmpq_sgn(t3q) > 0) { // t0q <- t1q - t2q^2/t3q
-	  fmpq_mul(t0q, t2q, t2q);
-	  fmpq_div(t0q, t0q, t3q);
-	  fmpq_sub(t0q, t1q, t0q);
-	  change_upper(t0q, NULL);
-	} else if (fmpq_sgn(t3q) < 0) {
-	  fmpq_mul(t0q, t2q, t2q);
-	  fmpq_div(t0q, t0q, t3q);
-	  fmpq_sub(t0q, t1q, t0q);
-	  change_lower(t0q, NULL);
-	}
-      }
+  }
+  
+  if (fmpz_cmp(lower, upper) > 0) return(0);
+  
+  /* Condition: log convexity based on Cauchy-Schwarz. */
+  /* Todo: extend to q != 1 without losing too much efficiency. */
+  if (q_is_1) {
+    for (i=0; i<=k-2; i++) {
+      fmpq_add(t1q, fmpq_mat_entry(dy_data->hausdorff_sums1, k, i),
+	       fmpq_mat_entry(dy_data->hausdorff_sums2, k, i));
+      fmpq_add(t2q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-1, i),
+	       fmpq_mat_entry(dy_data->hausdorff_sums2, k-1, i));
+      fmpq_add(t3q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-2, i),
+	       fmpq_mat_entry(dy_data->hausdorff_sums2, k-2, i));
+      impose_quadratic_condition(t1q, t2q, t3q);
+    }
+    for (i=2; i<=k; i++) {
+      fmpq_add(t1q, fmpq_mat_entry(dy_data->hausdorff_sums1, k, i),
+	       fmpq_mat_entry(dy_data->hausdorff_sums2, k, i));
+      fmpq_add(t2q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-1, i-1),
+	       fmpq_mat_entry(dy_data->hausdorff_sums2, k-1, i-1));
+      fmpq_add(t3q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-2, i-2),
+	       fmpq_mat_entry(dy_data->hausdorff_sums2, k-2, i-2));
+      impose_quadratic_condition(t1q, t2q, t3q);
     }
   }
-    
+
   if (fmpz_cmp(lower, upper) > 0) return(0);
-    
-  /* Set the new upper bound. Note that modulus>0 at this point. */
+  
+   /* Set the new upper bound. Note that modulus>0 at this point. */
   fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n-1, pol+n-1, upper);
   /* Correct the k-th power sum and related quantities. */
