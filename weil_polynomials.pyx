@@ -63,7 +63,8 @@ cdef extern from "power_sums.h":
         fmpz *sympol    # Return value (a polynomial)
 
     ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-    		     		     int cofactor, fmpz *modlist, long node_limit)
+    		     		     int cofactor, fmpz *modlist, long node_limit,
+                                     int force_squarefree)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist)
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
     void ps_static_clear(ps_static_data_t *st_data)
@@ -80,7 +81,7 @@ cdef class dfs_manager:
     cdef ps_dynamic_data_t **dy_data_buf
 
     def __cinit__(self, int d, q, coefflist, modlist, int sign, int cofactor,
-                        long node_limit, int num_threads):
+                        long node_limit, int num_threads, int force_squarefree):
         cdef int i
         cdef fmpz_t temp_lead
         cdef fmpz_t temp_q
@@ -100,7 +101,7 @@ cdef class dfs_manager:
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(modlist[i]).value)
         self.ps_st_data = ps_static_init(d, temp_q, sign, temp_lead, cofactor,
-                                    temp_array, node_limit)
+                                         temp_array, node_limit, force_squarefree)
         fmpz_clear(temp_lead)
         fmpz_clear(temp_q)
 
@@ -113,7 +114,7 @@ cdef class dfs_manager:
         _fmpz_vec_clear(temp_array, d+1)
 
     def __init__(self, d, q, coefflist, modlist, sign, cofactor,
-                        node_limit, num_threads):
+                        node_limit, num_threads, force_squarefree):
         pass
 
     def __dealloc__(self):
@@ -208,7 +209,7 @@ class WeilPolynomials():
         sage: iter.next()
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
     """
-    def __init__(self, d, q, sign=1, lead=1, node_limit=None, num_threads=1):
+    def __init__(self, d, q, sign=1, lead=1, node_limit=None, num_threads=1, squarefree=False):
         r"""
         Initialize an iterator for Weil polynomials.
 
@@ -222,6 +223,8 @@ class WeilPolynomials():
                    a single tree traversal without raising a RuntimeError
             - ``num_threads`` -- number of threads to use for parallel 
                    computation (default: 1)
+            - ``squarefree'' -- if True, return only squarefree polynomials
+                (except possibly for factors of (x \pm sqrt(q))^2)
 
         If ``lead`` cannot be parsed as a list, it is treated as a single integer
         which will be the leading coefficient of all returned polynomials. 
@@ -293,22 +296,26 @@ class WeilPolynomials():
         coefflist.reverse()
         if node_limit is None:
             node_limit = -1
+        force_squarefree = Integer(squarefree)
         self.process = dfs_manager(d2, q, coefflist, modlist, coeffsign,
-                                   num_cofactor, node_limit, num_threads)
+                                   num_cofactor, node_limit, num_threads,
+                                   force_squarefree)
+        self.q = q
+        self.squarefree = squarefree
         self.ans = []
 
     def __iter__(self):
         return(self)
 
     def next(self):
-        if len(self.ans) == 0:
-            if self.process is None:
-                raise StopIteration
-            self.ans = self.process.advance_exhaust()
-        if len(self.ans) == 0:
-            self.count = self.process.count
-            self.process = None
+        if self.process is None:
             raise StopIteration
+        if len(self.ans) == 0:
+            self.ans = self.process.advance_exhaust()
+            if len(self.ans) == 0:
+                self.count = self.process.count
+                self.process = None
+                raise StopIteration
         return self.pol(self.ans.pop())
 
     def node_count(self):
