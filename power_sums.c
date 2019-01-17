@@ -15,8 +15,7 @@
     polynomial has all real roots. Note that this test has an early abort
     mechanism: having all real roots means that the sign sequence has
     the maximal number of sign changes, so the test can be aborted as soon
-    as a sign change is missed. Moreover, if this miss is early enough, it
-    does not even depend on the lowest-order coefficients of the polynomial.
+    as a sign change is missed.
 
     This function assumes that:
         - {poly, n} is a normalized vector with n >= 2
@@ -32,7 +31,7 @@
    TODO: Compare performance with methods based on root isolation (VCA).
 */
 
-int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w)
+int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree)
 {
     fmpz *f0     = w + 0*n;
     fmpz *f1     = w + 1*n;
@@ -86,8 +85,9 @@ int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w)
         _fmpz_vec_scalar_mul_fmpz(f2, f2, n-1, l1);
         _fmpz_vec_scalar_submul_fmpz(f2, f1, n-1, c); 
 
-        if (_fmpz_vec_is_zero(f2, n - 1)) /* We made it! */
-	  return(1);
+        if (_fmpz_vec_is_zero(f2, n-1))
+	  /* We made it! But if n>1, then f was not squarefree. */
+	  return(!force_squarefree || n==1);
 
         n--; // len(f2) = n
 
@@ -105,7 +105,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w)
  */
 
 typedef struct ps_static_data {
-  int d, sign;
+  int d, sign, force_squarefree;
   long node_limit;
   fmpz_t a, b, lead, q;
   fmpz_mat_t binom_mat;
@@ -214,7 +214,8 @@ void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
 
 /* Memory allocation and initialization. */
 ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-				 int cofactor, fmpz *modlist, long node_limit) {
+				 int cofactor, fmpz *modlist, long node_limit,
+				 int force_squarefree) {
   int i, j, k, l;
   ps_static_data_t *st_data;
   fmpz_poly_t pol;
@@ -232,6 +233,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   fmpz_init(st_data->q);
   fmpz_set(st_data->q, q);
   st_data->node_limit = node_limit;
+  st_data->force_squarefree = force_squarefree;
 
   fmpz_init(st_data->a);
   fmpz_init(st_data->b);
@@ -473,6 +475,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 
    The case n=0 is allowed. In this case, we return 1 if the polynomial is
    admissible and 0 otherwise.
+   
 */
 int set_range_from_power_sums(ps_static_data_t *st_data,
 			      ps_dynamic_data_t *dy_data,
@@ -495,6 +498,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz *t0z = dy_data->w + 3*d + 3;
   fmpz *t1z = dy_data->w + 3*d + 4;
   fmpz *t2z = dy_data->w + 3*d + 5;
+
+  /* These are in the highest part of the range to avoid scratch space used for root counting. */
   fmpz *lower = dy_data->w + 4*d + 11;
   fmpz *upper = dy_data->w + 4*d + 12;
   
@@ -573,7 +578,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* Condition: by Rolle's theorem, tpol must have real roots. */
   /* TODO: try using real root isolation instead of Sturm sequences. */
   if (test_roots) {
-    r = _fmpz_poly_all_real_roots(tpol, k, tpol2);
+    r = _fmpz_poly_all_real_roots(tpol, k, tpol2, st_data->force_squarefree);
     if (r<=0) return(r-1);
   }
   
@@ -627,7 +632,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
   fmpz_set(tpol, pol+d-k);
   
-  /* Condition: Descartes' rule of signs applies at -2*sqrt(q), +2*sqrt(q). */
+  /* Condition: Descartes' rule of signs applies at -2*sqrt(q), +2*sqrt(q). 
+   This is only a new condition for the evaluations at these points. */
   
   fmpq_set_si(t3q, -k, 1);
   fmpq_div_fmpz(t3q, t3q, pol+d);
@@ -722,7 +728,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   fmpz_addmul(tpol, lower, modulus);
   while (1) {
-    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2);
+    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
     if (r==1) break;
     fmpz_add(tpol, tpol, modulus);
     fmpz_add_ui(lower, lower, 1);

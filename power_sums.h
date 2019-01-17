@@ -1,5 +1,5 @@
 typedef struct ps_static_data {
-  int d, sign;
+  int d, sign, force_squarefree;
   long node_limit;
   fmpz_t a, b, lead, q;
   fmpz_mat_t binom_mat;
@@ -25,7 +25,8 @@ typedef struct ps_dynamic_data {
 } ps_dynamic_data_t;
 
 ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-				 int cofactor, fmpz *modlist, long node_limit);
+				 int cofactor, fmpz *modlist, long node_limit,
+				 int force_squarefree);
 ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist);
 void ps_static_clear(ps_static_data_t *st_data);
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data);
