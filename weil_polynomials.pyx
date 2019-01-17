@@ -68,7 +68,7 @@ cdef extern from "power_sums.h":
     ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
-    void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) nogil
+    void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
 
 # Data structure to manage parallel depth-first search.
 cdef class dfs_manager:
@@ -129,7 +129,7 @@ cdef class dfs_manager:
         """
         Advance the tree exhaustion.
         """
-        cdef int i, j, k, d = self.d, t=1, np = self.num_threads
+        cdef int i, j, k, d = self.d, t=1, np = self.num_threads, max_steps=100
         cdef long ans_count = 100*np
         cdef mpz_t z
         cdef Integer temp
@@ -143,13 +143,13 @@ cdef class dfs_manager:
                 sig_on()
                 for i in prange(np, schedule='dynamic', num_threads=np):
                     if self.dy_data_buf[i] != NULL:
-                        next_pol(self.ps_st_data, self.dy_data_buf[i])
+                        next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
                 sig_off()
             for i in range(np):
                 if self.dy_data_buf[i] != NULL:
-                    if self.dy_data_buf[i].flag > 0:
+                    t += 1
+                    if self.dy_data_buf[i].flag == 1:
                         # This thread found a solution.
-                        t += 1
                         l = []
                         # Convert a vector of fmpz's into mpz's, then Integers.
                         for j in range(2*d+3):
@@ -159,13 +159,13 @@ cdef class dfs_manager:
                             l.append(temp)
                             flint_mpz_clear_readonly(z)
                         ans.append(l)
-                    elif self.dy_data_buf[i].flag < 0:
-                        raise RuntimeError("Node limit (" + str(self.node_limit) + ") exceeded")
-                    else:
+                    elif self.dy_data_buf[i].flag == 0:
                         # This thread completed its work.
                         self.count += self.dy_data_buf[i].node_count
                         ps_dynamic_clear(self.dy_data_buf[i])
                         self.dy_data_buf[i] = NULL
+                    elif self.dy_data_buf[i].flag == -1:
+                        raise RuntimeError("Node limit ({0:%d}) exceeded".format(self.node_limit))
                 if self.dy_data_buf[i] == NULL: # Steal work
                     j = (i-k) % np
                     self.dy_data_buf[i] = ps_dynamic_split(self.dy_data_buf[j])

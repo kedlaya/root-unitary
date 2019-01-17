@@ -13,7 +13,7 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
-  fmpq_mat_t sum_col, sum_prod, hankel_mat, hankel_dets,
+  fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets,
     hausdorff_prod, hausdorff_sums1, hausdorff_sums2;
   fmpz *pol, *sympol, *upper;
 
@@ -34,5 +34,5 @@ void extract_pol(int *Q, ps_dynamic_data_t *dy_data);
 // long extract_count(ps_dynamic_data_t *dy_data);
 ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data);
 ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data);
-void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data);
+void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps);
 
