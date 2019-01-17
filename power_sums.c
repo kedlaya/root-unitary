@@ -20,7 +20,7 @@
 
     This function assumes that:
         - {poly, n} is a normalized vector with n >= 2
-        - {w, 3 * n + 8} is scratch space.
+        - {w, 3*n+1} is scratch space.
 
     Return values:
         1: poly has all real roots
@@ -34,11 +34,11 @@
 
 int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w)
 {
-    fmpz *f0     = w + 0 * n;
-    fmpz *f1     = w + 1 * n;
-    fmpz *f2     = w + 2 * n;
-    fmpz *c      = w + 3 * n;
-    fmpz *d      = w + 3 * n + 1;
+    fmpz *f0     = w + 0*n;
+    fmpz *f1     = w + 1*n;
+    fmpz *f2     = w + 2*n;
+    fmpz *c      = w + 3*n;
+    fmpz *d      = w + 3*n+1;
 
     fmpz *l0;
     fmpz *l1;
@@ -91,12 +91,12 @@ int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w)
 
         n--; // len(f2) = n
 
-        /* Extract content from f2; in practice, this seems to do better than
+        /* Extract content from f2 (answer into f0); in practice, this seems to do better than
 	 an explicit subresultant computation. */
         _fmpz_vec_content(d, f2, n);
         _fmpz_vec_scalar_divexact_fmpz(f0, f2, n, d);
 
-        /* Rotate the polynomials */
+        /* Swap f0 with f1. */
 	t = f0; f0 = f1; f1 = t;
       }
 }
@@ -475,7 +475,8 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
    admissible and 0 otherwise.
 */
 int set_range_from_power_sums(ps_static_data_t *st_data,
-			  ps_dynamic_data_t *dy_data) {
+			      ps_dynamic_data_t *dy_data,
+			      int test_roots) {
   int i, j, r;
   int d = st_data->d;
   int n = dy_data->n;
@@ -494,8 +495,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz *t0z = dy_data->w + 3*d + 3;
   fmpz *t1z = dy_data->w + 3*d + 4;
   fmpz *t2z = dy_data->w + 3*d + 5;
-  fmpz *lower = dy_data->w + 3*d + 6;
-  fmpz *upper = dy_data->w + 3*d + 7;
+  fmpz *lower = dy_data->w + 4*d + 11;
+  fmpz *upper = dy_data->w + 4*d + 12;
   
   fmpq *t0q = dy_data->w2;
   fmpq *t1q = dy_data->w2 + 1;
@@ -571,8 +572,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   /* Condition: by Rolle's theorem, tpol must have real roots. */
   /* TODO: try using real root isolation instead of Sturm sequences. */
-  r = _fmpz_poly_all_real_roots(tpol, k, tpol2);
-  if (r<=0) return(r-1);
+  if (test_roots) {
+    r = _fmpz_poly_all_real_roots(tpol, k, tpol2);
+    if (r<=0) return(r-1);
+  }
   
   /* If r=1 and k>d, no further coefficients to bound. */
   if (k>d) return(1);
@@ -716,13 +719,29 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
 
   if (fmpz_cmp(lower, upper) > 0) return(0);
+
+  fmpz_addmul(tpol, lower, modulus);
+  while (1) {
+    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2);
+    if (r==1) break;
+    fmpz_add(tpol, tpol, modulus);
+    fmpz_add_ui(lower, lower, 1);
+    if (fmpz_cmp(lower, upper) > 0)
+      return(0);
+    }
   
-   /* Set the new upper bound. Note that modulus>0 at this point. */
+  /* Set the new upper bound. Note that modulus>0 at this point. */
   fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n-1, pol+n-1, upper);
+  
+  /* Set the new polynomial value. */
+  fmpz_mul(lower, lower, modulus);
+  fmpz_add(pol+n-1, pol+n-1, lower);
+
   /* Correct the k-th power sum and related quantities. */
   t1q = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_mul_fmpz(t0q, f, lower);
+
   fmpq_sub(t1q, t1q, t0q);
   for (i=0; i<=k; i++) {
     t1q = fmpq_mat_entry(dy_data->hausdorff_sums1, k, i);
@@ -732,10 +751,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     t1q = fmpq_mat_entry(dy_data->hankel_dets, k/2, 0);
     fmpq_submul(t1q, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0), t0q);
   }
-  /* Set the new polynomial value. */
-  fmpz_mul(lower, lower, modulus);
-  fmpz_add(pol+n-1, pol+n-1, lower);
-
   return(1);
 }
 
@@ -760,7 +775,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
 
-  int i, j, t, r, count_steps = 0;
+  int i, j, t, r, count_steps = 0, test_roots = 1;
   fmpq *tq;
 
   if (n>d) return(0);
@@ -775,7 +790,8 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
     } else {
       i = dy_data->n;
       dy_data->n = n;
-      r = set_range_from_power_sums(st_data, dy_data);
+      r = set_range_from_power_sums(st_data, dy_data, test_roots);
+      test_roots = 0;
       if (r > 0) {
 	n -= 1;
 	if (n<0) { 
@@ -803,10 +819,8 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       } else {
 	count += 1;
 	if (node_limit != -1 && count >= node_limit) { t= -1; break; }
-	if (r<0 && i<n) {
-	/* Early abort: given the previous coefficient, the set of values for
-	   a given coefficient giving the right position of real roots for
-	   the corresponding derivative is always an interval. */
+	if (r<0) {
+	  /* Rolle condition failed; it cannot succeed again at this level. */
 	  ascend = 1;
 	  continue;
 	}
@@ -829,6 +843,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 	  tq = fmpq_mat_entry(dy_data->hausdorff_sums1, d-n, j);
 	  fmpq_sub(tq, tq, st_data->f+n);
 	}
+	test_roots = 1;
       }
     }
     count_steps += 1;
