@@ -26,6 +26,7 @@
         1: poly has all real roots
         j <= 0: poly does not have all real roots, and this remains
                 true for any choice of coefficients in degrees less than -j.
+   [NOTE: we no longer use the value of j for an early abort.]
 
    Based on code by Sebastian Pancratz from the FLINT repository.
    TODO: Compare performance with methods based on root isolation (VCA).
@@ -118,7 +119,7 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
-  fmpq_mat_t sum_col, sum_prod, hankel_mat, hankel_dets,
+  fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets,
     hausdorff_prod, hausdorff_sums1, hausdorff_sums2;
   fmpz *pol, *sympol, *upper;
 
@@ -367,8 +368,8 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
     for (i=0; i<=d; i++) 
       fmpz_set(dy_data->pol+i, coefflist+i);
   
-  fmpq_mat_init(dy_data->sum_col, d+1, 1);
-  fmpq_set_si(fmpq_mat_entry(dy_data->sum_col, 0, 0), d, 1);
+  fmpq_mat_init(dy_data->power_sums, d+1, 1);
+  fmpq_set_si(fmpq_mat_entry(dy_data->power_sums, 0, 0), d, 1);
   fmpq_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
   fmpq_mat_init(dy_data->hankel_dets, d/2+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets, 0, 0), d, 1);
@@ -397,7 +398,7 @@ ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data) {
   dy_data2->ascend = dy_data->ascend;
   _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
   _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
-  fmpq_mat_set(dy_data2->sum_col, dy_data->sum_col);
+  fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
   fmpq_mat_set(dy_data2->hankel_dets, dy_data->hankel_dets);
   fmpq_mat_set(dy_data2->hausdorff_sums1, dy_data->hausdorff_sums1);
   fmpq_mat_set(dy_data2->hausdorff_sums2, dy_data->hausdorff_sums2);
@@ -449,7 +450,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   _fmpz_vec_clear(dy_data->pol, d+1);
   _fmpz_vec_clear(dy_data->sympol, 2*d+3);
   _fmpz_vec_clear(dy_data->upper, d+1);
-  fmpq_mat_clear(dy_data->sum_col);
+  fmpq_mat_clear(dy_data->power_sums);
   fmpq_mat_clear(dy_data->sum_prod);
   fmpq_mat_clear(dy_data->hankel_mat);
   fmpq_mat_clear(dy_data->hankel_dets);
@@ -487,10 +488,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     
   /* Allocate temporary variables from persistent scratch space. */
   fmpz *tpol = dy_data->w;
-  fmpz *tpol2 = dy_data->w + d+1;
-  fmpz *tpol3 = dy_data->w + 2*d+2;
+  fmpz *tpol2 = dy_data->w + d + 1;
+  fmpz *tpol3 = dy_data->w + 2*d + 2;
 
-  fmpz *t0z = dy_data->w + 3*d+3;
+  fmpz *t0z = dy_data->w + 3*d + 3;
   fmpz *t1z = dy_data->w + 3*d + 4;
   fmpz *t2z = dy_data->w + 3*d + 5;
   fmpz *lower = dy_data->w + 3*d + 6;
@@ -570,34 +571,34 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   /* Condition: by Rolle's theorem, tpol must have real roots. */
   /* TODO: try using real root isolation instead of Sturm sequences. */
-  r = _fmpz_poly_all_real_roots(tpol, k, dy_data->w+d+1);
+  r = _fmpz_poly_all_real_roots(tpol, k, tpol2);
   if (r<=0) return(r-1);
-    
+  
   /* If r=1 and k>d, no further coefficients to bound. */
   if (k>d) return(1);
 
   q_is_1 = !fmpz_cmp_ui(q, 1);
 
-  /* Compute the k-th asymmetrized power sum, answer in sum_col[k]. */
-  f = fmpq_mat_entry(dy_data->sum_col, k, 0);
+  /* Update power_sums[k]. */
+  /* TODO: use matrix multiplication here. */
+  f = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_set_si(f, -k, 1);
   fmpq_mul_fmpz(f, f, pol+d-k);
-  fmpq_div_fmpz(f, f, pol+d);
   for (i=1; i<k; i++) {
-    fmpq_set_fmpz_frac(t0q, pol+d-i, pol+d);
-    fmpq_neg(t0q, t0q);
-    fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->sum_col, k-i, 0));
+    fmpq_set_si(t0q, -1, 1);
+    fmpq_mul_fmpz(t0q, t0q, pol+d-i);
+    fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->power_sums, k-i, 0));
   }
+  fmpq_div_fmpz(f, f, pol+d);
   
   /* Condition: the k-th symmetrized power sum must lie in [-2*sqrt(q), 2*sqrt(q)]. */
   f = st_data->f + n-1;
-  fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->sum_col);
+  fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->power_sums);
 
   if (k%2==0) {
     fmpq_set_si(t1q, 2*d, 1);
     if (!q_is_1) {
-      fmpz_set(t0z, q);
-      fmpz_pow_ui(t0z, t0z, k/2);
+      fmpz_pow_ui(t0z, q, k/2);
       fmpq_mul_fmpz(t1q, t1q, t0z);
     }
     fmpq_sub(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
@@ -608,8 +609,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_zero(t1q); 
     fmpq_set_si(t2q, 2*d, 1);
     if (!q_is_1) {
-      fmpz_set(t0z, q);
-      fmpz_pow_ui(t0z, t0z, k/2);
+      fmpz_pow_ui(t0z, q, k/2);
       fmpq_mul_fmpz(t2q, t2q, t0z);
     }
     set_upper(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t2q);
@@ -656,14 +656,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       return(1);
   }
 
- /* Condition: the Hankel determinant is nonnegative because all roots are real. 
-       Todo: find a more efficient way to compute these using orthogonal polynomials. */
+  /* Condition: nonnegativity of the Hankel determinant. */
   if (k%2==0) {
     fmpq_mat_one(dy_data->hankel_mat);
     for (i=0; i<=k/2; i++)
       for (j=0; j<=k/2; j++)
 	fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j),
-		 fmpq_mat_entry(dy_data->sum_col, i+j, 0));
+		 fmpq_mat_entry(dy_data->power_sums, i+j, 0));
     fmpq_mat_det(t0q, dy_data->hankel_mat);
     fmpq_set(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0), t0q);
     fmpq_set(t3q, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
@@ -672,16 +671,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       change_upper(t0q, NULL);
       }
     else if (fmpq_sgn(t0q) < 0) return(0);
-    else change_upper(fmpq_mat_entry(dy_data->sum_col, k, 0), NULL);
+    else change_upper(fmpq_mat_entry(dy_data->power_sums, k, 0), NULL);
     /*    else impose_quadratic_condition(fmpq_mat_entry(dy_data->sum_col, k, 0),
-				    fmpq_mat_entry(dy_data->sum_col, k-1, 0),
-				    fmpq_mat_entry(dy_data->sum_col, k-2, 0)); */
+				    fmpq_mat_entry(dy_data->power_sums, k-1, 0),
+				    fmpq_mat_entry(dy_data->power_sums, k-2, 0)); */
   } 
 
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
   /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
-  fmpq_mat_mul(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], dy_data->sum_col);
+  fmpq_mat_mul(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], dy_data->power_sums);
   for (i=0; i<=k; i++) {
     fmpq_set(t1q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i, 0));
     fmpq_set(t2q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i+1, 0));
@@ -722,7 +721,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n-1, pol+n-1, upper);
   /* Correct the k-th power sum and related quantities. */
-  t1q = fmpq_mat_entry(dy_data->sum_col, k, 0);
+  t1q = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_mul_fmpz(t0q, f, lower);
   fmpq_sub(t1q, t1q, t0q);
   for (i=0; i<=k; i++) {
@@ -781,7 +780,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 	n -= 1;
 	if (n<0) { 
 	  t=1;
-	  /* We have found a solution! Convert it back into reciprocal form for output. */
+	  /* We have found a solution! Convert it back into symmetric form for output. */
 	  _fmpz_vec_zero(sympol, 2*d+3);
 	  fmpz *temp = dy_data->w;
 	  for (i=0; i<=d; i++) {
@@ -804,12 +803,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       } else {
 	count += 1;
 	if (node_limit != -1 && count >= node_limit) { t= -1; break; }
-	if (r<-1) {
-	  /* Early abort: Sturm test failed on a coefficient determined at 
-	     a previous level. This seems to be quite rare. */
-	  ascend = -r-1;
-	  continue;
-	} else if (r==-1 && i<n) {
+	if (r<0 && i<n) {
 	/* Early abort: given the previous coefficient, the set of values for
 	   a given coefficient giving the right position of real roots for
 	   the corresponding derivative is always an interval. */
@@ -826,12 +820,11 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       else {
 	ascend = 0;
 	/* Update the (d-n)-th power sum and related quantities. */
-	tq = fmpq_mat_entry(dy_data->sum_col, d-n, 0);
+	tq = fmpq_mat_entry(dy_data->power_sums, d-n, 0);
 	fmpq_sub(tq, tq, st_data->f+n);
-	if ((d-n)%2==0) {
-	  tq = fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2, 0);
-	  fmpq_submul(tq, st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2-1, 0));
-	}
+	if ((d-n)%2==0)
+	  fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2, 0),
+		      st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2-1, 0));
 	for (j=0; j<=d-n; j++) {
 	  tq = fmpq_mat_entry(dy_data->hausdorff_sums1, d-n, j);
 	  fmpq_sub(tq, tq, st_data->f+n);
