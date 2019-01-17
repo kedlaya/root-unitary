@@ -409,14 +409,13 @@ ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data) {
   if (dy_data==NULL) return(NULL);
 
   ps_dynamic_data_t *dy_data2;
-  int i, d = dy_data->d, n = dy_data->n;
+  int i, d = dy_data->d, n = dy_data->n, ascend=dy_data->ascend;
 
-  for (i=d; i>n+1; i--)
+  for (i=d; i>n+ascend; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) <0) {
       dy_data2 = ps_dynamic_clone(dy_data);
       fmpz_set(dy_data->upper+i, dy_data->pol+i);
-      dy_data2->n = i-1;
-      dy_data2->ascend = 1;
+      dy_data2->ascend = i-n;
       dy_data2->node_count = 0;
       return(dy_data2);
   }
@@ -466,7 +465,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
    a lower and upper bound for the next coefficient, or detect a dead end.
 
    Return values: 
-   -r, r<0: if the n-th truncated polynomial does not have roots in the
+   -r, r>0: if the n-th truncated polynomial does not have roots in the
        interval, and likewise for all choices of the bottom r-1 coefficients
    1: if lower <= upper
    0: otherwise. 
@@ -673,7 +672,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       change_upper(t0q, NULL);
       }
     else if (fmpq_sgn(t0q) < 0) return(0);
-    else change_upper(t0q, NULL);
+    else change_upper(fmpq_mat_entry(dy_data->sum_col, k, 0), NULL);
     /*    else impose_quadratic_condition(fmpq_mat_entry(dy_data->sum_col, k, 0),
 				    fmpq_mat_entry(dy_data->sum_col, k-1, 0),
 				    fmpq_mat_entry(dy_data->sum_col, k-2, 0)); */
@@ -745,9 +744,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     1: if a solution has been found
     0: if the tree has been exhausted
    -1: if the maximum number of nodes has been reached
+   -2: none of the above
 */
 
-void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
+void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
   if (dy_data==NULL) return(0);
 
   int d = st_data->d;
@@ -761,7 +761,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
 
-  int i, j, t, r;
+  int i, j, t, r, count_steps = 0;
   fmpq *tq;
 
   if (n>d) return(0);
@@ -797,6 +797,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	  }
 	  _fmpz_vec_scalar_mul_si(sympol, sympol, 2*d+1, st_data->sign);
 	  _fmpz_poly_mul_KS(sympol,sympol, 2*d+1, st_data->cofactor, 3);
+	  ascend = 1;
 	  break; 
 	}
 	continue;
@@ -805,15 +806,15 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	if (node_limit != -1 && count >= node_limit) { t= -1; break; }
 	if (r<-1) {
 	  /* Early abort: Sturm test failed on a coefficient determined at 
-	     a previous level. */
+	     a previous level. This seems to be quite rare. */
 	  ascend = -r-1;
 	  continue;
-	} else if (r==-1 && i<n) { 
+	} else if (r==-1 && i<n) {
 	/* Early abort: given the previous coefficient, the set of values for
 	   a given coefficient giving the right position of real roots for
 	   the corresponding derivative is always an interval. */
-	ascend = 1;
-	continue;
+	  ascend = 1;
+	  continue;
 	}
       }
     }
@@ -831,14 +832,19 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
 	  tq = fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2, 0);
 	  fmpq_submul(tq, st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2-1, 0));
 	}
-	for (i=0; i<=d-n; i++) {
-	  tq = fmpq_mat_entry(dy_data->hausdorff_sums1, d-n, i);
+	for (j=0; j<=d-n; j++) {
+	  tq = fmpq_mat_entry(dy_data->hausdorff_sums1, d-n, j);
 	  fmpq_sub(tq, tq, st_data->f+n);
 	}
       }
     }
+    count_steps += 1;
+    if (count_steps > max_steps) {
+      t = -2;
+      break;
+      }
   }
-  dy_data->ascend = (n<0);
+  dy_data->ascend = ascend;
   dy_data->n = n;
   dy_data->node_count = count;
   dy_data->flag = t;

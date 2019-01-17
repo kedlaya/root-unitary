@@ -34,5 +34,5 @@ void extract_pol(int *Q, ps_dynamic_data_t *dy_data);
 // long extract_count(ps_dynamic_data_t *dy_data);
 ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data);
 ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data);
-void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data);
+void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps);
 
