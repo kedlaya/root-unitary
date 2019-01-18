@@ -107,7 +107,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree
 typedef struct ps_static_data {
   int d, sign, force_squarefree;
   long node_limit;
-  fmpz_t a, b, lead, q;
+  fmpz_t lead, q;
   fmpz_mat_t binom_mat;
   fmpz *cofactor;
   fmpz *modlist;
@@ -235,15 +235,6 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   st_data->node_limit = node_limit;
   st_data->force_squarefree = force_squarefree;
 
-  fmpz_init(st_data->a);
-  fmpz_init(st_data->b);
-  if (fmpz_is_one(st_data->q)) {
-    fmpz_set_si(st_data->a, -2);
-    fmpz_set_si(st_data->b, 2);
-  } else {
-    fmpz_set_si(st_data->a, 0);
-    fmpz_mul_si(st_data->b, st_data->q, 4);    
-  }
   fmpz_init(st_data->lead);
   fmpz_set(st_data->lead, lead);
 
@@ -429,8 +420,6 @@ ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data) {
 void ps_static_clear(ps_static_data_t *st_data) {
   if (st_data == NULL) return(NULL);
   int i, d = st_data->d;
-  fmpz_clear(st_data->a);
-  fmpz_clear(st_data->b);
   fmpz_clear(st_data->lead);
   fmpz_clear(st_data->q);
   _fmpz_vec_clear(st_data->cofactor, 3);
