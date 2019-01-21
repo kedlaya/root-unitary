@@ -14,91 +14,72 @@
     Use a subresultant (Sturm-Habicht) sequence to test whether a given
     polynomial has all real roots. Note that this test has an early abort
     mechanism: having all real roots means that the sign sequence has
-    the maximal number of sign changes, so the test can be aborted as soon
+    the maximal number of sign changes, so the test aborts as soon
     as a sign change is missed.
 
     This function assumes that:
         - {poly, n} is a normalized vector with n >= 2
-        - {w, 3*n+1} is scratch space.
-
-    Return values:
-        1: poly has all real roots
-        j <= 0: poly does not have all real roots, and this remains
-                true for any choice of coefficients in degrees less than -j.
-   [NOTE: we no longer use the value of j for an early abort.]
+        - {w, 2*n+1} is scratch space.
 
    Based on code by Sebastian Pancratz from the FLINT repository.
-   TODO: Compare performance with methods based on root isolation (VCA).
+   TODO: compare with floating-point interval arithmetic.
 */
 
-int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree)
-{
-    fmpz *f0     = w + 0*n;
-    fmpz *f1     = w + 1*n;
-    fmpz *f2     = w + 2*n;
-    fmpz *c      = w + 3*n;
-    fmpz *d      = w + 3*n+1;
-
-    fmpz *l0;
-    fmpz *l1;
-    fmpz *t;
-
-    int sgn0_l;
-    int sgn1_l;
-    int i;
-    int j;
-    slong n0 = n-1;
-
-    if (n == 1)
-        return 1;
-
-    _fmpz_vec_set(f0, poly, n);
-    _fmpz_poly_derivative(f1, f0, n);
+int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree) {
+  fmpz *f0     = w + 0*n;
+  fmpz *f1     = w + 1*n;
+  fmpz *c      = w + 2*n;
+  fmpz *d      = w + 2*n+1;
+  fmpz *t;
+  
+  int sgn0_l;
+  // int sgn1_l;
+  // int i, j;
+  //  slong n0 = n-1;
+  
+  if (n <= 2) return(1);
+  _fmpz_vec_set(f0, poly, n);
+  _fmpz_poly_derivative(f1, f0, n);
+  n--;
+  sgn0_l = fmpz_sgn(f0+n);
+  
+  for ( ; ; ) {
+    /* At this point deg(f0) = n, deg(f1) = n-1.
+       We explicitly compute the pseudoremainder of f0 modulo f1:
+       f0 := f1[n-1]*f0 - f0[n]*x*f1
+       f0 := f0[n-1]*f1 - f1[n-1]*f0
+    */
+    fmpz_set(c, f0+n);
+    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n-1);
+    _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n-1, c);
     n--;
-    sgn0_l = fmpz_sgn(f0+n);
+    fmpz_set(c, f0+n);
+    fmpz_neg(d, f1+n);
+    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, d);
+    _fmpz_vec_scalar_addmul_fmpz(f0, f1, n, c);
     
-    for ( ; ; )
-      {
-        /* Invariant:  n = len(f0) - 1, len(f1) <= n */
-
-        l0 = f0 + n;
-        l1 = f1 + n-1;
-	sgn1_l = fmpz_sgn(l1);
-        /* If we miss any one sign change, we cannot have enough */
-	if (sgn1_l == 0) return(0);
+    if (!force_squarefree && _fmpz_vec_is_zero(f0, n)) return(1);
+    
+    /* If we miss any one sign change, we cannot have enough. */
+    if (fmpz_sgn(f0+n-1) != sgn0_l) return(0);
+    /*	    sgn1_l = fmpz_sgn(f1+n-1);
+	    if (sgn1_l == 0) return(0);
 	if (sgn1_l != sgn0_l) {
-	  j = 2*n - n0+1; 
-	  if (j>0) return(-j); /* Independent of terms of degree <j */
-	  return(0);
-	}
+		j = 2*n - n0+1; 
+		if (j>0) return(-j); // Independent of terms of degree <j 
+		return(0);
+		}*/
 
-        /* 
-            Explicitly compute the pseudoremainder f2 of f0 modulo f1:
-
-            f2 := l0*x*f1 - l1*f0 
-            f2 := l1*f2 - f2[n-1]*f1
-         */
-        fmpz_zero(f2);
-        _fmpz_vec_scalar_mul_fmpz(f2 + 1, f1, n-1, l0);
-        _fmpz_vec_scalar_submul_fmpz(f2, f0, n, l1);
-	fmpz_set(c, f2+n-1);
-        _fmpz_vec_scalar_mul_fmpz(f2, f2, n-1, l1);
-        _fmpz_vec_scalar_submul_fmpz(f2, f1, n-1, c); 
-
-        if (_fmpz_vec_is_zero(f2, n-1))
-	  /* We made it! But if n>1, then f was not squarefree. */
-	  return(!force_squarefree || n==1);
-
-        n--; // len(f2) = n
-
-        /* Extract content from f2 (answer into f0); in practice, this seems to do better than
-	 an explicit subresultant computation. */
-        _fmpz_vec_content(d, f2, n);
-        _fmpz_vec_scalar_divexact_fmpz(f0, f2, n, d);
-
-        /* Swap f0 with f1. */
-	t = f0; f0 = f1; f1 = t;
-      }
+    if (n==1) return(1); /* At this point f0 is a nonzero scalar, so we win. */
+    
+    /* Extract content from f0; in practice, this seems to do better than
+       an explicit subresultant computation. */
+    _fmpz_vec_content(c, f0, n);
+    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, c);
+    
+    /* Swap f0 with f1. */
+    t = f0; f0 = f1; f1 = t;
+  }
 }
 
 /* Primary data structures for tree exhaustion.
@@ -125,7 +106,7 @@ typedef struct ps_dynamic_data {
 
   /* Scratch space */
   fmpz *w;
-  int wlen; /* = 4*d+12 */
+  int wlen; /* = 3*d+8 */
   fmpq *w2;
   int w2len; /* = 5 */
 } ps_dynamic_data_t;
@@ -374,7 +355,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
 
   /* Allocate scratch space */
   fmpq_mat_init(dy_data->sum_prod, 1, 1);
-  dy_data->wlen = 4*d+12;
+  dy_data->wlen = 3*d+8;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
   dy_data->w2len = 5;
   dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
@@ -487,10 +468,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz *t0z = dy_data->w + 3*d + 3;
   fmpz *t1z = dy_data->w + 3*d + 4;
   fmpz *t2z = dy_data->w + 3*d + 5;
-
-  /* These are in the highest part of the range to avoid scratch space used for root counting. */
-  fmpz *lower = dy_data->w + 4*d + 11;
-  fmpz *upper = dy_data->w + 4*d + 12;
+  fmpz *lower = dy_data->w + 3*d + 6;
+  fmpz *upper = dy_data->w + 3*d + 7;
   
   fmpq *t0q = dy_data->w2;
   fmpq *t1q = dy_data->w2 + 1;
