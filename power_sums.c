@@ -128,7 +128,6 @@ void fmpq_floor_quad(fmpz_t res, const fmpq_t a,
   if (b==NULL) fmpq_floor(res, a);
   else {
     fmpz *anum = fmpq_numref(a);
-    int anum_s = fmpz_sgn(anum);
     fmpz *aden = fmpq_denref(a);
     int aden_s = fmpz_sgn(aden);
     fmpz *bnum = fmpq_numref(b);
@@ -158,7 +157,6 @@ void fmpq_ceil_quad(fmpz_t res, const fmpq_t a,
   if (b==NULL) fmpq_ceil(res, a);
   else {
     fmpz *anum = fmpq_numref(a);
-    int anum_s = fmpz_sgn(anum);
     fmpz *aden = fmpq_denref(a);
     int aden_s = fmpz_sgn(aden);
     fmpz *bnum = fmpq_numref(b);
@@ -456,9 +454,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   fmpz *t0z = dy_data->w + 3*d + 3;
   fmpz *t1z = dy_data->w + 3*d + 4;
-  fmpz *t2z = dy_data->w + 3*d + 5;
-  fmpz *lower = dy_data->w + 3*d + 6;
-  fmpz *upper = dy_data->w + 3*d + 7;
+  fmpz *lower = dy_data->w + 3*d + 5;
+  fmpz *upper = dy_data->w + 3*d + 6;
   
   fmpq *t0q = dy_data->w2;
   fmpq *t1q = dy_data->w2 + 1;
@@ -467,7 +464,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq *t4q = dy_data->w2 + 4;
 
   /* Embedded subroutines to adjust lower and upper bounds. 
-   These use t0q and t4q as persistent scratch space.
+   These use t0z, t0q, t4q as persistent scratch space.
    The pair (val1, val2) stands for val1 + val2*sqrt(q);
    passing NULL for val2 is a faster variant of passing 0. 
 
@@ -534,15 +531,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   /* Condition: by Rolle's theorem, tpol must have real roots. */
   /* TODO: try using real root isolation instead of Sturm sequences. */
-  if (test_roots) {
-    r = _fmpz_poly_all_real_roots(tpol, k, tpol2, st_data->force_squarefree);
-    if (r<=0) return(r-1);
-  }
+  if (test_roots && !_fmpz_poly_all_real_roots(tpol, k, tpol2, st_data->force_squarefree))
+    return(-1);
   
-  /* If r=1 and k>d, no further coefficients to bound. */
+  /* If k>d, no further coefficients to bound. */
   if (k>d) return(1);
-
-  q_is_1 = !fmpz_cmp_ui(q, 1);
 
   /* Update power_sums[k]. */
   /* TODO: use matrix multiplication here. */
@@ -560,6 +553,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   f = st_data->f + n-1;
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->power_sums);
 
+  q_is_1 = !fmpz_cmp_ui(q, 1);
   if (k%2==0) {
     fmpq_set_si(t1q, 2*d, 1);
     if (!q_is_1) {
@@ -596,15 +590,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_div_fmpz(t3q, t3q, pol+d);
 
   for (i=0; 2*i <= k; i++)
-    fmpz_set(tpol2+i, tpol+2*i);
-  for (i=0; 2*i+1 <= k; i++)
-    fmpz_set(tpol3+i, tpol+2*i+1);
-  fmpz_mul_si(t2z, q, 4);
-  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, t2z);
-  _fmpz_poly_evaluate_fmpz(t1z, tpol3, (k+1) / 2, t2z);
-  fmpz_mul_si(t1z, t1z, 2);
+    fmpz_mul_2exp(tpol2+i, tpol+2*i, 2*i);
+  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, q);
   fmpq_mul_fmpz(t1q, t3q, t0z);
-  fmpq_mul_fmpz(t2q, t3q, t1z);
+
+  for (i=0; 2*i+1 <= k; i++)
+    fmpz_mul_2exp(tpol2+i, tpol+2*i+1, 2*i+1);
+  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+1) / 2, q);
+  fmpq_mul_fmpz(t2q, t3q, t0z);
   
   change_lower(t1q, t2q);
   
@@ -612,7 +605,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   if (k%2==1) change_upper(t1q, t2q);
   else change_lower(t1q, t2q);
 
-  /* If modulus=0, then return 1 if [lower, upper] contains 0
+  /* If modulus==0, then return 1 if [lower, upper] contains 0
      and 0 otherwise. After this, we may assume modulus>0.
    */
   if (fmpz_is_zero(modulus)) {
@@ -638,9 +631,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       }
     else if (fmpq_sgn(t0q) < 0) return(0);
     else change_upper(fmpq_mat_entry(dy_data->power_sums, k, 0), NULL);
-    /*    else impose_quadratic_condition(fmpq_mat_entry(dy_data->sum_col, k, 0),
-				    fmpq_mat_entry(dy_data->power_sums, k-1, 0),
-				    fmpq_mat_entry(dy_data->power_sums, k-2, 0)); */
   } 
 
   if (fmpz_cmp(lower, upper) > 0) return(0);
@@ -685,12 +675,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   fmpz_addmul(tpol, lower, modulus);
   while (1) {
-    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
-    if (r==1) break;
-    fmpz_add(tpol, tpol, modulus);
+    if (_fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree))
+      break;
     fmpz_add_ui(lower, lower, 1);
     if (fmpz_cmp(lower, upper) > 0)
       return(0);
+    fmpz_add(tpol, tpol, modulus);
     }
   
   /* Set the new upper bound. Note that modulus>0 at this point. */
