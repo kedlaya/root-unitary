@@ -451,14 +451,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     
   /* Allocate temporary variables from persistent scratch space. */
   fmpz *tpol = dy_data->w;
-  fmpz *tpol2 = dy_data->w + d + 1;
-  fmpz *tpol3 = dy_data->w + 2*d + 2;
+  fmpz *tpol2 = dy_data->w + d+1;
 
-  fmpz *t0z = dy_data->w + 3*d + 3;
-  fmpz *t1z = dy_data->w + 3*d + 4;
-  fmpz *t2z = dy_data->w + 3*d + 5;
-  fmpz *lower = dy_data->w + 3*d + 6;
-  fmpz *upper = dy_data->w + 3*d + 7;
+  fmpz *t0z = dy_data->w+3*d+5;
+  fmpz *lower = dy_data->w+3*d+6;
+  fmpz *upper = dy_data->w+3*d+7;
   
   fmpq *t0q = dy_data->w2;
   fmpq *t1q = dy_data->w2 + 1;
@@ -596,15 +593,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_div_fmpz(t3q, t3q, pol+d);
 
   for (i=0; 2*i <= k; i++)
-    fmpz_set(tpol2+i, tpol+2*i);
-  for (i=0; 2*i+1 <= k; i++)
-    fmpz_set(tpol3+i, tpol+2*i+1);
-  fmpz_mul_si(t2z, q, 4);
-  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, t2z);
-  _fmpz_poly_evaluate_fmpz(t1z, tpol3, (k+1) / 2, t2z);
-  fmpz_mul_si(t1z, t1z, 2);
+    fmpz_mul_2exp(tpol2+i, tpol+2*i, 2*i);
+  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, q);
   fmpq_mul_fmpz(t1q, t3q, t0z);
-  fmpq_mul_fmpz(t2q, t3q, t1z);
+
+  for (i=0; 2*i+1 <= k; i++)
+    fmpz_mul_2exp(tpol2+i, tpol+2*i+1, 2*i+1);
+  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+1) / 2, q);
+  fmpq_mul_fmpz(t2q, t3q, t0z);
   
   change_lower(t1q, t2q);
   
