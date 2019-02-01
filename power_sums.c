@@ -2,6 +2,7 @@
   Low-level code to exhaust over trees of Weil polynomials.
   This code does not implement parallelism; see the Cython wrapper.
 
+  TODO: check for memory leaks.
 */
 
 #include <flint.h>
@@ -32,16 +33,11 @@ int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree
   fmpz *d      = w + 2*n+1;
   fmpz *t;
   
-  int sgn0_l;
-  // int sgn1_l;
-  // int i, j;
-  //  slong n0 = n-1;
-  
   if (n <= 2) return(1);
   _fmpz_vec_set(f0, poly, n);
   _fmpz_poly_derivative(f1, f0, n);
   n--;
-  sgn0_l = fmpz_sgn(f0+n);
+  int sgn0_l = fmpz_sgn(f0+n);
   
   for ( ; ; ) {
     /* At this point deg(f0) = n, deg(f1) = n-1.
@@ -62,15 +58,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree
     
     /* If we miss any one sign change, we cannot have enough. */
     if (fmpz_sgn(f0+n-1) != sgn0_l) return(0);
-    /*	    sgn1_l = fmpz_sgn(f1+n-1);
-	    if (sgn1_l == 0) return(0);
-	if (sgn1_l != sgn0_l) {
-		j = 2*n - n0+1; 
-		if (j>0) return(-j); // Independent of terms of degree <j 
-		return(0);
-		}*/
 
-    if (n==1) return(1); /* At this point f0 is a nonzero scalar, so we win. */
+    if (n==1) return(1); /* If f0 is a scalar, it is nonzero and we win. */
     
     /* Extract content from f0; in practice, this seems to do better than
        an explicit subresultant computation. */
