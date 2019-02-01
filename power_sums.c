@@ -638,16 +638,21 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_set_si(t3q, -k, 1);
   fmpq_div_fmpz(t3q, t3q, pol+d);
 
+  //  fmpz_mul_si(t1z, q, 4);
   for (i=0; 2*i <= k; i++)
-    fmpz_set(tpol2+i, tpol+2*i);
-  for (i=0; 2*i+1 <= k; i++)
-    fmpz_set(tpol3+i, tpol+2*i+1);
-  fmpz_mul_si(t2z, q, 4);
-  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, t2z);
-  _fmpz_poly_evaluate_fmpz(t1z, tpol3, (k+1) / 2, t2z);
-  fmpz_mul_si(t1z, t1z, 2);
+    fmpz_mul_2exp(tpol2+i, tpol+2*i, 2*i);
+  //fmpz_set(tpol2+i, tpol+2*i);
+  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, q);
+  //  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, t1z);
   fmpq_mul_fmpz(t1q, t3q, t0z);
-  fmpq_mul_fmpz(t2q, t3q, t1z);
+
+  for (i=0; 2*i+1 <= k; i++)
+    fmpz_mul_2exp(tpol2+i, tpol+2*i+1, 2*i+1);
+  //    fmpz_set(tpol2+i, tpol+2*i+1);
+  _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+1) / 2, q);
+  // _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+1) / 2, t1z);
+  //  fmpz_mul_si(t0z, t0z, 2);
+  fmpq_mul_fmpz(t2q, t3q, t0z);
   
   change_lower(t1q, t2q);
   
