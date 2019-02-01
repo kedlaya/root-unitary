@@ -45,6 +45,7 @@ from libc.stdlib cimport malloc, free
 
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
+from sage.functions.generalized import sgn
 
 from sage.rings.integer cimport Integer
 from sage.libs.gmp.types cimport mpz_t
@@ -291,9 +292,8 @@ class WeilPolynomials():
         for _ in range(d2+1-len(coefflist)):
             coefflist.append(0)
             modlist.append(1)
-        coeffsign = cmp(coefflist[0], 0)
-        coefflist = map(lambda x: x*coeffsign, coefflist)
-        coefflist.reverse()
+        coeffsign = sgn(coefflist[0])
+        coefflist = [x*coeffsign for x in reversed(coefflist)]
         if node_limit is None:
             node_limit = -1
         force_squarefree = Integer(squarefree)
@@ -307,7 +307,7 @@ class WeilPolynomials():
     def __iter__(self):
         return(self)
 
-    def next(self):
+    def __next__(self):
         if self.process is None:
             raise StopIteration
         if len(self.ans) == 0:
