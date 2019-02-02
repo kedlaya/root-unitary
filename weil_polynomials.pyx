@@ -12,7 +12,7 @@
 #distutils: language = c
 #distutils: libraries = gomp
 #distutils: sources = power_sums.c
-#distutils: include_dirs = /home/kkedlaya/sage/local/include/flint .
+#distutils: include_dirs = /home/kedlaya/sage/local/include/flint .
 #distutils: extra_compile_args = -fopenmp
 
 r"""
@@ -173,69 +173,20 @@ cdef class dfs_manager:
                     self.dy_data_buf[i] = ps_dynamic_split(self.dy_data_buf[j])
         return ans
 
-class WeilPolynomials():
+class WeilPolynomials_iter():
     r"""
-    Iterator for Weil polynomials, i.e., integer polynomials with all complex 
-    roots having a particular absolute value.
+    Iterator created by WeilPolynomials.
 
-    If num_threads is specified, a parallel search (using the specified
-    number of threads) is carried out. In this case, the order of values is not
-    specified.
-
-    EXAMPLES:
-
-    By Kronecker's theorem, a monic integer polynomial has all roots of absolute
-    value 1 if and only if it is a product of cyclotomic polynomials. For such a
-    product to have positive sign of the functional equation, the factors `x-1`
-    and `x+1` must each occur with even multiplicity. This code confirms 
-    Kronecker's theorem for polynomials of degree 6::
-        sage: P.<x> = PolynomialRing(ZZ)
-        sage: d = 6
-        sage: ans1 = list(WeilPolynomials(d, 1, 1))
-        sage: ans1.sort()
-        sage: l = [(x-1)^2, (x+1)^2] + [cyclotomic_polynomial(n,x) 
-        ....:     for n in range(3, 2*d*d) if euler_phi(n) <= d]
-        sage: w = WeightedIntegerVectors(d, [i.degree() for i in l])
-        sage: ans2 = [prod(l[i]^v[i] for i in range(len(l))) for v in w]
-        sage: ans2.sort()
-        sage: print(ans1 == ans2)
-        True
-
-    Generating Weil polynomials with prescribed initial coefficients::
-
-        sage: iter = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
-        sage: iter.next()
-        3*x^10 + x^9 + x^8 - x^6 - 3*x^5 - x^4 + x^2 + x + 3
+    EXAMPLES::
+        sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+        sage: it = iter(w)
+        sage: next(it)
+        3*x^10 + x^9 + x^8 - x^7 + 4*x^6 + 2*x^5 + 4*x^4 - x^3 + x^2 + x + 3
         sage: iter = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
-        sage: iter.next()
-        3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
+        sage: next(it)
+        3*x^10 + x^9 + x^8 - x^7 + 3*x^6 + 4*x^5 + 3*x^4 - x^3 + x^2 + x + 3
     """
-    def __init__(self, d, q, sign=1, lead=1, node_limit=None, num_threads=1, squarefree=False):
-        r"""
-        Initialize an iterator for Weil polynomials.
-
-        INPUT:
-        
-            - ``d`` -- degree of the Weil polynomials
-            - ``q`` -- square absolute value of the roots
-            - ``sign`` -- sign of the functional equation (default: 1)
-            - ``lead`` -- one or more leading coefficients; see below (default: 1)
-            - ``node_limit`` -- if specified, maximum number of nodes to allow in
-                   a single tree traversal without raising a RuntimeError
-            - ``num_threads`` -- number of threads to use for parallel 
-                   computation (default: 1)
-            - ``squarefree'' -- if True, return only squarefree polynomials
-                (except possibly for factors of (x \pm sqrt(q))^2)
-
-        If ``lead`` cannot be parsed as a list, it is treated as a single integer
-        which will be the leading coefficient of all returned polynomials. 
-        Otherwise, each entry is parsed either as a single integer, which is a 
-        prescribed coefficient, or a pair `(i,j)` in which `i` is a coefficient
-        which is prescribed modulo `j`. The values of `j` are required to be monotone 
-        under reverse divisibility; that is, the first value must be a multiple of 
-        the second and so on, with omitted values taken to be 0.
-
-        """
+    def __init__(self, d, q, sign, lead, node_limit, num_threads, squarefree):
         self.pol = PolynomialRing(QQ, name='x')
         x = self.pol.gen()
         d = Integer(d)
@@ -318,6 +269,9 @@ class WeilPolynomials():
                 raise StopIteration
         return self.pol(self.ans.pop())
 
+    def next(self):
+        return self.__next__()
+
     def node_count(self):
         r"""
         Return the number of terminal nodes found in the tree, excluding 
@@ -327,3 +281,55 @@ class WeilPolynomials():
             return self.count
         return self.process.count
 
+class WeilPolynomials():
+    r"""
+    Iterable for Weil polynomials, i.e., integer polynomials with all complex 
+    roots having a particular absolute value.
+
+    If num_threads is specified, a parallel search (using the specified
+    number of threads) is carried out. In this case, the order of values is not
+    specified.
+
+    EXAMPLES:
+
+    By Kronecker's theorem, a monic integer polynomial has all roots of absolute
+    value 1 if and only if it is a product of cyclotomic polynomials. For such a
+    product to have positive sign of the functional equation, the factors `x-1`
+    and `x+1` must each occur with even multiplicity. This code confirms 
+    Kronecker's theorem for polynomials of degree 6::
+        sage: P.<x> = PolynomialRing(ZZ)
+        sage: d = 6
+        sage: ans1 = list(WeilPolynomials(d, 1, 1))
+        sage: ans1.sort()
+        sage: l = [(x-1)^2, (x+1)^2] + [cyclotomic_polynomial(n,x) 
+        ....:     for n in range(3, 2*d*d) if euler_phi(n) <= d]
+        sage: w = WeightedIntegerVectors(d, [i.degree() for i in l])
+        sage: ans2 = [prod(l[i]^v[i] for i in range(len(l))) for v in w]
+        sage: ans2.sort()
+        sage: print(ans1 == ans2)
+        True
+
+    Generating Weil polynomials with prescribed initial coefficients::
+        sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+        sage: it = iter(w)
+        sage: next(it)
+        3*x^10 + x^9 + x^8 - x^7 + 4*x^6 + 2*x^5 + 4*x^4 - x^3 + x^2 + x + 3
+        sage: iter = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
+        sage: next(it)
+        3*x^10 + x^9 + x^8 - x^7 + 3*x^6 + 4*x^5 + 3*x^4 - x^3 + x^2 + x + 3
+    """
+    def __init__(self, d, q, sign=1, lead=1, node_limit=None, num_threads=1, squarefree=False):
+        self.data = (d,q,sign,lead,node_limit,num_threads,squarefree)
+
+    def __iter__(self):
+        w = WeilPolynomials_iter(*self.data)
+        self.w = w
+        return w
+
+    def node_count(self):
+        r"""
+        Return the number of terminal nodes found in the tree, excluding 
+        actual solutions.
+        """
+        return self.w.node_count()
+    
