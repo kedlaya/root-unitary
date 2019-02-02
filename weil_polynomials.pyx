@@ -76,22 +76,23 @@ cdef extern from "power_sums.h":
 cdef class dfs_manager:
     cdef public long count
     cdef int d
-    cdef int num_threads
+    cdef int num_processes
     cdef long node_limit
     cdef ps_static_data_t *ps_st_data
     cdef ps_dynamic_data_t **dy_data_buf
 
     def __cinit__(self, int d, q, coefflist, modlist, int sign, int cofactor,
-                        long node_limit, int num_threads, int force_squarefree):
+                        long node_limit, int parallel, int force_squarefree):
         cdef int i
         cdef fmpz_t temp_lead
         cdef fmpz_t temp_q
         cdef fmpz *temp_array
         self.count = 0
         self.d = d
-        self.num_threads = num_threads
-        self.dy_data_buf = <ps_dynamic_data_t **>malloc(num_threads*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
-        for i in range(self.num_threads):
+        i = 512 if parallel else 1
+        self.dy_data_buf = <ps_dynamic_data_t **>malloc(i*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
+        self.num_processes = i
+        for i in range(self.num_processes):
             self.dy_data_buf[i] = NULL
         self.node_limit = node_limit
         fmpz_init(temp_lead)
@@ -103,26 +104,26 @@ cdef class dfs_manager:
             fmpz_set_mpz(temp_array+i, Integer(modlist[i]).value)
         self.ps_st_data = ps_static_init(d, temp_q, sign, temp_lead, cofactor,
                                          temp_array, node_limit, force_squarefree)
-        fmpz_clear(temp_lead)
-        fmpz_clear(temp_q)
 
         # Initialize the thread pool, but assign work to only one thread.
+        # Other threads get initialized later via work-stealing.
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(coefflist[i]).value)
         self.dy_data_buf[0] = ps_dynamic_init(d, temp_array)
-        for i in range(1, self.num_threads):
-            self.dy_data_buf[i] = NULL
+
+        fmpz_clear(temp_lead)
+        fmpz_clear(temp_q)
         _fmpz_vec_clear(temp_array, d+1)
 
     def __init__(self, d, q, coefflist, modlist, sign, cofactor,
-                        node_limit, num_threads, force_squarefree):
+                        node_limit, parallel, force_squarefree):
         pass
 
     def __dealloc__(self):
         ps_static_clear(self.ps_st_data)
         self.ps_st_data = NULL
         if self.dy_data_buf != NULL:
-            for i in range(self.num_threads):
+            for i in range(self.num_processes):
                 ps_dynamic_clear(self.dy_data_buf[i])
             free(self.dy_data_buf)
             self.dy_data_buf = NULL
@@ -131,7 +132,7 @@ cdef class dfs_manager:
         """
         Advance the tree exhaustion.
         """
-        cdef int i, j, k, d = self.d, t=1, np = self.num_threads, max_steps=100
+        cdef int i, j, k, d = self.d, t=1, np = self.num_processes, max_steps=1000
         cdef long ans_count = 100*np
         cdef mpz_t z
         cdef Integer temp
@@ -140,18 +141,19 @@ cdef class dfs_manager:
         k=0
         while (t>0 and len(ans) < ans_count):
             t = 0
-            if np>1: k = k%(np-1) + 1
-            with nogil: # Drop GIL for this parallel loop
+            if np == 1:
+                next_pol(self.ps_st_data, self.dy_data_buf[0], max_steps)
+            else:    
+                k = k%(np-1) + 1
                 sig_on()
-                for i in prange(np, schedule='dynamic', num_threads=np):
+                for i in prange(np, nogil=True, schedule='dynamic'):
                     if self.dy_data_buf[i] != NULL:
                         next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
                 sig_off()
             for i in range(np):
                 if self.dy_data_buf[i] != NULL:
                     t += 1
-                    if self.dy_data_buf[i].flag == 1:
-                        # This thread found a solution.
+                    if self.dy_data_buf[i].flag == 1: # Extract a solution
                         l = []
                         # Convert a vector of fmpz's into mpz's, then Integers.
                         for j in range(2*d+3):
@@ -161,8 +163,7 @@ cdef class dfs_manager:
                             l.append(temp)
                             flint_mpz_clear_readonly(z)
                         ans.append(l)
-                    elif self.dy_data_buf[i].flag == 0:
-                        # This thread completed its work.
+                    elif self.dy_data_buf[i].flag == 0: # Liquidate this thread
                         self.count += self.dy_data_buf[i].node_count
                         ps_dynamic_clear(self.dy_data_buf[i])
                         self.dy_data_buf[i] = NULL
@@ -186,7 +187,7 @@ class WeilPolynomials_iter():
         sage: next(it)
         3*x^10 + x^9 + x^8 - x^7 + 3*x^6 + 4*x^5 + 3*x^4 - x^3 + x^2 + x + 3
     """
-    def __init__(self, d, q, sign, lead, node_limit, num_threads, squarefree):
+    def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree):
         self.pol = PolynomialRing(QQ, name='x')
         x = self.pol.gen()
         d = Integer(d)
@@ -249,7 +250,7 @@ class WeilPolynomials_iter():
             node_limit = -1
         force_squarefree = Integer(squarefree)
         self.process = dfs_manager(d2, q, coefflist, modlist, coeffsign,
-                                   num_cofactor, node_limit, num_threads,
+                                   num_cofactor, node_limit, parallel,
                                    force_squarefree)
         self.q = q
         self.squarefree = squarefree
@@ -286,9 +287,7 @@ class WeilPolynomials():
     Iterable for Weil polynomials, i.e., integer polynomials with all complex 
     roots having a particular absolute value.
 
-    If num_threads is specified, a parallel search (using the specified
-    number of threads) is carried out. In this case, the order of values is not
-    specified.
+    If parallel is True, then the order of values is not specified.
 
     EXAMPLES:
 
@@ -318,8 +317,8 @@ class WeilPolynomials():
         sage: next(it)
         3*x^10 + x^9 + x^8 - x^7 + 3*x^6 + 4*x^5 + 3*x^4 - x^3 + x^2 + x + 3
     """
-    def __init__(self, d, q, sign=1, lead=1, node_limit=None, num_threads=1, squarefree=False):
-        self.data = (d,q,sign,lead,node_limit,num_threads,squarefree)
+    def __init__(self, d, q, sign=1, lead=1, node_limit=None, parallel=False, squarefree=False):
+        self.data = (d,q,sign,lead,node_limit,parallel,squarefree)
 
     def __iter__(self):
         w = WeilPolynomials_iter(*self.data)
