@@ -39,7 +39,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree
   n--;
   int sgn0_l = fmpz_sgn(f0+n);
   
-  for ( ; ; ) {
+  while (1) {
     /* At this point deg(f0) = n, deg(f1) = n-1.
        We explicitly compute the pseudoremainder of f0 modulo f1:
        f0 := f1[n-1]*f0 - f0[n]*x*f1
@@ -441,11 +441,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   int d = st_data->d;
   int n = dy_data->n;
   int k = d+1-n;
-  fmpz *modulus = st_data->modlist + n-1;
+  fmpz *modulus = st_data->modlist+n-1;
   fmpz *pol = dy_data->pol;
   fmpz *q = st_data->q;
-  int q_is_1;
-  fmpq *f;
+  fmpq *f = st_data->f+n-1;
+  fmpq *t;
     
   /* Allocate temporary variables from persistent scratch space. */
   fmpz *tpol = dy_data->w;
@@ -467,9 +467,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
    The pair (val1, val2) stands for val1 + val2*sqrt(q);
    passing NULL for val2 is a faster variant of passing 0. 
 
-  Usage: if f is a monic linear function of the k-th power sum, then
-  set_upper(f) or change_upper(f) imposes the condition f >= 0;
-  set_lower(f) or change_lower(f) imposes the condition f <= 0.*/
+  Usage: if g is a monic linear function of the k-th power sum, then
+  set_upper(g) or change_upper(g) imposes the condition g >= 0;
+  set_lower(g) or change_lower(g) imposes the condition g <= 0.*/
 
   void set_lower(const fmpq_t val1, const fmpq_t val2) {
     fmpq_div(t0q, val1, f);
@@ -537,36 +537,35 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   if (k>d) return(1);
 
   /* Update power_sums[k]. */
-  /* TODO: use matrix multiplication here. */
-  f = fmpq_mat_entry(dy_data->power_sums, k, 0);
-  fmpq_set_si(f, -k, 1);
-  fmpq_mul_fmpz(f, f, pol+d-k);
+  t = fmpq_mat_entry(dy_data->power_sums, k, 0);
+  fmpq_set_si(t, -k, 1);
+  fmpq_mul_fmpz(t, t, pol+d-k);
   for (i=1; i<k; i++) {
     fmpq_set_si(t0q, -1, 1);
     fmpq_mul_fmpz(t0q, t0q, pol+d-i);
-    fmpq_addmul(f, t0q, fmpq_mat_entry(dy_data->power_sums, k-i, 0));
+    fmpq_addmul(t, t0q, fmpq_mat_entry(dy_data->power_sums, k-i, 0));
   }
-  fmpq_div_fmpz(f, f, pol+d);
+  fmpq_div_fmpz(t, t, pol+d);
   
   /* Condition: the k-th symmetrized power sum must lie in [-2*sqrt(q), 2*sqrt(q)]. */
-  f = st_data->f + n-1;
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->power_sums);
+  t = fmpq_mat_entry(dy_data->sum_prod, 0, 0);
 
-  q_is_1 = !fmpz_cmp_ui(q, 1);
+  int q_is_1 = !fmpz_cmp_ui(q, 1);
   fmpq_set_si(t1q, 2*d, 1);
   if (!q_is_1) {
     fmpz_pow_ui(t0z, q, k/2);
     fmpq_mul_fmpz(t1q, t1q, t0z);
   }
   if (k%2==0) {
-    fmpq_sub(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
+    fmpq_sub(t0q, t, t1q);
     set_lower(t0q, NULL);
-    fmpq_add(t0q, fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
+    fmpq_add(t0q, t, t1q);
     set_upper(t0q, NULL);
   } else {
-    set_upper(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
+    set_upper(t, t1q);
     fmpq_neg(t1q, t1q);
-    set_lower(fmpq_mat_entry(dy_data->sum_prod, 0, 0), t1q);
+    set_lower(t, t1q);
     }
     
   /* Undo one derivative on tpol. */
@@ -582,18 +581,15 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_set_si(t3q, -k, 1);
   fmpq_div_fmpz(t3q, t3q, pol+d);
 
-  for (i=0; 2*i <= k; i++)
-    fmpz_mul_2exp(tpol2+i, tpol+2*i, 2*i);
+  for (i=0; 2*i <= k; i++) fmpz_mul_2exp(tpol2+i, tpol+2*i, 2*i);
   _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, q);
   fmpq_mul_fmpz(t1q, t3q, t0z);
 
-  for (i=0; 2*i+1 <= k; i++)
-    fmpz_mul_2exp(tpol2+i, tpol+2*i+1, 2*i+1);
+  for (i=0; 2*i+1 <= k; i++) fmpz_mul_2exp(tpol2+i, tpol+2*i+1, 2*i+1);
   _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+1) / 2, q);
   fmpq_mul_fmpz(t2q, t3q, t0z);
   
-  change_lower(t1q, t2q);
-  
+  change_lower(t1q, t2q);  
   fmpq_neg(t2q, t2q);
   if (k%2==1) change_upper(t1q, t2q);
   else change_lower(t1q, t2q);
@@ -608,6 +604,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       return(1);
   }
 
+  if (fmpz_cmp(lower, upper) > 0) return(0);
+
   /* Condition: nonnegativity of the Hankel determinant. */
   if (k%2==0) {
     fmpq_mat_one(dy_data->hankel_mat);
@@ -616,17 +614,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 	fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j),
 		 fmpq_mat_entry(dy_data->power_sums, i+j, 0));
     fmpq_mat_det(t0q, dy_data->hankel_mat);
+    t = fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0);
     fmpq_set(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0), t0q);
-    fmpq_set(t3q, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
-    if (fmpq_sgn(t3q) > 0) {
-      fmpq_div(t0q, t0q, t3q);
+    if (fmpq_sgn(t) > 0) {
+      fmpq_div(t0q, t0q, t);
       change_upper(t0q, NULL);
       }
     else if (fmpq_sgn(t0q) < 0) return(0);
     else change_upper(fmpq_mat_entry(dy_data->power_sums, k, 0), NULL);
+    if (fmpz_cmp(lower, upper) > 0) return(0);
   } 
-
-  if (fmpz_cmp(lower, upper) > 0) return(0);
 
   /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
   fmpq_mat_mul(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], dy_data->power_sums);
@@ -640,7 +637,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums2, k, i), t2q);
     }
   }
-  
   if (fmpz_cmp(lower, upper) > 0) return(0);
   
   /* Condition: log convexity based on Cauchy-Schwarz. */
@@ -665,7 +661,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       impose_quadratic_condition(t1q, t2q, t3q);
     }
   }
-
   r = fmpz_cmp(lower, upper);
   if (r>0) return(0);
 
@@ -698,7 +693,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     }
   }
   
-  /* Set the new upper bound. Note that modulus>0 at this point. */
+  /* Set the new upper bound. */
   fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n-1, pol+n-1, upper);
   
@@ -709,12 +704,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* Correct the k-th power sum and related quantities. */
   t1q = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_mul_fmpz(t0q, f, lower);
-
   fmpq_sub(t1q, t1q, t0q);
-  for (i=0; i<=k; i++) {
-    t1q = fmpq_mat_entry(dy_data->hausdorff_sums1, k, i);
-    fmpq_sub(t1q, t1q, t0q);
-  }
+  if (q_is_1) for (i=0; i<=k; i++) {
+      t1q = fmpq_mat_entry(dy_data->hausdorff_sums1, k, i);
+      fmpq_sub(t1q, t1q, t0q);
+    }
   if (k%2==0) {
     t1q = fmpq_mat_entry(dy_data->hankel_dets, k/2, 0);
     fmpq_submul(t1q, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0), t0q);
