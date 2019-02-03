@@ -325,9 +325,11 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   dy_data->ascend = 0;
   dy_data->pol = _fmpz_vec_init(d+1);
   dy_data->sympol = _fmpz_vec_init(2*d+3);
-  if (coefflist != NULL)
+  if (coefflist != NULL) {
+    dy_data->flag = 1; // Activate this process
     for (i=0; i<=d; i++) 
       fmpz_set(dy_data->pol+i, coefflist+i);
+  } else dy_data->flag = 0;
   
   fmpq_mat_init(dy_data->power_sums, d+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->power_sums, 0, 0), d, 1);
@@ -349,39 +351,28 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   return(dy_data);
 }
 
-ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data) {
-  ps_dynamic_data_t *dy_data2;
-  int d = dy_data->d;
-
-  dy_data2 = ps_dynamic_init(d, NULL);
-  dy_data2->n = dy_data->n;
-  dy_data2->node_count = dy_data->node_count;
-  dy_data2->ascend = dy_data->ascend;
-  _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
-  _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
-  fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
-  fmpq_mat_set(dy_data2->hankel_dets, dy_data->hankel_dets);
-  fmpq_mat_set(dy_data2->hausdorff_sums1, dy_data->hausdorff_sums1);
-  fmpq_mat_set(dy_data2->hausdorff_sums2, dy_data->hausdorff_sums2);
-  return(dy_data2);
-}
-
 /* Split off a subtree. */
-ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data) {
+void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
   if (dy_data==NULL) return(NULL);
 
-  ps_dynamic_data_t *dy_data2;
   int i, d = dy_data->d, n = dy_data->n, ascend=dy_data->ascend;
 
   for (i=d; i>n+ascend; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) <0) {
-      dy_data2 = ps_dynamic_clone(dy_data);
+      _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
+      _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
+      fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
+      fmpq_mat_set(dy_data2->hankel_dets, dy_data->hankel_dets);
+      fmpq_mat_set(dy_data2->hausdorff_sums1, dy_data->hausdorff_sums1);
+      fmpq_mat_set(dy_data2->hausdorff_sums2, dy_data->hausdorff_sums2);
       fmpz_set(dy_data->upper+i, dy_data->pol+i);
+      dy_data2->n = dy_data->n;
       dy_data2->ascend = i-n;
       dy_data2->node_count = 0;
-      return(dy_data2);
+      dy_data2->flag = 1; // Activate this process
+      return(0);
   }
-  return(NULL);
+  return(0);
 }
 
 /* Memory deallocation. */
@@ -394,11 +385,11 @@ void ps_static_clear(ps_static_data_t *st_data) {
   fmpz_mat_clear(st_data->binom_mat);
   _fmpq_vec_clear(st_data->f, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
-  for (i=0; i<=d; i++) 
+  for (i=0; i<=d; i++)  {
     fmpq_mat_clear(st_data->hausdorff_mats[i]);
-  free(st_data->hausdorff_mats);
-  for (i=0; i<=d; i++) 
     fmpq_mat_clear(st_data->sum_mats[i]);
+  }
+  free(st_data->hausdorff_mats);
   free(st_data->sum_mats);
   free(st_data);
 }
@@ -717,14 +708,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 }
 
 /* Return value sent back in dy_data->flag:
-    1: if a solution has been found
-    0: if the tree has been exhausted
-   -1: if the maximum number of nodes has been reached
-   -2: none of the above
+   1: in process
+   2: found a solution
+   0: tree exhausted
+   -1: maximum number of nodes reached
 */
 
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
-  if (dy_data==NULL) return(0);
+  if (dy_data==NULL || dy_data->flag <= 0) return(0);
 
   int d = st_data->d;
   int node_limit = st_data->node_limit;
@@ -758,7 +749,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       if (r > 0) {
 	n -= 1;
 	if (n<0) { 
-	  t=1;
+	  t=2;
 	  /* We have found a solution! Convert it back into symmetric form for output. */
 	  _fmpz_vec_zero(sympol, 2*d+3);
 	  fmpz *temp = dy_data->w;
@@ -774,7 +765,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 	    }
 	  }
 	  _fmpz_vec_scalar_mul_si(sympol, sympol, 2*d+1, st_data->sign);
-	  _fmpz_poly_mul_KS(sympol,sympol, 2*d+1, st_data->cofactor, 3);
+	  _fmpz_poly_mul_KS(sympol, sympol, 2*d+1, st_data->cofactor, 3);
 	  ascend = 1;
 	  break; 
 	}
@@ -811,7 +802,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
     }
     count_steps += 1;
     if (count_steps > max_steps) {
-      t = -2;
+      t = 1;
       break;
       }
   }

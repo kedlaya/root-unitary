@@ -15,6 +15,8 @@
 #distutils: include_dirs = /home/kedlaya/sage/local/include/flint .
 #distutils: extra_compile_args = -fopenmp
 
+## TODO: remove hard-coding of include directory
+
 r"""
 Iterator for Weil polynomials.
 
@@ -37,6 +39,8 @@ AUTHOR:
                    define WeilPolynomials iterator
                    reverse convention for polynomials
                    pass multiprecision integers to/from C
+  -- (2019-02-02): update for Python3
+                   improve parallel mode
 """
 
 cimport cython
@@ -59,7 +63,8 @@ cdef extern from "power_sums.h":
         pass
 
     ctypedef struct ps_dynamic_data_t:
-        int flag        # State of the iterator
+        int flag        # State of the iterator (0 = inactive, 1 = running,
+                        #                        2 = found a solution, -1 = too many nodes)
         long node_count # Number of terminal nodes encountered
         fmpz *sympol    # Return value (a polynomial)
 
@@ -67,7 +72,7 @@ cdef extern from "power_sums.h":
     		     		     int cofactor, fmpz *modlist, long node_limit,
                                      int force_squarefree)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist)
-    ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data)
+    void *ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
     void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
@@ -83,17 +88,15 @@ cdef class dfs_manager:
 
     def __cinit__(self, int d, q, coefflist, modlist, int sign, int cofactor,
                         long node_limit, int parallel, int force_squarefree):
-        cdef int i
         cdef fmpz_t temp_lead
         cdef fmpz_t temp_q
         cdef fmpz *temp_array
+        cdef int i = 509 if parallel else 1
+
         self.count = 0
         self.d = d
-        i = 512 if parallel else 1
         self.dy_data_buf = <ps_dynamic_data_t **>malloc(i*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
         self.num_processes = i
-        for i in range(self.num_processes):
-            self.dy_data_buf[i] = NULL
         self.node_limit = node_limit
         fmpz_init(temp_lead)
         fmpz_set_mpz(temp_lead, Integer(coefflist[-1]).value)
@@ -105,11 +108,13 @@ cdef class dfs_manager:
         self.ps_st_data = ps_static_init(d, temp_q, sign, temp_lead, cofactor,
                                          temp_array, node_limit, force_squarefree)
 
-        # Initialize the thread pool, but assign work to only one thread.
-        # Other threads get initialized later via work-stealing.
+        # Initialize processes, but assign work to only one process.
+        # Other processes will get initialized later via work-stealing.
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(coefflist[i]).value)
         self.dy_data_buf[0] = ps_dynamic_init(d, temp_array)
+        for i in range(1, self.num_processes):
+            self.dy_data_buf[i] = ps_dynamic_init(d, NULL)
 
         fmpz_clear(temp_lead)
         fmpz_clear(temp_q)
@@ -132,46 +137,42 @@ cdef class dfs_manager:
         """
         Advance the tree exhaustion.
         """
-        cdef int i, j, k, d = self.d, t=1, np = self.num_processes, max_steps=1000
+        cdef int i, j, k, d = self.d, t=1, np = self.num_processes, max_steps=1000000
         cdef long ans_count = 100*np
         cdef mpz_t z
         cdef Integer temp
         ans = []
 
-        k=0
+        k=1
         while (t>0 and len(ans) < ans_count):
             t = 0
             if np == 1:
                 next_pol(self.ps_st_data, self.dy_data_buf[0], max_steps)
             else:    
-                k = k%(np-1) + 1
+                k = (k<<1) %np
                 sig_on()
                 for i in prange(np, nogil=True, schedule='dynamic'):
-                    if self.dy_data_buf[i] != NULL:
-                        next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
+                    next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
                 sig_off()
             for i in range(np):
-                if self.dy_data_buf[i] != NULL:
-                    t += 1
-                    if self.dy_data_buf[i].flag == 1: # Extract a solution
-                        l = []
-                        # Convert a vector of fmpz's into mpz's, then Integers.
-                        for j in range(2*d+3):
-                            flint_mpz_init_set_readonly(z, &self.dy_data_buf[i].sympol[j])
-                            temp = Integer(0)
-                            mpz_set(temp.value, z)
-                            l.append(temp)
-                            flint_mpz_clear_readonly(z)
-                        ans.append(l)
-                    elif self.dy_data_buf[i].flag == 0: # Liquidate this thread
-                        self.count += self.dy_data_buf[i].node_count
-                        ps_dynamic_clear(self.dy_data_buf[i])
-                        self.dy_data_buf[i] = NULL
-                    elif self.dy_data_buf[i].flag == -1:
-                        raise RuntimeError("Node limit ({0:%d}) exceeded".format(self.node_limit))
-                if self.dy_data_buf[i] == NULL: # Steal work
+                if self.dy_data_buf[i].flag == -1:
+                    raise RuntimeError("Node limit ({0:%d}) exceeded".format(self.node_limit))
+                if self.dy_data_buf[i].flag == 2: # Extract a solution
+                    l = []
+                    # Convert a vector of fmpz's into mpz's, then Integers.
+                    for j in range(2*d+3):
+                        flint_mpz_init_set_readonly(z, &self.dy_data_buf[i].sympol[j])
+                        temp = Integer()
+                        mpz_set(temp.value, z)
+                        l.append(temp)
+                        flint_mpz_clear_readonly(z)
+                    ans.append(l)
+                if self.dy_data_buf[i].flag == 0: # Steal work
+                    self.count += self.dy_data_buf[i].node_count
+                    self.dy_data_buf[i].node_count = 0
                     j = (i-k) % np
-                    self.dy_data_buf[i] = ps_dynamic_split(self.dy_data_buf[j])
+                    ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
+                else: t += 1
         return ans
 
 class WeilPolynomials_iter():
@@ -183,9 +184,10 @@ class WeilPolynomials_iter():
         sage: it = iter(w)
         sage: next(it)
         3*x^10 + x^9 + x^8 - x^7 + 4*x^6 + 2*x^5 + 4*x^4 - x^3 + x^2 + x + 3
-        sage: iter = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
+        sage: w = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
+        sage: it = iter(w)
         sage: next(it)
-        3*x^10 + x^9 + x^8 - x^7 + 3*x^6 + 4*x^5 + 3*x^4 - x^3 + x^2 + x + 3
+        3*x^10 + x^9 + x^8 + x^7 + 3*x^6 - 3*x^4 - x^3 - x^2 - x - 3
     """
     def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree):
         self.pol = PolynomialRing(QQ, name='x')
@@ -313,9 +315,10 @@ class WeilPolynomials():
         sage: it = iter(w)
         sage: next(it)
         3*x^10 + x^9 + x^8 - x^7 + 4*x^6 + 2*x^5 + 4*x^4 - x^3 + x^2 + x + 3
-        sage: iter = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
+        sage: w = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
+        sage: it = iter(w)
         sage: next(it)
-        3*x^10 + x^9 + x^8 - x^7 + 3*x^6 + 4*x^5 + 3*x^4 - x^3 + x^2 + x + 3
+        3*x^10 + x^9 + x^8 + x^7 + 3*x^6 - 3*x^4 - x^3 - x^2 - x - 3
     """
     def __init__(self, d, q, sign=1, lead=1, node_limit=None, parallel=False, squarefree=False):
         self.data = (d,q,sign,lead,node_limit,parallel,squarefree)

@@ -31,9 +31,6 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist);
 void ps_static_clear(ps_static_data_t *st_data);
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data);
 void extract_pol(int *Q, ps_dynamic_data_t *dy_data);
-// void extract_symmetrized_pol(int *Q, ps_dynamic_data_t *dy_data);
-// long extract_count(ps_dynamic_data_t *dy_data);
-ps_dynamic_data_t *ps_dynamic_clone(ps_dynamic_data_t *dy_data);
-ps_dynamic_data_t *ps_dynamic_split(ps_dynamic_data_t *dy_data);
+void *ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2);
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps);
 
