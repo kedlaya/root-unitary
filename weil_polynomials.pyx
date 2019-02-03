@@ -47,6 +47,7 @@ cimport cython
 from cython.parallel import prange
 from libc.stdlib cimport malloc, free
 
+from time import time as clock
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.functions.generalized import sgn
@@ -72,7 +73,7 @@ cdef extern from "power_sums.h":
     		     		     int cofactor, fmpz *modlist, long node_limit,
                                      int force_squarefree)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist)
-    void *ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2)
+    void *ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
     void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
@@ -144,16 +145,33 @@ cdef class dfs_manager:
         ans = []
 
         k=1
-        while (t>0 and len(ans) < ans_count):
+        time1 = 0
+        time2 = 0
+        while (t and len(ans) < ans_count):
             t = 0
+            time1 -= clock()
             if np == 1: # Serial mode
                 next_pol(self.ps_st_data, self.dy_data_buf[0], max_steps)
+                t = self.dy_data_buf[0].flag
+                if not t: 
+                    self.count += self.dy_data_buf[0].node_count
+                    self.dy_data_buf[0].node_count = 0
             else: # Parallel mode
                 k = (k<<1) %np
-                sig_on()
-                for i in prange(np, nogil=True, schedule='dynamic'):
-                    next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
-                sig_off()
+                with nogil:
+                    sig_on()
+                    for i in prange(np, schedule='dynamic'):
+                        next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
+                    for i in prange(np, schedule='static'):
+                        if self.dy_data_buf[i].flag>0: t += 1
+                        if not self.dy_data_buf[i].flag: # Steal work
+                            self.count += self.dy_data_buf[i].node_count
+                            self.dy_data_buf[i].node_count = 0
+                            j = (i-k) % np
+                            ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
+                    sig_off()
+            time1 += clock()
+            time2 -= clock()
             for i in range(np):
                 if self.dy_data_buf[i].flag == -1:
                     raise RuntimeError("Node limit ({0:%d}) exceeded".format(self.node_limit))
@@ -167,12 +185,8 @@ cdef class dfs_manager:
                         l.append(temp)
                         flint_mpz_clear_readonly(z)
                     ans.append(l)
-                if self.dy_data_buf[i].flag == 0: # Steal work in parallel mode
-                    self.count += self.dy_data_buf[i].node_count
-                    self.dy_data_buf[i].node_count = 0
-                    j = (i-k) % np
-                    ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
-                else: t += 1
+            time2 += clock()
+        print(time1, time2)
         return ans
 
 class WeilPolynomials_iter():

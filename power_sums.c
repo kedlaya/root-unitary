@@ -352,13 +352,11 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   return(dy_data);
 }
 
-/* Split off a subtree. 
-   This happens frequently in the parallel mode, and so merits optimization. */
+/* Split off a subtree. */
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if (dy_data==NULL|| !dy_data->flag) return(NULL);
+  if (dy_data==NULL|| dy_data->flag<=0) return(NULL);
 
   int i, d = dy_data->d, n = dy_data->n, ascend=dy_data->ascend;
-  dy_data2->node_count = 0;
 
   for (i=d; i>n+ascend; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) <0) {
@@ -373,7 +371,8 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
       fmpz_set(dy_data->upper+i, dy_data->pol+i);
       dy_data2->n = dy_data->n;
       dy_data2->ascend = i-n;
-      dy_data2->flag = 1; // Activate this process
+      dy_data2->flag = -2; // Prevent work-stealing from this process until it steps forward
+      dy_data2->node_count = 0;
       return(NULL);
   }
   return(NULL);
@@ -719,7 +718,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 */
 
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
-  if (dy_data==NULL || dy_data->flag <= 0) return(0);
+  if (dy_data==NULL || !dy_data->flag) return(0);
+  dy_data->flag = -2; // Prevent work-stealing while this process is running
 
   int d = st_data->d;
   int node_limit = st_data->node_limit;
