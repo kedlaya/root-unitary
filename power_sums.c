@@ -87,7 +87,7 @@ typedef struct ps_static_data {
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
-  int d, n, ascend, flag;
+  int d, n, ascend, flag, q_is_1;
   long node_count;
   fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets,
     hausdorff_prod, hausdorff_sums1, hausdorff_sums2;
@@ -312,12 +312,13 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   return(st_data);
 }
 
-ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
+ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   ps_dynamic_data_t *dy_data;
   int i;
 
   dy_data = (ps_dynamic_data_t *)malloc(sizeof(ps_dynamic_data_t));
   dy_data->d = d;
+  dy_data->q_is_1 = fmpz_is_one(q);
 
   /* Initialize mutable quantities */
   dy_data->n = d;
@@ -351,11 +352,13 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   return(dy_data);
 }
 
-/* Split off a subtree. */
+/* Split off a subtree. 
+   This happens frequently in the parallel mode, and so merits optimization. */
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if (dy_data==NULL) return(NULL);
+  if (dy_data==NULL|| !dy_data->flag) return(NULL);
 
   int i, d = dy_data->d, n = dy_data->n, ascend=dy_data->ascend;
+  dy_data2->node_count = 0;
 
   for (i=d; i>n+ascend; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) <0) {
@@ -363,16 +366,17 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
       _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
       fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
       fmpq_mat_set(dy_data2->hankel_dets, dy_data->hankel_dets);
-      fmpq_mat_set(dy_data2->hausdorff_sums1, dy_data->hausdorff_sums1);
-      fmpq_mat_set(dy_data2->hausdorff_sums2, dy_data->hausdorff_sums2);
+      if (dy_data->q_is_1) {
+	fmpq_mat_set(dy_data2->hausdorff_sums1, dy_data->hausdorff_sums1);
+	fmpq_mat_set(dy_data2->hausdorff_sums2, dy_data->hausdorff_sums2);
+      }
       fmpz_set(dy_data->upper+i, dy_data->pol+i);
       dy_data2->n = dy_data->n;
       dy_data2->ascend = i-n;
-      dy_data2->node_count = 0;
       dy_data2->flag = 1; // Activate this process
-      return(0);
+      return(NULL);
   }
-  return(0);
+  return(NULL);
 }
 
 /* Memory deallocation. */
@@ -432,6 +436,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   int d = st_data->d;
   int n = dy_data->n;
   int k = d+1-n;
+  int q_is_1 = dy_data->q_is_1;
   fmpz *modulus = st_data->modlist+n-1;
   fmpz *pol = dy_data->pol;
   fmpz *q = st_data->q;
@@ -542,7 +547,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->power_sums);
   t = fmpq_mat_entry(dy_data->sum_prod, 0, 0);
 
-  int q_is_1 = !fmpz_cmp_ui(q, 1);
   fmpq_set_si(t1q, 2*d, 1);
   if (!q_is_1) {
     fmpz_pow_ui(t0z, q, k/2);

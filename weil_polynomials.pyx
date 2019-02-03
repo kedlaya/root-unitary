@@ -71,7 +71,7 @@ cdef extern from "power_sums.h":
     ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
     		     		     int cofactor, fmpz *modlist, long node_limit,
                                      int force_squarefree)
-    ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist)
+    ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist)
     void *ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
@@ -112,9 +112,9 @@ cdef class dfs_manager:
         # Other processes will get initialized later via work-stealing.
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(coefflist[i]).value)
-        self.dy_data_buf[0] = ps_dynamic_init(d, temp_array)
+        self.dy_data_buf[0] = ps_dynamic_init(d, temp_q, temp_array)
         for i in range(1, self.num_processes):
-            self.dy_data_buf[i] = ps_dynamic_init(d, NULL)
+            self.dy_data_buf[i] = ps_dynamic_init(d, temp_q, NULL)
 
         fmpz_clear(temp_lead)
         fmpz_clear(temp_q)
@@ -137,7 +137,7 @@ cdef class dfs_manager:
         """
         Advance the tree exhaustion.
         """
-        cdef int i, j, k, d = self.d, t=1, np = self.num_processes, max_steps=1000000
+        cdef int i, j, k, d = self.d, t=1, np = self.num_processes, max_steps=1000
         cdef long ans_count = 100*np
         cdef mpz_t z
         cdef Integer temp
@@ -146,9 +146,9 @@ cdef class dfs_manager:
         k=1
         while (t>0 and len(ans) < ans_count):
             t = 0
-            if np == 1:
+            if np == 1: # Serial mode
                 next_pol(self.ps_st_data, self.dy_data_buf[0], max_steps)
-            else:    
+            else: # Parallel mode
                 k = (k<<1) %np
                 sig_on()
                 for i in prange(np, nogil=True, schedule='dynamic'):
@@ -167,7 +167,7 @@ cdef class dfs_manager:
                         l.append(temp)
                         flint_mpz_clear_readonly(z)
                     ans.append(l)
-                if self.dy_data_buf[i].flag == 0: # Steal work
+                if self.dy_data_buf[i].flag == 0: # Steal work in parallel mode
                     self.count += self.dy_data_buf[i].node_count
                     self.dy_data_buf[i].node_count = 0
                     j = (i-k) % np

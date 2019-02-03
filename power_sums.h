@@ -11,7 +11,7 @@ typedef struct ps_static_data {
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
-  int d, n, ascend, flag;
+  int d, n, ascend, flag, q_is_1;
   long node_count;
   fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets,
     hausdorff_prod, hausdorff_sums1, hausdorff_sums2;
@@ -27,7 +27,7 @@ typedef struct ps_dynamic_data {
 ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 				 int cofactor, fmpz *modlist, long node_limit,
 				 int force_squarefree);
-ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist);
+ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist);
 void ps_static_clear(ps_static_data_t *st_data);
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data);
 void extract_pol(int *Q, ps_dynamic_data_t *dy_data);
