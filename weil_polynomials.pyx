@@ -80,7 +80,6 @@ cdef extern from "power_sums.h":
 
 # Data structure to manage parallel depth-first search.
 cdef class dfs_manager:
-    cdef public long count
     cdef int d
     cdef int num_processes
     cdef long node_limit
@@ -94,7 +93,6 @@ cdef class dfs_manager:
         cdef fmpz *temp_array
         cdef int i = 509 if parallel else 1
 
-        self.count = 0
         self.d = d
         self.dy_data_buf = <ps_dynamic_data_t **>malloc(i*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
         self.num_processes = i
@@ -134,6 +132,13 @@ cdef class dfs_manager:
             free(self.dy_data_buf)
             self.dy_data_buf = NULL
 
+    cpdef long node_count(self):
+        cdef long count = 0
+        cdef int i
+        for i in range(self.num_processes):
+            count += self.dy_data_buf[i].node_count
+        return(count)
+
     cpdef object advance_exhaust(self):
         """
         Advance the tree exhaustion.
@@ -153,22 +158,16 @@ cdef class dfs_manager:
             if np == 1: # Serial mode
                 next_pol(self.ps_st_data, self.dy_data_buf[0], max_steps)
                 t = self.dy_data_buf[0].flag
-                if not t: 
-                    self.count += self.dy_data_buf[0].node_count
-                    self.dy_data_buf[0].node_count = 0
             else: # Parallel mode
                 k = (k<<1) %np
                 with nogil:
                     sig_on()
                     for i in prange(np, schedule='dynamic'):
                         next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
-                    for i in prange(np, schedule='static'):
-                        if self.dy_data_buf[i].flag>0: t += 1
-                        if not self.dy_data_buf[i].flag: # Steal work
-                            self.count += self.dy_data_buf[i].node_count
-                            self.dy_data_buf[i].node_count = 0
-                            j = (i-k) % np
-                            ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
+                        if self.dy_data_buf[i].flag: t += 1
+                    for i in prange(np, schedule='dynamic'):
+                        j = (i-k) % np
+                        ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
                     sig_off()
             time1 += clock()
             time2 -= clock()
@@ -281,7 +280,7 @@ class WeilPolynomials_iter():
         if len(self.ans) == 0:
             self.ans = self.process.advance_exhaust()
             if len(self.ans) == 0:
-                self.count = self.process.count
+                self.count = self.process.node_count()
                 self.process = None
                 raise StopIteration
         return self.pol(self.ans.pop())
