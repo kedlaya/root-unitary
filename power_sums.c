@@ -359,7 +359,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
   if ((dy_data == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return(NULL);
 
-  int i, d = dy_data->d, n = dy_data->n, ascend=dy_data->ascend;
+  int i, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
 
   for (i=d; i>n+ascend; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) <0) {
