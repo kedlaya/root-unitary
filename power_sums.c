@@ -353,15 +353,18 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
 }
 
 /* Split off a subtree. 
-   This happens frequently in the parallel mode, and so merits optimization. */
+   The first process gives up on the current branch, up to the first coefficient that is not uniquely specified;
+   the remaining work is yielded to the second process, which may in turn be split immediately. 
+*/
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if (dy_data==NULL || !dy_data->flag) return(NULL);
+  if ((dy_data == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return(NULL)
 
   int i, d = dy_data->d, n = dy_data->n, ascend=dy_data->ascend;
-  dy_data2->node_count = 0;
 
   for (i=d; i>n+ascend; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) <0) {
+      dy_data2->n = n;
+      dy_data2->ascend = ascend;
       _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
       _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
       fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
@@ -370,10 +373,9 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
 	fmpq_mat_set(dy_data2->hausdorff_sums1, dy_data->hausdorff_sums1);
 	fmpq_mat_set(dy_data2->hausdorff_sums2, dy_data->hausdorff_sums2);
       }
-      fmpz_set(dy_data->upper+i, dy_data->pol+i);
-      dy_data2->n = dy_data->n;
-      dy_data2->ascend = i-n;
-      dy_data2->flag = 1; // Activate this process
+      fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
+      dy_data->ascend = i-n;
+      dy_data2->flag = 1; // This process can now itself be split.
       return(NULL);
   }
   return(NULL);
@@ -719,7 +721,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 */
 
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
-  if (dy_data==NULL || dy_data->flag <= 0) return(0);
+  if (dy_data==NULL || !dy_data->flag) return(0);
   dy_data->flag = 0; // Prevent work-stealing while this process is running
 
   int d = st_data->d;
@@ -728,24 +730,20 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 
   int ascend = dy_data->ascend;
   int n = dy_data->n;
-  int count = dy_data->node_count;
+  long node_count = dy_data->node_count;
   fmpz *upper = dy_data->upper;
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
   int q_is_1 = fmpz_is_one(st_data->q);
 
-  int i, j, t, r, count_steps = 0, test_roots = 1;
+  int i, j, flag, r, count_steps = 0, test_roots = 1;
   fmpq *tq;
 
   if (n>d) return(0);
   while (1) {
-    if (ascend > 0) {
+    if (ascend > 0) { // First, ascend one level if required.
       n += 1;
-      if (n>d) {
-	/* We have exhausted the entire tree. */
-	t=0;
-	break;
-      }
+      if (n>d) { flag = 0; break; } // This process is complete.
     } else {
       i = dy_data->n;
       dy_data->n = n;
@@ -753,9 +751,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       test_roots = 0;
       if (r > 0) {
 	n -= 1;
-	if (n<0) { 
-	  t=2;
-	  /* We have found a solution! Convert it back into symmetric form for output. */
+	if (n<0) { // Convert a solution back into symmetric form for output.
 	  _fmpz_vec_zero(sympol, 2*d+3);
 	  fmpz *temp = dy_data->w;
 	  for (i=0; i<=d; i++) {
@@ -771,20 +767,17 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 	  }
 	  _fmpz_vec_scalar_mul_si(sympol, sympol, 2*d+1, st_data->sign);
 	  _fmpz_poly_mul_KS(sympol, sympol, 2*d+1, st_data->cofactor, 3);
-	  ascend = 1;
-	  break; 
+	  ascend = 1; flag = 2; break;
 	}
 	continue;
       } else {
-	count += 1;
-	if (node_limit != -1 && count >= node_limit) { t= -1; break; }
-	if (r<0) {
-	  /* Rolle condition failed; it cannot succeed again at this level. */
-	  ascend = 1;
-	  continue;
-	}
+	node_count += 1;
+	if (node_limit != -1 && node_count >= node_limit) { flag = -1; break; }
+	/* If the Rolle condition fails, it cannot succeed again at this level. */
+	if (r < 0) { ascend=1; continue; }
       }
     }
+    /* Step forward. */
     if (ascend>1) ascend -= 1;
     else if (fmpq_is_zero(modlist+n)) ascend = 1;
     else {
@@ -807,12 +800,12 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
     }
     count_steps += 1;
     if (count_steps > max_steps) {
-      t = 1;
+      flag = 1;
       break;
       }
   }
   dy_data->ascend = ascend;
   dy_data->n = n;
-  dy_data->node_count = count;
-  dy_data->flag = t;
+  dy_data->node_count = node_count;
+  dy_data->flag = flag;
 }
