@@ -145,7 +145,7 @@ cdef class dfs_manager:
         Advance the tree exhaustion.
         """
         cdef int i, j, k, d = self.d, t=1, np = self.num_processes, max_steps=1000
-        cdef long ans_count = 100*np
+        cdef long ans_count = 0, ans_max = 100*np
         cdef mpz_t z
         cdef Integer temp
         ans = []
@@ -153,13 +153,13 @@ cdef class dfs_manager:
         k=1
         time1 = 0
         time2 = 0
-        while (t and len(ans) < ans_count):
-            t = 0
+        while (t and ans_count  < ans_max):
             time1 -= clock()
             if np == 1: # Serial mode
                 next_pol(self.ps_st_data, self.dy_data_buf[0], max_steps)
                 t = self.dy_data_buf[0].flag
             else: # Parallel mode
+                t = 0
                 k = (k<<1) %np
                 with nogil:
                     sig_on()
@@ -185,6 +185,7 @@ cdef class dfs_manager:
                         l.append(temp)
                         flint_mpz_clear_readonly(z)
                     ans.append(l)
+                    ans_count += 1
             time2 += clock()
         print(time1, time2)
         return ans

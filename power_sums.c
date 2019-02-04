@@ -357,7 +357,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
    the remaining work is yielded to the second process, which may in turn be split immediately. 
 */
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if ((dy_data == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return(NULL)
+  if ((dy_data == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return(NULL);
 
   int i, d = dy_data->d, n = dy_data->n, ascend=dy_data->ascend;
 
@@ -743,6 +743,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   while (1) {
     if (ascend > 0) { // First, ascend one level if required.
       n += 1;
+      test_roots = 0;
       if (n>d) { flag = 0; break; } // This process is complete.
     } else {
       i = dy_data->n;
