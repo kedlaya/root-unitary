@@ -12,7 +12,7 @@
 #distutils: language = c
 #distutils: libraries = gomp
 #distutils: sources = power_sums.c
-#distutils: include_dirs = /home/kedlaya/sage/local/include/flint .
+#distutils: include_dirs = /home/kkedlaya/sage/local/include/flint .
 #distutils: extra_compile_args = -fopenmp
 
 ## TODO: remove hard-coding of include directory
@@ -52,6 +52,7 @@ from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.functions.generalized import sgn
 
+from time import time as clock
 from sage.rings.integer cimport Integer
 from sage.libs.gmp.types cimport mpz_t
 from sage.libs.gmp.mpz cimport mpz_set
