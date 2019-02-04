@@ -355,7 +355,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
 /* Split off a subtree. 
    This happens frequently in the parallel mode, and so merits optimization. */
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if (dy_data==NULL|| !dy_data->flag) return(NULL);
+  if (dy_data==NULL || !dy_data->flag) return(NULL);
 
   int i, d = dy_data->d, n = dy_data->n, ascend=dy_data->ascend;
   dy_data2->node_count = 0;
@@ -720,6 +720,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
   if (dy_data==NULL || dy_data->flag <= 0) return(0);
+  dy_data->flag = 0; // Prevent work-stealing while this process is running
 
   int d = st_data->d;
   int node_limit = st_data->node_limit;
