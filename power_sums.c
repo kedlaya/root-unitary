@@ -721,7 +721,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 */
 
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
-  if (dy_data==NULL || !dy_data->flag) return(0);
+  if (dy_data==NULL || !dy_data->flag) return(0); // No work assigned to this process
   dy_data->flag = 0; // Prevent work-stealing while this process is running
 
   int d = st_data->d;
@@ -734,7 +734,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   fmpz *upper = dy_data->upper;
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
-  int q_is_1 = fmpz_is_one(st_data->q);
+  int q_is_1 = dy_data->q_is_1;
 
   int i, j, flag, r, count_steps = 0, test_roots = 1;
   fmpq *tq;
@@ -792,7 +792,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 	if ((d-n)%2==0)
 	  fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2, 0),
 		      st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2-1, 0));
-	for (j=0; j<=d-n; j++) {
+	if (q_is_1) for (j=0; j<=d-n; j++) {
 	  tq = fmpq_mat_entry(dy_data->hausdorff_sums1, d-n, j);
 	  fmpq_sub(tq, tq, st_data->f+n);
 	}

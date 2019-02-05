@@ -12,7 +12,7 @@
 #distutils: language = c
 #distutils: libraries = gomp
 #distutils: sources = power_sums.c
-#distutils: include_dirs = /home/kkedlaya/sage/local/include/flint .
+#distutils: include_dirs = /home/kedlaya/sage/local/include/flint .
 #distutils: extra_compile_args = -fopenmp
 
 ## TODO: remove hard-coding of include directory
@@ -52,7 +52,6 @@ from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.functions.generalized import sgn
 
-from time import time as clock
 from sage.rings.integer cimport Integer
 from sage.libs.gmp.types cimport mpz_t
 from sage.libs.gmp.mpz cimport mpz_set
@@ -95,8 +94,8 @@ cdef class dfs_manager:
         cdef int i = 509 if parallel else 1
 
         self.d = d
-        self.dy_data_buf = <ps_dynamic_data_t **>malloc(i*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
         self.num_processes = i
+        self.dy_data_buf = <ps_dynamic_data_t **>malloc(i*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
         self.node_limit = node_limit
         fmpz_init(temp_lead)
         fmpz_set_mpz(temp_lead, Integer(coefflist[-1]).value)
@@ -160,13 +159,13 @@ cdef class dfs_manager:
                 t = self.dy_data_buf[0].flag
             else: # Parallel mode
                 t = 0
-                k = (k<<1) %np
+                k = (k<<1) %np # Note that 2 is a primitive root mod np.
                 with nogil:
                     sig_on()
-                    for i in prange(np, schedule='dynamic'):
+                    for i in prange(np, schedule='dynamic'): # Step each process forward
                         next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
                         if self.dy_data_buf[i].flag: t += 1
-                    for i in prange(np, schedule='dynamic'):
+                    for i in prange(np, schedule='dynamic'): # Redistribute work to idle processes
                         j = (i-k) % np
                         ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
                     sig_off()
@@ -187,7 +186,7 @@ cdef class dfs_manager:
                     ans.append(l)
                     ans_count += 1
             time2 += clock()
-        print(time1, time2)
+#        print(time1, time2,self.node_count())
         return ans
 
 class WeilPolynomials_iter():
@@ -297,7 +296,7 @@ class WeilPolynomials_iter():
         """
         if self.process is None:
             return self.count
-        return self.process.count
+        return self.process.node_count()
 
 class WeilPolynomials():
     r"""
