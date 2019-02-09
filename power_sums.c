@@ -95,7 +95,7 @@ typedef struct ps_dynamic_data {
 
   /* Scratch space */
   fmpz *w;
-  int wlen; /* = 3*d+9 */
+  int wlen; /* = 3*d+10 */
   fmpq *w2;
   int w2len; /* = 5 */
 } ps_dynamic_data_t;
@@ -345,7 +345,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
 
   /* Allocate scratch space */
   fmpq_mat_init(dy_data->sum_prod, 1, 1);
-  dy_data->wlen = 3*d+9;
+  dy_data->wlen = 3*d+10;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
   dy_data->w2len = 5;
   dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
@@ -432,8 +432,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
    
 */
 int set_range_from_power_sums(ps_static_data_t *st_data,
-			      ps_dynamic_data_t *dy_data,
-			      int test_roots) {
+			      ps_dynamic_data_t *dy_data) {
   int i, j, r;
   int d = st_data->d;
   int n = dy_data->n;
@@ -451,8 +450,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   fmpz *t0z = dy_data->w+3*d+5;
   fmpz *t1z = dy_data->w+3*d+6;
-  fmpz *lower = dy_data->w+3*d+7;
-  fmpz *upper = dy_data->w+3*d+8;
+  fmpz *t2z = dy_data->w+3*d+7;
+  fmpz *lower = dy_data->w+3*d+8;
+  fmpz *upper = dy_data->w+3*d+9;
   
   fmpq *t0q = dy_data->w2;
   fmpq *t1q = dy_data->w2+1;
@@ -526,15 +526,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   for (i=0; i<=k-1; i++)
     fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
 
-  /* Condition: by Rolle's theorem, tpol must have real roots. */
-  /* TODO: try using real root isolation instead of Sturm sequences. */
-  if (test_roots && !_fmpz_poly_all_real_roots(tpol, k, tpol2, st_data->force_squarefree))
-    return(-1);
-  
   /* If k>d, no further coefficients to bound. */
   if (k>d) return(1);
 
-  /* Update power_sums[k]. */
+  /* Update power_sums[k], assuming the new coefficient is 0. */
   t = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_set_si(t, -k, 1);
   fmpq_mul_fmpz(t, t, pol+d-k);
@@ -565,7 +560,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     set_lower(t, t1q);
     }
     
-  /* Undo one derivative on tpol. */
+  /* Undo one derivative on tpol, taking the new coefficient to be 0. */
   for (i=k; i>=1; i--) {
     fmpz_mul_si(tpol+i, tpol+i-1, n);
     fmpz_divexact_si(tpol+i, tpol+i, i);
@@ -592,13 +587,15 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   else change_lower(t1q, t2q);
 
   /* If modulus==0, then return 1 if [lower, upper] contains 0
-     and 0 otherwise. After this, we may assume modulus>0.
+     and Rolle's theorem is satisfied, and 0 otherwise. 
+     After this, we may assume modulus>0.
    */
   if (fmpz_is_zero(modulus)) {
     if ((fmpz_sgn(lower) > 0) || (fmpz_sgn(upper) < 0)) return(0);
-      fmpz_zero(lower);
-      fmpz_zero(upper);
-      return(1);
+    if (!_fmpz_poly_all_real_roots(tpol, k, tpol2, st_data->force_squarefree)) return(-1);
+    fmpz_zero(lower);
+    fmpz_zero(upper);
+    return(1);
   }
 
   if (fmpz_cmp(lower, upper) > 0) return(0);
@@ -670,24 +667,40 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
     fmpz_submul(tpol, t0z, modulus);
   }
-  if (r) while (fmpz_cmp(lower, t0z)) {
+  if (r) {
+    fmpz_set(t2z, t0z);
+    while (fmpz_cmp(lower, t0z)) {
       fmpz_add(t1z, lower, t0z);
       fmpz_fdiv_q_2exp(t1z, t1z, 1);
       fmpz_addmul(tpol, t1z, modulus);
       r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
       fmpz_submul(tpol, t1z, modulus);
       if (r) fmpz_set(t0z, t1z);
-      else {
-	fmpz_set(lower, t1z);
-	fmpz_add_ui(lower, lower, 1);
-      }
-    } else {
+      else fmpz_add_ui(lower, t1z, 1);
+    }
+  } else {
     fmpz_addmul(tpol, lower, modulus);
-    while (!_fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree)) {
+    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
+    fmpz_submul(tpol, lower, modulus);
+    while (!r) {
       fmpz_add_ui(lower, lower, 1);
       if (fmpz_cmp(lower, upper) > 0) return(0);
-      fmpz_add(tpol, tpol, modulus);
+      fmpz_addmul(tpol, lower, modulus);
+      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
+      fmpz_submul(tpol, lower, modulus);
     }
+    if (fmpz_cmp(lower, t0z)<0) fmpz_sub_ui(upper, t0z, 1);
+    fmpz_set(t2z, lower);
+  }
+  /* Now do a binary search on the right endpoint. */
+  while (fmpz_cmp(t2z, upper)) {
+      fmpz_add(t1z, t2z, upper);
+      fmpz_cdiv_q_2exp(t1z, t1z, 1);
+      fmpz_addmul(tpol, t1z, modulus);
+      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
+      fmpz_submul(tpol, t1z, modulus);
+      if (r) fmpz_set(t2z, t1z);
+      else fmpz_sub_ui(upper, t1z, 1);
   }
   
   /* Set the new upper bound. */
@@ -720,6 +733,22 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
    -1: maximum number of nodes reached
 */
 
+/* Increment the current moving counter and updated stored data to match. */
+void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
+  int d = st_data->d;
+  int j;
+
+  fmpq *tq = fmpq_mat_entry(dy_data->power_sums, d-n, 0);
+  fmpq_sub(tq, tq, st_data->f+n);
+  if ((d-n)%2==0)
+    fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2, 0),
+		st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2-1, 0));
+  if (dy_data->q_is_1) for (j=0; j<=d-n; j++) {
+      tq = fmpq_mat_entry(dy_data->hausdorff_sums1, d-n, j);
+      fmpq_sub(tq, tq, st_data->f+n);
+    }
+}
+
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
   if (dy_data==NULL || !dy_data->flag) return(0); // No work assigned to this process
   dy_data->flag = 0; // Prevent work-stealing while this process is running
@@ -736,20 +765,18 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   fmpz *sympol = dy_data->sympol;
   int q_is_1 = dy_data->q_is_1;
 
-  int i, j, flag, r, count_steps = 0, test_roots = 1;
+  int i, j, flag, r, count_steps = 0;
   fmpq *tq;
 
   if (n>d) return(0);
   while (1) {
     if (ascend > 0) { // First, ascend one level if required.
       n += 1;
-      test_roots = 0;
       if (n>d) { flag = 0; break; } // This process is complete.
     } else {
       i = dy_data->n;
       dy_data->n = n;
-      r = set_range_from_power_sums(st_data, dy_data, test_roots);
-      test_roots = 0;
+      r = set_range_from_power_sums(st_data, dy_data);
       if (r > 0) {
 	n -= 1;
 	if (n<0) { // Convert a solution back into symmetric form for output.
@@ -778,7 +805,6 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 	if (r < 0) { ascend=1; continue; }
       }
     }
-    /* Step forward. */
     if (ascend>1) ascend -= 1;
     else if (fmpq_is_zero(modlist+n)) ascend = 1;
     else {
@@ -786,17 +812,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       if (fmpz_cmp(pol+n, upper+n) > 0) ascend = 1;
       else {
 	ascend = 0;
-	/* Update the (d-n)-th power sum and related quantities. */
-	tq = fmpq_mat_entry(dy_data->power_sums, d-n, 0);
-	fmpq_sub(tq, tq, st_data->f+n);
-	if ((d-n)%2==0)
-	  fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2, 0),
-		      st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2-1, 0));
-	if (q_is_1) for (j=0; j<=d-n; j++) {
-	  tq = fmpq_mat_entry(dy_data->hausdorff_sums1, d-n, j);
-	  fmpq_sub(tq, tq, st_data->f+n);
-	}
-	test_roots = 1;
+	step_forward(st_data, dy_data, n);
       }
     }
     count_steps += 1;
