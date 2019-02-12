@@ -724,9 +724,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 /* Increment the current moving counter and updated stored data to match. */
 void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
   int d = st_data->d;
+  fmpz *pol = dy_data->pol;
+  fmpq *tq = fmpq_mat_entry(dy_data->power_sums, d-n, 0);
   int j;
 
-  fmpq *tq = fmpq_mat_entry(dy_data->power_sums, d-n, 0);
+  fmpz_add(pol+n, pol+n, st_data->modlist+n);
   fmpq_sub(tq, tq, st_data->f+n);
   if ((d-n)%2==0)
     fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2, 0),
@@ -738,9 +740,6 @@ void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) 
 }
 
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
-  if (dy_data==NULL || !dy_data->flag) return(0); // No work assigned to this process
-  dy_data->flag = 0; // Prevent work-stealing while this process is running
-
   int d = st_data->d;
   int node_limit = st_data->node_limit;
   fmpz *modlist = st_data->modlist;
@@ -751,61 +750,53 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   fmpz *upper = dy_data->upper;
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
+  fmpz *temp;
   int q_is_1 = dy_data->q_is_1;
 
-  int i, j, flag = 1, r, count_steps = 0;
+  int i, j, flag = 1, count_steps = 0;
   fmpq *tq;
 
+  if (dy_data==NULL || !dy_data->flag) return(0); // No work assigned to this process
   if (n>d) return(0);
-  while (flag) {
-    if (ascend > 0) { // First, ascend one level if required.
-      n += 1;
-      if (n>d) { flag = 0; break; } // This process is complete.
-    } else {
-      i = dy_data->n;
-      dy_data->n = n;
-      r = set_range_from_power_sums(st_data, dy_data);
-      if (r > 0) {
-	n -= 1;
-	if (n<0) { // Convert a solution back into symmetric form for output.
-	  _fmpz_vec_zero(sympol, 2*d+3);
-	  fmpz *temp = dy_data->w;
-	  for (i=0; i<=d; i++) {
-	    fmpz_one(temp);
-	    for (j=0; j<=i; j++) {
-	      fmpz_addmul(sympol+2*d-(d-i+2*j), pol+i, temp);
-	      if (j<i) {
-		fmpz_mul(temp, temp, st_data->q);
-		fmpz_mul_si(temp, temp, i-j);
-		fmpz_divexact_si(temp, temp, j+1);
-	      }
-	    }
-	  }
-	  _fmpz_vec_scalar_mul_si(sympol, sympol, 2*d+1, st_data->sign);
-	  _fmpz_poly_mul_KS(sympol, sympol, 2*d+1, st_data->cofactor, 3);
-	  ascend = 1; flag = 2; break;
-	}
-	continue;
-      } else {
-	node_count += 1;
-	if (node_limit != -1 && node_count >= node_limit) { flag = -1; break; }
-      }
-    }
-    if (ascend>1) ascend -= 1;
-    else if (fmpz_is_zero(modlist+n)) ascend = 1;
-    else {
-      fmpz_add(pol+n, pol+n, modlist+n);
-      if (fmpz_cmp(pol+n, upper+n) > 0) ascend = 1;
-      else {
-	ascend = 0;
-	step_forward(st_data, dy_data, n);
-      }
-    }
+
+  dy_data->flag = 0; // Prevent work-stealing while this process is running
+
+  while ((flag==1) && (count_steps <= max_steps)) {
     count_steps += 1;
-    if (count_steps > max_steps) {
-      flag = 1;
-      break;
+    if (ascend) { // Ascend the tree and step forward as needed.
+      n += ascend;
+      if (n>d) flag = 0; // This process is complete.
+      else {
+	ascend = (fmpz_is_zero(modlist+n) || (fmpz_cmp(pol+n, upper+n) >= 0));
+	if (!ascend) step_forward(st_data, dy_data, n);
       }
+    } else if (n < 0) { // Return a solution.
+      _fmpz_vec_zero(sympol, 2*d+3);
+      for (i=0; i<=d; i++) {
+	temp = sympol+d-i;
+	fmpz_one(temp);
+	for (j=0; j<=i; j++) {
+	  fmpz_addmul(sympol+d+i-2*j, pol+i, temp);
+	  if (j<i) {
+	    fmpz_mul(temp, temp, st_data->q);
+	    fmpz_mul_si(temp, temp, i-j);
+	    fmpz_divexact_si(temp, temp, j+1);
+	  }
+	}
+      }
+      _fmpz_vec_scalar_mul_si(sympol, sympol, 2*d+1, st_data->sign);
+      _fmpz_poly_mul_KS(sympol, sympol, 2*d+1, st_data->cofactor, 3);
+      ascend = 1;
+      flag = 2;
+    } else { // Compute children of the current node.
+      dy_data->n = n;
+      ascend = !set_range_from_power_sums(st_data, dy_data);
+      n -= 1;
+      if (ascend) {
+	node_count += 1;
+	if (node_limit != -1 && node_count >= node_limit) flag = -1;
+      }
+    }
   }
   dy_data->ascend = ascend;
   dy_data->n = n;
