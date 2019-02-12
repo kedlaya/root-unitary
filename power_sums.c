@@ -753,11 +753,11 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   fmpz *sympol = dy_data->sympol;
   int q_is_1 = dy_data->q_is_1;
 
-  int i, j, flag, r, count_steps = 0;
+  int i, j, flag = 1, r, count_steps = 0;
   fmpq *tq;
 
   if (n>d) return(0);
-  while (1) {
+  while (flag) {
     if (ascend > 0) { // First, ascend one level if required.
       n += 1;
       if (n>d) { flag = 0; break; } // This process is complete.
@@ -792,7 +792,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       }
     }
     if (ascend>1) ascend -= 1;
-    else if (fmpq_is_zero(modlist+n)) ascend = 1;
+    else if (fmpz_is_zero(modlist+n)) ascend = 1;
     else {
       fmpz_add(pol+n, pol+n, modlist+n);
       if (fmpz_cmp(pol+n, upper+n) > 0) ascend = 1;
