@@ -21,12 +21,14 @@
     This function assumes that:
         - {poly, n} is a normalized vector with n >= 2
         - {w, 2*n+1} is scratch space.
+    If a and b are not NULL, we add a*b to the constant term before testing.
 
-   Based on code by Sebastian Pancratz from the FLINT repository.
-   TODO: compare with floating-point interval arithmetic.
+    Based on code by Sebastian Pancratz from the FLINT repository.
+    TODO: compare with floating-point interval arithmetic.
 */
 
-int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree) {
+int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree,
+			      const fmpz_t a, const fmpz_t b) {
   fmpz *f0     = w + 0*n;
   fmpz *f1     = w + 1*n;
   fmpz *c      = w + 2*n;
@@ -35,6 +37,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree
   
   if (n <= 2) return(1);
   _fmpz_vec_set(f0, poly, n);
+  if (a != NULL && b != NULL)
+    fmpz_addmul(f0, a, b);
   _fmpz_poly_derivative(f1, f0, n);
   n--;
   int sgn0_l = fmpz_sgn(f0+n);
@@ -522,10 +526,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   /* End embedded subroutines */
     
-  /* Compute the divided n-th derivative of pol, answer in tpol. */
-  for (i=0; i<=k-1; i++)
-    fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n+i, n), pol+n+i);
-
   /* If k>d, no further coefficients to bound. */
   if (k>d) return(1);
 
@@ -560,13 +560,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     set_lower(t, t1q);
     }
     
-  /* Undo one derivative on tpol, taking the new coefficient to be 0. */
-  for (i=k; i>=1; i--) {
-    fmpz_mul_si(tpol+i, tpol+i-1, n);
-    fmpz_divexact_si(tpol+i, tpol+i, i);
-  }
-  fmpz_set(tpol, pol+d-k);
-  
+  /* Compute the divided (n-1)-st derivative of pol, answer in tpol. */
+  for (i=0; i<=k; i++)
+    fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n-1+i, n-1), pol+n-1+i);
+
   /* Condition: Descartes' rule of signs applies at -2*sqrt(q), +2*sqrt(q). 
    This is only a new condition for the evaluations at these points. */
   
@@ -592,7 +589,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
    */
   if (fmpz_is_zero(modulus)) {
     if ((fmpz_sgn(lower) > 0) || (fmpz_sgn(upper) < 0)) return(0);
-    if (!_fmpz_poly_all_real_roots(tpol, k, tpol2, st_data->force_squarefree)) return(-1);
+    if (!_fmpz_poly_all_real_roots(tpol, k, tpol2, st_data->force_squarefree,
+				   NULL, NULL)) return(-1);
     fmpz_zero(lower);
     fmpz_zero(upper);
     return(1);
@@ -663,31 +661,23 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   if (r) {
     fmpz_add(t0z, lower, upper);
     fmpz_fdiv_q_2exp(t0z, t0z, 1);
-    fmpz_addmul(tpol, t0z, modulus);
-    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
-    fmpz_submul(tpol, t0z, modulus);
+    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, t0z, modulus);
   }
   if (r) {
     fmpz_set(t2z, t0z);
     while (fmpz_cmp(lower, t0z)) {
       fmpz_add(t1z, lower, t0z);
       fmpz_fdiv_q_2exp(t1z, t1z, 1);
-      fmpz_addmul(tpol, t1z, modulus);
-      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
-      fmpz_submul(tpol, t1z, modulus);
+      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, t1z, modulus);
       if (r) fmpz_set(t0z, t1z);
       else fmpz_add_ui(lower, t1z, 1);
     }
   } else {
-    fmpz_addmul(tpol, lower, modulus);
-    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
-    fmpz_submul(tpol, lower, modulus);
+    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, lower, modulus);
     while (!r) {
       fmpz_add_ui(lower, lower, 1);
       if (fmpz_cmp(lower, upper) > 0) return(0);
-      fmpz_addmul(tpol, lower, modulus);
-      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
-      fmpz_submul(tpol, lower, modulus);
+      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, lower, modulus);
     }
     if (fmpz_cmp(lower, t0z)<0) fmpz_sub_ui(upper, t0z, 1);
     fmpz_set(t2z, lower);
@@ -696,9 +686,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   while (fmpz_cmp(t2z, upper)) {
       fmpz_add(t1z, t2z, upper);
       fmpz_cdiv_q_2exp(t1z, t1z, 1);
-      fmpz_addmul(tpol, t1z, modulus);
-      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree);
-      fmpz_submul(tpol, t1z, modulus);
+      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, t1z, modulus);
       if (r) fmpz_set(t2z, t1z);
       else fmpz_sub_ui(upper, t1z, 1);
   }
@@ -801,8 +789,6 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       } else {
 	node_count += 1;
 	if (node_limit != -1 && node_count >= node_limit) { flag = -1; break; }
-	/* If the Rolle condition fails, it cannot succeed again at this level. */
-	if (r < 0) { ascend=1; continue; }
       }
     }
     if (ascend>1) ascend -= 1;

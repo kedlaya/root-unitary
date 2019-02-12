@@ -19,7 +19,7 @@ typedef struct ps_dynamic_data {
 
   /* Scratch space */
   fmpz *w;
-  slong wlen; /* = 4*d+12 */
+  slong wlen; /* = 4*d+10 */
   fmpq *w2;
   slong w2len; /* = 5 */
 } ps_dynamic_data_t;
