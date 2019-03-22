@@ -13,6 +13,7 @@
 #distutils: libraries = gomp
 #distutils: sources = power_sums.c
 #distutils: include_dirs = /home/kedlaya/sage/local/include/flint .
+## Remove the next line if OpenMP is not available
 #distutils: extra_compile_args = -fopenmp
 
 ## TODO: remove hard-coding of include directory
@@ -22,11 +23,14 @@ Iterator for Weil polynomials.
 
 For `q` a prime power, a `q`-Weil polynomial is a monic polynomial with integer
 coefficients whose complex roots all have absolute value `sqrt(q)`. The class
-WeilPolynomials provides an iterator over a space of polynomials of this type;
+WeilPolynomials provides an iterable over a space of polynomials of this type;
 it is possible to relax the monic condition by specifying one (or more) leading
 coefficients. One may also impose certain congruence conditions; this can be
 used to limit the Newton polygons of the resulting polynomials, or to lift
 a polynomial specified by a congruence to a Weil polynomial.
+
+For large jobs, one can set parallel=True to use OpenMP. Due to increased overhead,
+this is not recommended for smaller problem sizes.
 
 EXAMPLES::
 
@@ -43,11 +47,13 @@ AUTHOR:
                    improve parallel mode
 """
 
+from time import time as clock
+
 cimport cython
 from cython.parallel import prange
 from libc.stdlib cimport malloc, free
+from cysignals.signals cimport sig_on, sig_off
 
-from time import time as clock
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.functions.generalized import sgn
@@ -57,7 +63,6 @@ from sage.libs.gmp.types cimport mpz_t
 from sage.libs.gmp.mpz cimport mpz_set
 from sage.libs.flint.fmpz cimport *
 from sage.libs.flint.fmpz_vec cimport *
-from cysignals.signals cimport sig_on, sig_off
 
 cdef extern from "power_sums.h":
     ctypedef struct ps_static_data_t:
@@ -69,6 +74,7 @@ cdef extern from "power_sums.h":
         long node_count # Number of terminal nodes encountered
         fmpz *sympol    # Return value (a polynomial)
 
+    int has_openmp()
     ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
     		     		     int cofactor, fmpz *modlist, long node_limit,
                                      int force_squarefree)
@@ -91,7 +97,7 @@ cdef class dfs_manager:
         cdef fmpz_t temp_lead
         cdef fmpz_t temp_q
         cdef fmpz *temp_array
-        cdef int i = 509 if parallel else 1
+        cdef int i = 101 if parallel else 1
 
         self.d = d
         self.num_processes = i
@@ -143,16 +149,17 @@ cdef class dfs_manager:
         """
         Advance the tree exhaustion.
         """
-        cdef int i, j, k, d = self.d, t=1, np = self.num_processes, max_steps=1000
-        cdef long ans_count = 0, ans_max = 100*np
+        cdef int i, j, k, d = self.d, t=1, u=0, np = self.num_processes, max_steps=1000
+        cdef long ans_count = 0, ans_max = 10000
         cdef mpz_t z
         cdef Integer temp
+        cdef double time1, time2
         ans = []
 
         k=1
         time1 = 0
         time2 = 0
-        while (t and ans_count  < ans_max):
+        while (t and not u and ans_count  < ans_max):
             time1 -= clock()
             if np == 1: # Serial mode
                 next_pol(self.ps_st_data, self.dy_data_buf[0], max_steps)
@@ -165,6 +172,7 @@ cdef class dfs_manager:
                     for i in prange(np, schedule='dynamic'): # Step each process forward
                         next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
                         if self.dy_data_buf[i].flag: t += 1
+                        if self.dy_data_buf[i].flag == -1: u += 1
                     for i in prange(np, schedule='dynamic'): # Redistribute work to idle processes
                         j = (i-k) % np
                         ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
@@ -172,8 +180,6 @@ cdef class dfs_manager:
             time1 += clock()
             time2 -= clock()
             for i in range(np):
-                if self.dy_data_buf[i].flag == -1:
-                    raise RuntimeError("Node limit ({0:%d}) exceeded".format(self.node_limit))
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     l = []
                     # Convert a vector of fmpz's into mpz's, then Integers.
@@ -187,6 +193,9 @@ cdef class dfs_manager:
                     ans_count += 1
             time2 += clock()
 #        print(time1, time2,self.node_count())
+        if u:
+            print(u)
+            raise RuntimeError("Node limit ({0:%d}) exceeded".format(self.node_limit))
         return ans
 
 class WeilPolynomials_iter():
@@ -303,7 +312,9 @@ class WeilPolynomials():
     Iterable for Weil polynomials, i.e., integer polynomials with all complex 
     roots having a particular absolute value.
 
-    If parallel is True, then the order of values is not specified.
+    If parallel is True, then the order of values is not specified. (Beware that
+    due to increased overhead, parallel execution may not yield a significant 
+    speedup for small problem sizes.)
 
     EXAMPLES:
 
@@ -335,6 +346,8 @@ class WeilPolynomials():
         3*x^10 + x^9 + x^8 + x^7 + 3*x^6 - 3*x^4 - x^3 - x^2 - x - 3
     """
     def __init__(self, d, q, sign=1, lead=1, node_limit=None, parallel=False, squarefree=False):
+        if parallel and not has_openmp():
+            raise RuntimeError("Parallel execution not supported")
         self.data = (d,q,sign,lead,node_limit,parallel,squarefree)
 
     def __iter__(self):
@@ -344,8 +357,7 @@ class WeilPolynomials():
 
     def node_count(self):
         r"""
-        Return the number of terminal nodes found in the tree, excluding 
-        actual solutions.
+        Return the number of terminal nodes found in the tree, excluding actual solutions.
         """
         return self.w.node_count()
     

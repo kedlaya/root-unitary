@@ -27,6 +27,13 @@
     TODO: compare with floating-point interval arithmetic.
 */
 
+int has_openmp() {
+  #if defined(_OPENMP)
+  return(1);
+  #endif
+  return(0);
+}
+
 int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   fmpz *f0     = w + 0*n;
@@ -423,17 +430,9 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 }
 
 /* The following is the key subroutine: given some initial coefficients, compute
-   a lower and upper bound for the next coefficient, or detect a dead end.
+   a lower and upper bound for the next coefficient. Return 1 iff the resulting
+   interval is nonempty.
 
-   Return values: 
-   -r, r>0: if the n-th truncated polynomial does not have roots in the
-       interval, and likewise for all choices of the bottom r-1 coefficients
-   1: if lower <= upper
-   0: otherwise. 
-
-   The case n=0 is allowed. In this case, we return 1 if the polynomial is
-   admissible and 0 otherwise.
-   
 */
 int set_range_from_power_sums(ps_static_data_t *st_data,
 			      ps_dynamic_data_t *dy_data) {
@@ -529,7 +528,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* If k>d, no further coefficients to bound. */
   if (k>d) return(1);
 
-  /* Update power_sums[k], assuming the new coefficient is 0. */
+  /* Update power_sums[k]. */
   t = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_set_si(t, -k, 1);
   fmpq_mul_fmpz(t, t, pol+d-k);
@@ -583,14 +582,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   if (k%2==1) change_upper(t1q, t2q);
   else change_lower(t1q, t2q);
 
-  /* If modulus==0, then return 1 if [lower, upper] contains 0
-     and Rolle's theorem is satisfied, and 0 otherwise. 
-     After this, we may assume modulus>0.
+  /* If modulus==0, then return 1 iff [lower, upper] contains 0
+     and Rolle's theorem is satisfied.
    */
   if (fmpz_is_zero(modulus)) {
-    if ((fmpz_sgn(lower) > 0) || (fmpz_sgn(upper) < 0)) return(0);
-    if (!_fmpz_poly_all_real_roots(tpol, k, tpol2, st_data->force_squarefree,
-				   NULL, NULL)) return(-1);
+    if ((fmpz_sgn(lower) > 0) || (fmpz_sgn(upper) < 0) || 
+	!_fmpz_poly_all_real_roots(tpol, k, tpol2, st_data->force_squarefree,
+				   NULL, NULL)) return(0);
     fmpz_zero(lower);
     fmpz_zero(upper);
     return(1);
@@ -598,7 +596,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
-  /* Condition: nonnegativity of the Hankel determinant. */
+  /* Condition: nonnegativity of the Hankel determinant. 
+     TODO: reimplement this as a subresultant. */
   if (k%2==0) {
     fmpq_mat_one(dy_data->hankel_mat);
     for (i=0; i<=k/2; i++)
@@ -612,7 +611,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpq_div(t0q, t0q, t);
       change_upper(t0q, NULL);
       }
-    else if (fmpq_sgn(t0q) < 0) return(0);
+    else if (st_data->force_squarefree || fmpq_sgn(t0q)) return(0);
     else change_upper(fmpq_mat_entry(dy_data->power_sums, k, 0), NULL);
     if (fmpz_cmp(lower, upper) > 0) return(0);
   } 
@@ -656,8 +655,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   r = fmpz_cmp(lower, upper);
   if (r>0) return(0);
 
-  /* Check the Rolle condition at the midpoint. If it holds, we can perform a binary
-     search on the left endpoint; otherwise, we do a linear search instead. */
+  /* Check the Rolle condition at the midpoint. If it holds, perform a binary
+     search on the left endpoint; otherwise, do a linear search. */
   if (r) {
     fmpz_add(t0z, lower, upper);
     fmpz_fdiv_q_2exp(t0z, t0z, 1);
@@ -721,22 +720,22 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
    -1: maximum number of nodes reached
 */
 
-/* Increment the current moving counter and updated stored data to match. */
+/* Increment the current moving counter and update stored data to match. */
 void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
-  int d = st_data->d;
+  int d = st_data->d, k = d-n;
   fmpz *pol = dy_data->pol;
-  fmpq *tq = fmpq_mat_entry(dy_data->power_sums, d-n, 0);
+  fmpq *tq = fmpq_mat_entry(dy_data->power_sums, k, 0);
   int j;
 
   fmpz_add(pol+n, pol+n, st_data->modlist+n);
   fmpq_sub(tq, tq, st_data->f+n);
-  if ((d-n)%2==0)
-    fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2, 0),
-		st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, (d-n)/2-1, 0));
-  if (dy_data->q_is_1) for (j=0; j<=d-n; j++) {
-      tq = fmpq_mat_entry(dy_data->hausdorff_sums1, d-n, j);
+  if (dy_data->q_is_1) for (j=0; j<=k; j++) {
+      tq = fmpq_mat_entry(dy_data->hausdorff_sums1, k, j);
       fmpq_sub(tq, tq, st_data->f+n);
     }
+  if (k%2==0)
+    fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0),
+		st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
 }
 
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
@@ -746,15 +745,14 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 
   int ascend = dy_data->ascend;
   int n = dy_data->n;
+  int q_is_1 = dy_data->q_is_1;
   long node_count = dy_data->node_count;
   fmpz *upper = dy_data->upper;
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
   fmpz *temp;
-  int q_is_1 = dy_data->q_is_1;
 
   int i, j, flag = 1, count_steps = 0;
-  fmpq *tq;
 
   if (dy_data==NULL || !dy_data->flag) return(0); // No work assigned to this process
   if (n>d) return(0);

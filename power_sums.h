@@ -24,6 +24,7 @@ typedef struct ps_dynamic_data {
   slong w2len; /* = 5 */
 } ps_dynamic_data_t;
 
+int has_openmp();
 ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 				 int cofactor, fmpz *modlist, long node_limit,
 				 int force_squarefree);
