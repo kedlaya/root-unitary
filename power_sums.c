@@ -3,6 +3,7 @@
   This code does not implement parallelism; see the Cython wrapper.
 
   TODO: check for memory leaks.
+  TODO: try the Routh-Hurwitz criterion.
 */
 
 #include <flint.h>
@@ -750,7 +751,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   fmpz *upper = dy_data->upper;
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
-  fmpz *temp;
+  fmpz *temp = dy_data->w;
 
   int i, j, flag = 1, count_steps = 0;
 
@@ -771,7 +772,6 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
     } else if (n < 0) { // Return a solution.
       _fmpz_vec_zero(sympol, 2*d+3);
       for (i=0; i<=d; i++) {
-	temp = sympol+d-i;
 	fmpz_one(temp);
 	for (j=0; j<=i; j++) {
 	  fmpz_addmul(sympol+d+i-2*j, pol+i, temp);

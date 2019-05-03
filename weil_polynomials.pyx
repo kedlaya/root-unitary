@@ -1,5 +1,5 @@
 #*****************************************************************************
-#       Copyright (C) 2018 Kiran S. Kedlaya <kskedl@gmail.com>
+#       Copyright (C) 2019 Kiran S. Kedlaya <kskedl@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -317,6 +317,10 @@ class WeilPolynomials():
     speedup for small problem sizes.)
 
     EXAMPLES:
+
+    All 2-Weil polynomials of degree 2::
+        sage: list(WeilPolynomials(2,2))
+        [x^2 + 2*x + 2, x^2 + x + 2, x^2 + 2, x^2 - x + 2, x^2 - 2*x + 2]
 
     By Kronecker's theorem, a monic integer polynomial has all roots of absolute
     value 1 if and only if it is a product of cyclotomic polynomials. For such a
