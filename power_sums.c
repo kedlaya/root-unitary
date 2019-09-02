@@ -35,7 +35,7 @@ int has_openmp() {
   return(0);
 }
 
-int _fmpz_poly_all_real_roots(fmpz *poly, slong n, fmpz *w, int force_squarefree,
+int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   fmpz *f0     = w + 0*n;
   fmpz *f1     = w + 1*n;
