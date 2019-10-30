@@ -34,7 +34,14 @@ this is not recommended for smaller problem sizes.
 
 EXAMPLES::
 
-<Lots and lots of examples>
+    sage: list(WeilPolynomials(2,2))
+    [x^2 + 2*x + 2, x^2 + x + 2, x^2 + 2, x^2 - x + 2, x^2 - 2*x + 2]
+    sage: l = list(WeilPolynomials(4,2))
+    sage: l[0], l[-1]
+    (x^4 + 4*x^3 + 8*x^2 + 8*x + 4, x^4 - 4*x^3 + 8*x^2 - 8*x + 4)
+    sage: l = list(WeilPolynomials(3, 1, sign=-1))
+    sage: l[0], l[-1]
+    (x^3 + x^2 - x - 1, x^3 - 3*x^2 + 3*x - 1)
 
 AUTHOR:
   -- Kiran S. Kedlaya (2007-05-28): initial version
@@ -312,15 +319,24 @@ class WeilPolynomials():
     Iterable for Weil polynomials, i.e., integer polynomials with all complex 
     roots having a particular absolute value.
 
+    If parallel is False, then the order of values is descending lexicographical
+    (i.e., polynomials with the largest coefficients of largest degrees sort first).
+
     If parallel is True, then the order of values is not specified. (Beware that
     due to increased overhead, parallel execution may not yield a significant 
     speedup for small problem sizes.)
 
     EXAMPLES:
 
-    All 2-Weil polynomials of degree 2::
+    Some simple cases::
         sage: list(WeilPolynomials(2,2))
         [x^2 + 2*x + 2, x^2 + x + 2, x^2 + 2, x^2 - x + 2, x^2 - 2*x + 2]
+        sage: l = list(WeilPolynomials(4,2))
+        sage: l[0], l[-1]
+        (x^4 + 4*x^3 + 8*x^2 + 8*x + 4, x^4 - 4*x^3 + 8*x^2 - 8*x + 4)
+        sage: l = list(WeilPolynomials(3, 1, sign=-1))
+        sage: l[0], l[-1]
+        (x^3 + x^2 - x - 1, x^3 - 3*x^2 + 3*x - 1)
 
     By Kronecker's theorem, a monic integer polynomial has all roots of absolute
     value 1 if and only if it is a product of cyclotomic polynomials. For such a
