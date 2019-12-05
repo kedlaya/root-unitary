@@ -12,6 +12,15 @@
 #include <fmpq_mat.h>
 #include <arith.h>
 
+/* Check for OpenMP at runtime.
+*/
+int has_openmp() {
+  #if defined(_OPENMP)
+  return(1);
+  #endif
+  return(0);
+}
+
 /*
     Use a subresultant (Sturm-Habicht) sequence to test whether a given
     polynomial has all real roots. Note that this test has an early abort
@@ -27,13 +36,6 @@
     Based on code by Sebastian Pancratz from the FLINT repository.
     TODO: compare with floating-point interval arithmetic.
 */
-
-int has_openmp() {
-  #if defined(_OPENMP)
-  return(1);
-  #endif
-  return(0);
-}
 
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
@@ -714,13 +716,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   return(1);
 }
 
-/* Return value sent back in dy_data->flag:
-   1: in process
-   2: found a solution
-   0: tree exhausted
-   -1: maximum number of nodes reached
-*/
-
 /* Increment the current moving counter and update stored data to match. */
 void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
   int d = st_data->d, k = d-n;
@@ -738,6 +733,13 @@ void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) 
     fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0),
 		st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
 }
+
+/* Return value sent back in dy_data->flag:
+   1: in process
+   2: found a solution
+   0: tree exhausted
+   -1: maximum number of nodes reached
+*/
 
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
   int d = st_data->d;
