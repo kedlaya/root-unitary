@@ -1,22 +1,7 @@
-#*****************************************************************************
-#       Copyright (C) 2019 Kiran S. Kedlaya <kskedl@gmail.com>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 2 of the License, or
-# (at your option) any later version.
-#                  http://www.gnu.org/licenses/
-#*****************************************************************************
-
-#encoding=utf8
 #distutils: language = c
 #distutils: libraries = gomp
-#distutils: sources = power_sums.c
-#distutils: include_dirs = /home/kedlaya/sage/local/include/flint .
 ## Remove the next line if OpenMP is not available
 #distutils: extra_compile_args = -fopenmp
-
-## TODO: remove hard-coding of include directory
 
 r"""
 Iterator for Weil polynomials.
@@ -54,6 +39,16 @@ AUTHOR:
                    improve parallel mode
 """
 
+#*****************************************************************************
+#       Copyright (C) 2019 Kiran S. Kedlaya <kskedl@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#                  http://www.gnu.org/licenses/
+#*****************************************************************************
+
 from time import time as clock
 
 cimport cython
@@ -71,7 +66,7 @@ from sage.libs.gmp.mpz cimport mpz_set
 from sage.libs.flint.fmpz cimport *
 from sage.libs.flint.fmpz_vec cimport *
 
-cdef extern from "power_sums.h":
+cdef extern from "power_sums.c":
     ctypedef struct ps_static_data_t:
         pass
 

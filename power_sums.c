@@ -4,13 +4,24 @@
 
   TODO: check for memory leaks.
   TODO: try the Routh-Hurwitz criterion.
+
+#*****************************************************************************
+#       Copyright (C) 2019 Kiran S. Kedlaya <kskedl@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#                  http://www.gnu.org/licenses/
+#*****************************************************************************
+
 */
 
-#include <flint.h>
-#include <fmpz_poly.h>
-#include <fmpq.h>
-#include <fmpq_mat.h>
-#include <arith.h>
+#include <flint/flint.h>
+#include <flint/fmpz_poly.h>
+#include <flint/fmpq.h>
+#include <flint/fmpq_mat.h>
+#include <flint/arith.h>
 
 /* Check for OpenMP at runtime.
 */
@@ -47,8 +58,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
   
   if (n <= 2) return(1);
   _fmpz_vec_set(f0, poly, n);
-  if (a != NULL && b != NULL)
-    fmpz_addmul(f0, a, b);
+  if (a != NULL && b != NULL) fmpz_addmul(f0, a, b);
   _fmpz_poly_derivative(f1, f0, n);
   n--;
   int sgn0_l = fmpz_sgn(f0+n);
@@ -634,7 +644,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   if (fmpz_cmp(lower, upper) > 0) return(0);
   
   /* Condition: log convexity based on Cauchy-Schwarz. */
-  /* Todo: extend to q != 1 without losing too much efficiency. */
+  /* TODO: extend to q != 1 without losing too much efficiency. */
   if (q_is_1) {
     for (i=0; i<=k-2; i++) {
       fmpq_add(t1q, fmpq_mat_entry(dy_data->hausdorff_sums1, k, i),
