@@ -1,3 +1,4 @@
+# coding: utf-8
 r"""
 Iterator for Weil polynomials.
 
@@ -11,17 +12,6 @@ a polynomial specified by a congruence to a Weil polynomial.
 
 For large jobs, one can set parallel=True to use OpenMP. Due to increased overhead,
 this is not recommended for smaller problem sizes.
-
-EXAMPLES::
-
-    sage: list(WeilPolynomials(2,2))
-    [x^2 + 2*x + 2, x^2 + x + 2, x^2 + 2, x^2 - x + 2, x^2 - 2*x + 2]
-    sage: l = list(WeilPolynomials(4,2))
-    sage: l[0], l[-1]
-    (x^4 + 4*x^3 + 8*x^2 + 8*x + 4, x^4 - 4*x^3 + 8*x^2 - 8*x + 4)
-    sage: l = list(WeilPolynomials(3, 1, sign=-1))
-    sage: l[0], l[-1]
-    (x^3 + x^2 - x - 1, x^3 - 3*x^2 + 3*x - 1)
 
 AUTHOR:
   -- Kiran S. Kedlaya (2007-05-28): initial version
@@ -76,7 +66,7 @@ cdef extern from "power_sums.c":
 
     int has_openmp()
     ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-    		     		     int cofactor, fmpz *modlist, long node_limit,
+                                     int cofactor, fmpz *modlist, long node_limit,
                                      int force_squarefree)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist)
     void *ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
@@ -164,7 +154,7 @@ cdef class dfs_manager:
         This method should not be called directly. Instead, use the `node_count` method
         of an instance of `WeilPolynomials` or `WeilPolynomials_iter`.
 
-	TESTS::
+        TESTS::
 
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = iter(w)
@@ -185,7 +175,7 @@ cdef class dfs_manager:
         This method should not be called directly. Instead, use the iterator
         `WeilPolynomials_iter` or the iterable `WeilPolynomials`.
 
-	TESTS::
+        TESTS::
 
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = iter(w)
@@ -242,23 +232,23 @@ class WeilPolynomials_iter():
         sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
         sage: it = iter(w)
         sage: next(it)
-        3*x^10 + x^9 + x^8 - x^7 + 4*x^6 + 2*x^5 + 4*x^4 - x^3 + x^2 + x + 3
+        3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         sage: w = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
         sage: it = iter(w)
         sage: next(it)
-        3*x^10 + x^9 + x^8 + x^7 + 3*x^6 - 3*x^4 - x^3 - x^2 - x - 3
+        3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
     """
     def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree):
         r"""
-	Create an iterator for Weil polynomials.
+        Create an iterator for Weil polynomials.
 
         EXAMPLES::
 
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = iter(w)
             sage: next(it)
-            3*x^10 + x^9 + x^8 - x^7 + 4*x^6 + 2*x^5 + 4*x^4 - x^3 + x^2 + x + 3
-	"""
+            3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
+        """
         self.pol = PolynomialRing(QQ, name='x')
         x = self.pol.gen()
         d = Integer(d)
@@ -331,12 +321,12 @@ class WeilPolynomials_iter():
         r"""
         Return the iterator (i.e. `self`).
 
-	EXAMPLES::
+        EXAMPLES::
 
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = iter(w)
-	    sage: it.__iter__() is it
-        True
+            sage: it.__iter__() is it
+            True
         """
         return(self)
 
@@ -344,12 +334,12 @@ class WeilPolynomials_iter():
         r"""
         Step the iterator forward.
 
-	EXAMPLES::
+        EXAMPLES::
 
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = iter(w)
             sage: it.__next__()
-            3*x^10 + x^9 + x^8 - x^7 + 4*x^6 + 2*x^5 + 4*x^4 - x^3 + x^2 + x + 3
+            3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         """
         if self.process is None:
             raise StopIteration
@@ -365,12 +355,12 @@ class WeilPolynomials_iter():
         r"""
         Step the iterator forward.
 
-	EXAMPLES::
+        EXAMPLES::
 
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = iter(w)
             sage: it.next()
-            3*x^10 + x^9 + x^8 - x^7 + 4*x^6 + 2*x^5 + 4*x^4 - x^3 + x^2 + x + 3
+            3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         """
         return self.__next__()
 
@@ -385,7 +375,7 @@ class WeilPolynomials_iter():
             sage: it = iter(w)
             sage: l = list(it)
             sage: it.node_count()
-	    158
+            158
         """
         if self.process is None:
             return self.count
@@ -439,39 +429,51 @@ class WeilPolynomials():
         sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
         sage: it = iter(w)
         sage: next(it)
-        3*x^10 + x^9 + x^8 - x^7 + 4*x^6 + 2*x^5 + 4*x^4 - x^3 + x^2 + x + 3
+        3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         sage: w = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
         sage: it = iter(w)
         sage: next(it)
-        3*x^10 + x^9 + x^8 + x^7 + 3*x^6 - 3*x^4 - x^3 - x^2 - x - 3
+        3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
+
+    TESTS:
+
+    Check that restricting initial coefficients works properly::
+
+        sage: w1 = WeilPolynomials(10,1,sign=1,lead=3)
+        sage: l1 = list(w1)
+        sage: w2 = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+        sage: l2 = list(w2)
+        sage: l3 = [i for i in l1 if i[1] == 1 and i[2] == 1]
+        sage: l2 == l3
+        True
     """
     def __init__(self, d, q, sign=1, lead=1, node_limit=None, parallel=False, squarefree=False):
         r"""
-	Initialize this iterable.
+        Initialize this iterable.
 
-	EXAMPLES::
+        EXAMPLES::
 
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: w.__init__(10,1,sign=1,lead=[3,1,-1]) # Change parameters before iterating
             sage: it = iter(w)
             sage: next(it) # Results reflect the changed parameters
             3*x^10 + x^9 - x^8 + 7*x^7 + 5*x^6 - 2*x^5 + 5*x^4 + 7*x^3 - x^2 + x + 3
- 	"""
+        """
         if parallel and not has_openmp():
             raise RuntimeError("Parallel execution not supported")
         self.data = (d,q,sign,lead,node_limit,parallel,squarefree)
 
     def __iter__(self):
         r"""
-	Construct the associated iterator.
+        Construct the associated iterator.
 
-	EXAMPLES::
+        EXAMPLES::
 
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = w.__iter__()
             sage: next(it)
-            3*x^10 + x^9 + x^8 - x^7 + 4*x^6 + 2*x^5 + 4*x^4 - x^3 + x^2 + x + 3
-	"""
+            3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
+        """
         w = WeilPolynomials_iter(*self.data)
         self.w = w
         return w
@@ -485,7 +487,7 @@ class WeilPolynomials():
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: l = list(w)
             sage: w.node_count()
-	    158
+            158
         """
         return self.w.node_count()
 
