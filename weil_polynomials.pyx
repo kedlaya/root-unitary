@@ -10,13 +10,11 @@
 
 #encoding=utf8
 #distutils: language = c
-#distutils: libraries = gomp
+#distutils: libraries = gomp flint
 #distutils: sources = power_sums.c
-#distutils: include_dirs = /home/kedlaya/sage/local/include/flint .
 ## Remove the next line if OpenMP is not available
 #distutils: extra_compile_args = -fopenmp
 
-## TODO: remove hard-coding of include directory
 
 r"""
 Iterator for Weil polynomials.
