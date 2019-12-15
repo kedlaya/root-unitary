@@ -1,3 +1,10 @@
+#pragma once
+#include <flint/flint.h>
+#include <flint/fmpz_poly.h>
+#include <flint/fmpq.h>
+#include <flint/fmpq_mat.h>
+#include <flint/arith.h>
+
 typedef struct ps_static_data {
   int d, sign, force_squarefree;
   long node_limit;
@@ -32,7 +39,6 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist);
 void ps_static_clear(ps_static_data_t *st_data);
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data);
 void extract_pol(int *Q, ps_dynamic_data_t *dy_data);
-void *ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2);
+void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2);
 void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n);
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps);
-
