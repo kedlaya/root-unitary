@@ -633,7 +633,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (fmpz_cmp(lower, upper) > 0) return(0);
   } 
 
-  /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
+  /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. 
+     This might be redundant given the Hankel and Descartes criteria. */
   fmpq_mat_mul(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], dy_data->power_sums);
   for (i=0; i<=k; i++) {
     fmpq_set(t1q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i, 0));

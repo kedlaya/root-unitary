@@ -338,7 +338,7 @@ class WeilPolynomials_iter():
 
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = iter(w)
-            sage: it.__next__()
+            sage: next(it)
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         """
         if self.process is None:
@@ -350,19 +350,6 @@ class WeilPolynomials_iter():
                 self.process = None
                 raise StopIteration
         return self.pol(self.ans.pop())
-
-    def next(self): # For Python2 backward compatibility
-        r"""
-        Step the iterator forward.
-
-        EXAMPLES::
-
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
-            sage: it = iter(w)
-            sage: it.next()
-            3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
-        """
-        return self.__next__()
 
     def node_count(self):
         r"""
