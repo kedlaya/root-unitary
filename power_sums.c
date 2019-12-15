@@ -4,9 +4,29 @@
 
   TODO: check for memory leaks.
   TODO: try the Routh-Hurwitz criterion.
+
+#*****************************************************************************
+#       Copyright (C) 2019 Kiran S. Kedlaya <kskedl@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#                  http://www.gnu.org/licenses/
+#*****************************************************************************
+
 */
 
 #include "power_sums.h"
+
+/* Check for OpenMP at runtime.
+*/
+int has_openmp() {
+  #if defined(_OPENMP)
+  return(1);
+  #endif
+  return(0);
+}
 
 /*
     Use a subresultant (Sturm-Habicht) sequence to test whether a given
@@ -24,13 +44,6 @@
     TODO: compare with floating-point interval arithmetic.
 */
 
-int has_openmp() {
-  #if defined(_OPENMP)
-  return(1);
-  #endif
-  return(0);
-}
-
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   fmpz *f0     = w + 0*n;
@@ -41,8 +54,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
 
   if (n <= 2) return(1);
   _fmpz_vec_set(f0, poly, n);
-  if (a != NULL && b != NULL)
-    fmpz_addmul(f0, a, b);
+  if (a != NULL && b != NULL) fmpz_addmul(f0, a, b);
   _fmpz_poly_derivative(f1, f0, n);
   n--;
   int sgn0_l = fmpz_sgn(f0+n);
@@ -551,6 +563,19 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_neg(t2q, t2q);
   if (k%2==1) change_upper(t1q, t2q);
   else change_lower(t1q, t2q);
+  if (fmpz_cmp(lower, upper) > 0) return(0);
+
+  /* Update Hankel matrices. */
+  if (k%2==0) {
+    fmpq_mat_one(dy_data->hankel_mat);
+    for (i=0; i<=k/2; i++)
+      for (j=0; j<=k/2; j++)
+	fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j),
+		 fmpq_mat_entry(dy_data->power_sums, i+j, 0));
+    fmpq_mat_det(t0q, dy_data->hankel_mat);
+    t = fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0);
+    fmpq_set(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0), t0q);
+  }
 
   /* If modulus==0, then return 1 iff [lower, upper] contains 0
      and Rolle's theorem is satisfied.
@@ -562,21 +587,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpz_zero(lower);
     fmpz_zero(upper);
     return(1);
-  }
-
-  if (fmpz_cmp(lower, upper) > 0) return(0);
+  } else
+    if (fmpz_cmp(lower, upper) > 0) return(0);
 
   /* Condition: nonnegativity of the Hankel determinant.
      TODO: reimplement this as a subresultant. */
   if (k%2==0) {
-    fmpq_mat_one(dy_data->hankel_mat);
-    for (i=0; i<=k/2; i++)
-      for (j=0; j<=k/2; j++)
-	fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j),
-		 fmpq_mat_entry(dy_data->power_sums, i+j, 0));
-    fmpq_mat_det(t0q, dy_data->hankel_mat);
-    t = fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0);
-    fmpq_set(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0), t0q);
     if (fmpq_sgn(t) > 0) {
       fmpq_div(t0q, t0q, t);
       change_upper(t0q, NULL);
@@ -586,7 +602,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (fmpz_cmp(lower, upper) > 0) return(0);
   }
 
-  /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. */
+  /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. 
+     This might be redundant given the Hankel and Descartes criteria. */
   fmpq_mat_mul(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], dy_data->power_sums);
   for (i=0; i<=k; i++) {
     fmpq_set(t1q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i, 0));
@@ -601,7 +618,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
   /* Condition: log convexity based on Cauchy-Schwarz. */
-  /* Todo: extend to q != 1 without losing too much efficiency. */
+  /* TODO: extend to q != 1 without losing too much efficiency. */
   if (q_is_1) {
     for (i=0; i<=k-2; i++) {
       fmpq_add(t1q, fmpq_mat_entry(dy_data->hausdorff_sums1, k, i),
@@ -683,13 +700,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   return(1);
 }
 
-/* Return value sent back in dy_data->flag:
-   1: in process
-   2: found a solution
-   0: tree exhausted
-   -1: maximum number of nodes reached
-*/
-
 /* Increment the current moving counter and update stored data to match. */
 void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
   int d = st_data->d, k = d-n;
@@ -708,6 +718,13 @@ void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) 
 		st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
 }
 
+/* Return value sent back in dy_data->flag:
+   1: in process
+   2: found a solution
+   0: tree exhausted
+   -1: maximum number of nodes reached
+*/
+
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
   int d = st_data->d;
   int node_limit = st_data->node_limit;
@@ -724,8 +741,8 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 
   int i, j, flag = 1, count_steps = 0;
 
-  if (dy_data==NULL || !dy_data->flag) return(0); // No work assigned to this process
-  if (n>d) return(0);
+  if (dy_data==NULL || !dy_data->flag) return; // No work assigned to this process
+  if (n>d) return;
 
   dy_data->flag = 0; // Prevent work-stealing while this process is running
 
