@@ -9,8 +9,9 @@ coefficients. One may also impose certain congruence conditions; this can be
 used to limit the Newton polygons of the resulting polynomials, or to lift
 a polynomial specified by a congruence to a Weil polynomial.
 
-For large jobs, one can set parallel=True to use OpenMP. Due to increased overhead,
-this is not recommended for smaller problem sizes.
+For large jobs, one can set parallel=True to use OpenMP (if support was
+enabled at compile time). Due to increased overhead, this is not recommended 
+for smaller problem sizes.
 
 AUTHOR:
   -- Kiran S. Kedlaya (2007-05-28): initial version
@@ -61,7 +62,8 @@ cdef extern from "power_sums.c":
 
     ctypedef struct ps_dynamic_data_t:
         int flag        # State of the iterator (0 = inactive, 1 = running,
-                        #                        2 = found a solution, -1 = too many nodes)
+                        #                        2 = found a solution,
+                        #                        -1 = too many nodes)
         long node_count # Number of terminal nodes encountered
         fmpz *sympol    # Return value (a polynomial)
 
