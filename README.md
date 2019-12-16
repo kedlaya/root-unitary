@@ -21,7 +21,7 @@ The source files for the main package are:
 * weil_polynomials.pyx: Cython source file for Sage, providing the
    class WeilPolynomials to iterate over Weil polynomials
 * power_sums.c: C code (using FLINT) to enumerate the tree based on
-    Rolle's theorem, Sturm's theorem, and bounds computed from power sums
+    Rolle's theorem, Sturm's theorem, power sum bounds, etc.
 * power_sums.h: associated header file
 
 From a Sage prompt, type
@@ -29,6 +29,11 @@ From a Sage prompt, type
   sage: load("weil_polynomials.pyx")
 ```
 and everything should compile automatically.
+
+If the OpenMP library is available systemwide, you can also do some computations
+in parallel. To enable this, you will need to uncomment a couple of lines in
+weil_polynomials.pyx, and possibly change the value of the environment variable
+OMP_NUM_THREADS (thanks to Edgar Costa for this tip).
 
 There are also some test scripts. See the README files in the following directories:
 * test-scripts: Miscellaneous tests
