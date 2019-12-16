@@ -1,3 +1,7 @@
+##distutils: libraries = gomp
+##distutils: extra_compile_args = -fopenmp
+## Remove second # from the previous two lines to enable OpenMP support.
+
 r"""
 Iterator for Weil polynomials.
 
@@ -23,13 +27,6 @@ AUTHOR:
   -- (2019-02-02): update for Python3
                    improve parallel mode
 """
-
-#distutils: language = c
-#distutils: sources = power_sums.c
-#distutils: libraries = flint
-## Remove second # from the next two lines to enable OpenMP support.
-##distutils: libraries = gomp flint
-##distutils: extra_compile_args = -fopenmp
 
 #*****************************************************************************
 #       Copyright (C) 2019 Kiran S. Kedlaya <kskedl@gmail.com>
