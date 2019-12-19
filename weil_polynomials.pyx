@@ -28,6 +28,7 @@ AUTHOR:
                    pass multiprecision integers to/from C
   -- (2019-02-02): update for Python3
                    improve parallel mode
+  -- (2019-12-19): final packaging for Sage (with help from David Roe)
 """
 
 #*****************************************************************************
