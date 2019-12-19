@@ -253,9 +253,9 @@ class WeilPolynomials_iter():
         x = self.pol.gen()
         d = Integer(d)
         if sign != 1 and sign != -1:
-            return ValueError("Invalid sign")
+            raise ValueError("Invalid sign")
         if not q.is_integer() or q <= 0:
-            return ValueError("q must be a positive integer")
+            raise ValueError("q must be a positive integer")
         if d % 2 == 0:
             if sign == 1:
                 d2 = d//2
@@ -265,7 +265,7 @@ class WeilPolynomials_iter():
                 num_cofactor = 3
         else:
             if not q.is_square():
-                return ValueError("Degree must be even if q is not a square")
+                raise ValueError("Degree must be even if q is not a square")
             d2 = d//2
             if sign == 1:
                 num_cofactor = 1
