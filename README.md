@@ -14,8 +14,18 @@ plus some additional improvements described in:
 >    quartic K3 surfaces over F_2, LMS Journal of Computing 19
 >    special issue A (2016), 1-11.
 
-Many cosmetic changes were made in preparation for migrating this package into Sage.
 For the version circa 2015, see the branch archive-2015.
+
+As of December 2019, the code is slated for inclusion into Sage: try
+```
+sage: R.<x> = ZZ[]
+sage: R.weil_polynomials?
+```
+to learn more. I plan to maintain this repository with bugfixes to the
+underlying C code, as well as auxiliary code that is not intended for 
+inclusion in Sage. That includes scripts from the aforementioned papers 
+as well as code for abelian varieties in the L-Functions and Modular 
+Forms Database (https://www.lmfdb.org).
 
 The source files for the main package are:
 * weil_polynomials.pyx: Cython source file for Sage, providing the
@@ -24,7 +34,7 @@ The source files for the main package are:
     Rolle's theorem, Sturm's theorem, power sum bounds, etc.
 * power_sums.h: associated header file
 
-From a Sage prompt, type
+To use the Cython file, from a Sage prompt type
 ```
   sage: load("weil_polynomials.pyx")
 ```
@@ -42,8 +52,8 @@ There are also some test scripts. See the README files in the following director
 * k3-quartic-f2: Scripts and data associated to smooth quartic surfaces over F2
 
 POSSIBLE TODO LIST: 
-* Improve parallel computation in the current Cython model.
-* Add a port from Sage (based on Python) to Nemo (based on Julia).
+* Improve scheduling of parallel computation in the current Cython model.
+* Add a Julia wrapper for use in Nemo.
 * Use real root isolation instead of (or in addition to) Sturm's theorem. One
    possible implementation, again using FLINT, is available in e-antic.
 
