@@ -1,12 +1,10 @@
-from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
-
 import time
 polRing.<x> = PolynomialRing(ZZ)
 ans = [polRing(3)]
 t = time.time()
 c = 0
 for i in range(1, 11):
-    wp = WeilPolynomials(2*i, 1, sign=1, lead=3, squarefree=True)
+    wp = WeilPolynomials(2*i, 1, sign=1, lead=3, squarefree=True, parallel=True)
     wp.num_threads = 512
     l = [j for j in wp if not j.has_cyclotomic_factor()]
     ans += l
