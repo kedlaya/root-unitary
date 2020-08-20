@@ -1,5 +1,5 @@
-##distutils: libraries = gomp
-##distutils: extra_compile_args = -fopenmp
+#distutils: libraries = gomp
+#distutils: extra_compile_args = -fopenmp
 ## Remove second # from the previous two lines to enable OpenMP support.
 
 r"""
@@ -109,7 +109,7 @@ cdef class dfs_manager:
         cdef fmpz_t temp_lead
         cdef fmpz_t temp_q
         cdef fmpz *temp_array
-        cdef int i = 101 if parallel else 1
+        cdef int i = parallel if parallel else 1
 
         self.d = d
         self.num_processes = i
@@ -317,8 +317,13 @@ class WeilPolynomials_iter():
         if node_limit is None:
             node_limit = -1
         force_squarefree = Integer(squarefree)
+        np = self.num_processes
+        if not np.is_prime():
+            np = next_prime(np)
+        while not GF(np)(2).is_primitive_root():
+            np = next_prime(np)
         self.process = dfs_manager(d2, q, coefflist, modlist, coeffsign,
-                                   num_cofactor, node_limit, parallel,
+                                   num_cofactor, node_limit, np,
                                    force_squarefree)
         self.q = q
         self.squarefree = squarefree
@@ -513,6 +518,7 @@ class WeilPolynomials():
         if parallel and not has_openmp():
             raise RuntimeError("Parallel execution not supported")
         self.data = (d, q, sign, lead, node_limit, parallel, squarefree, polring)
+        self.num_processes = 101
 
     def __iter__(self):
         r"""
