@@ -46,7 +46,7 @@ from cython.parallel import prange
 from libc.stdlib cimport malloc, free
 from cysignals.signals cimport sig_on, sig_off
 
-from sage.arith.misc import next_prime
+from sage.arith.misc import next_prime, is_prime
 from sage.rings.finite_rings.finite_field_constructor import GF
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
@@ -321,7 +321,7 @@ class WeilPolynomials_iter():
             node_limit = -1
         force_squarefree = Integer(squarefree)
         np = self.num_processes
-        if not np.is_prime():
+        if not is_prime(np):
             np = next_prime(np)
         while not GF(np)(2).is_primitive_root():
             np = next_prime(np)
