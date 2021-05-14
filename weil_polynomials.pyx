@@ -243,7 +243,7 @@ class WeilPolynomials_iter():
         sage: next(it)
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
     """
-    def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree, polring=None):
+    def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree, polring=None, minimum_num_processes=101):
         r"""
         Create an iterator for Weil polynomials.
 
@@ -254,6 +254,7 @@ class WeilPolynomials_iter():
             sage: next(it)
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         """
+        self.num_processes = minimum_num_processes
         if polring is None:
             polring = PolynomialRing(QQ, name='x')
         self.pol = polring
@@ -519,8 +520,8 @@ class WeilPolynomials():
         """
         if parallel and not has_openmp():
             raise RuntimeError("Parallel execution not supported")
-        self.data = (d, q, sign, lead, node_limit, parallel, squarefree, polring)
         self.num_processes = 101
+        self.data = (d, q, sign, lead, node_limit, parallel, squarefree, polring)
 
     def __iter__(self):
         r"""
@@ -533,7 +534,7 @@ class WeilPolynomials():
             sage: next(it)
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         """
-        w = WeilPolynomials_iter(*self.data)
+        w = WeilPolynomials_iter(*self.data + (self.num_processes,))
         self.w = w
         return w
 
