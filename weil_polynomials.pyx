@@ -46,6 +46,8 @@ from cython.parallel import prange
 from libc.stdlib cimport malloc, free
 from cysignals.signals cimport sig_on, sig_off
 
+from sage.arith.misc import next_prime
+from sage.rings.finite_rings.finite_field_constructor import GF
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.functions.generalized import sgn
