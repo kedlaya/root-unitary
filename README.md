@@ -56,4 +56,6 @@ POSSIBLE TODO LIST:
 * Add a Julia wrapper for use in Nemo.
 * Use real root isolation instead of (or in addition to) Sturm's theorem. One
    possible implementation, again using FLINT, is available in e-antic.
+* Use the mts library for budgeted reverse search:
+  http://cgm.cs.mcgill.ca/~avis/doc/tutorial.html
 

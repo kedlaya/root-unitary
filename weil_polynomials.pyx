@@ -470,6 +470,8 @@ class WeilPolynomials():
         sage: it = iter(w)
         sage: next(it)
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
+        sage: list(WeilPolynomials(10, 2, lead=[1, -3, 5, -5, 5, -5])
+        [x^10 - 3*x^9 + 5*x^8 - 5*x^7 + 5*x^6 - 5*x^5 + 10*x^4 - 20*x^3 + 40*x^2 - 48*x + 32]
 
     TESTS:
 

@@ -1,5 +1,5 @@
 polRing.<x> = PolynomialRing(ZZ)
-f = open("k3f1-lines.txt", "rb")
+f = open("k3f1-lines.txt", "r")
 l = []
 for i in range(11):
     l.append([])
@@ -17,6 +17,6 @@ for i in range(11):
     w1 = w.graded_component(2*i+1)
     for j in w1:
         l2[i].append(prod(c[k]^j[k] for k in range(len(j))))
-    print set(l[i]) == set(l2[i])
+    print(set(l[i]) == set(l2[i]))
 
 
