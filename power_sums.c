@@ -617,7 +617,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
 
   /* If modulus==0, then return 1 iff [lower, upper] contains 0
-     and Rolle's theorem is satisfied.
+     and the Rolle condition is satisfied.
    */
   if (fmpz_is_zero(modulus)) {
     if ((fmpz_sgn(lower) > 0) || (fmpz_sgn(upper) < 0) ||
@@ -642,7 +642,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
 
   /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. 
-     This might be redundant given the Hankel and Descartes criteria. */
+     TODO: also implement the truncated moment condition. */
   fmpq_mat_mul(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], dy_data->power_sums);
   for (i=0; i<=k; i++) {
     fmpq_set(t1q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i, 0));
