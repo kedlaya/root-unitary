@@ -208,7 +208,7 @@ cdef class dfs_manager:
                         if self.dy_data_buf[i].flag: t += 1
                         if self.dy_data_buf[i].flag == -1: u += 1
                     for i in prange(np, schedule='dynamic'):  # Redistribute work to idle processes
-                        j = (i-k) % np
+                        j = (i-k+np) % np
                         ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
                     sig_off()
             for i in range(np):
