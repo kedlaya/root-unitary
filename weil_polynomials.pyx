@@ -71,8 +71,7 @@ cdef extern from "power_sums.c":
 
     int has_openmp()
     ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-                                     int cofactor, fmpz *modlist, long node_limit,
-                                     int force_squarefree)
+                                     fmpz *modlist, long node_limit, int force_squarefree)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist)
     void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
     void ps_static_clear(ps_static_data_t *st_data)
@@ -92,7 +91,7 @@ cdef class dfs_manager:
     cdef ps_static_data_t *ps_st_data
     cdef ps_dynamic_data_t **dy_data_buf
 
-    def __cinit__(self, int d, q, coefflist, modlist, int sign, int cofactor,
+    def __cinit__(self, int d, q, coefflist, modlist, int sign,
                   long node_limit, int parallel, int force_squarefree):
         """
         Perform required C-level initialization (e.g., memory allocation).
@@ -124,7 +123,7 @@ cdef class dfs_manager:
         temp_array = _fmpz_vec_init(d + 1)
         for i in range(d + 1):
             fmpz_set_mpz(temp_array + i, Integer(modlist[i]).value)
-        self.ps_st_data = ps_static_init(d, temp_q, sign, temp_lead, cofactor,
+        self.ps_st_data = ps_static_init(d, temp_q, sign, temp_lead,
                                          temp_array, node_limit, force_squarefree)
 
         # Initialize processes, but assign work to only one process.
@@ -270,17 +269,21 @@ class WeilPolynomials_iter():
             if sign == 1:
                 d2 = d//2
                 num_cofactor = 0
+                self.cofactor = 1
             else:
                 d2 = d//2 - 1
                 num_cofactor = 3
+                self.cofactor = x**2 - q
         else:
             if not q.is_square():
                 raise ValueError("Degree must be even if q is not a square")
             d2 = d//2
             if sign == 1:
                 num_cofactor = 1
+                self.cofactor = x + q.sqrt()
             else:
                 num_cofactor = 2
+                self.cofactor = x - q.sqrt()
         try:
             leadlist = list(lead)
         except TypeError:
@@ -304,7 +307,7 @@ class WeilPolynomials_iter():
         if num_cofactor == 1: #cofactor x + sqrt(q)
             for i in range(1, len(coefflist)):
                 coefflist[i] -= coefflist[i-1]*q.sqrt()
-        elif num_cofactor == 2: #cofactor x + sqrt(q)
+        elif num_cofactor == 2: #cofactor x - sqrt(q)
             for i in range(1, len(coefflist)):
                 coefflist[i] += coefflist[i-1]*q.sqrt()
         elif num_cofactor == 3: #cofactor x^2 - q
@@ -323,8 +326,7 @@ class WeilPolynomials_iter():
             node_limit = -1
         force_squarefree = Integer(squarefree)
         self.process = dfs_manager(d2, q, coefflist, modlist, coeffsign,
-                                   num_cofactor, node_limit, parallel,
-                                   force_squarefree)
+                                   node_limit, parallel, force_squarefree)
         self.q = q
         self.squarefree = squarefree
         self.ans = []
@@ -361,7 +363,7 @@ class WeilPolynomials_iter():
                 self.count = self.process.node_count()
                 self.process = None
                 raise StopIteration
-        return self.pol(self.ans.pop())
+        return self.pol(self.ans.pop()) * self.cofactor
 
     def next(self): # For Python2 backward compatibility
         r"""

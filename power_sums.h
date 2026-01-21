@@ -33,8 +33,7 @@ typedef struct ps_dynamic_data {
 
 int has_openmp();
 ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-				 int cofactor, fmpz *modlist, long node_limit,
-				 int force_squarefree);
+				 fmpz *modlist, long node_limit, int force_squarefree);
 ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist);
 void ps_static_clear(ps_static_data_t *st_data);
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data);

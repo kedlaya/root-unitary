@@ -51,6 +51,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
   fmpz *c      = w + 2*n;
   fmpz *d      = w + 2*n+1;
   fmpz *t;
+  long n0;
 
   _fmpz_vec_set(f0, poly, n);
   /* Sanitize input so that n = deg(f0). */
@@ -179,8 +180,7 @@ void fmpq_ceil_quad(fmpz_t res, fmpq_t a,
 
 /* Memory allocation and initialization. */
 ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-				 int cofactor, fmpz *modlist, long node_limit,
-				 int force_squarefree) {
+				 fmpz *modlist, long node_limit, int force_squarefree) {
   int i, j, k, l;
   ps_static_data_t *st_data;
   fmpz_poly_t pol;
@@ -202,36 +202,6 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 
   fmpz_init(st_data->lead);
   fmpz_set(st_data->lead, lead);
-
-  st_data->cofactor = _fmpz_vec_init(3);
-  switch (cofactor) {
-  case 0: /* Cofactor 1 */
-    fmpz_set_si(st_data->cofactor, 1);
-    fmpz_set_si(st_data->cofactor+1, 0);
-    fmpz_set_si(st_data->cofactor+2, 0);
-    break;
-
-  case 1: /* Cofactor x+sqrt(q) */
-    fmpz_set(st_data->cofactor, st_data->q);
-    fmpz_sqrt(st_data->cofactor, st_data->cofactor);
-    fmpz_set_si(st_data->cofactor+1, 1);
-    fmpz_set_si(st_data->cofactor+2, 0);
-    break;
-
-  case 2:  /* Cofactor x-sqrt(q) */
-    fmpz_set(st_data->cofactor, st_data->q);
-    fmpz_sqrt(st_data->cofactor, st_data->cofactor);
-    fmpz_neg(st_data->cofactor, st_data->cofactor);
-    fmpz_set_si(st_data->cofactor+1, 1);
-    fmpz_set_si(st_data->cofactor+2, 0);
-    break;
-
-  case 3: /* Cofactor x^2-q */
-    fmpz_neg(st_data->cofactor, st_data->q);
-    fmpz_set_si(st_data->cofactor+1, 0);
-    fmpz_set_si(st_data->cofactor+2, 1);
-    break;
-  }
 
   st_data->modlist = _fmpz_vec_init(d+1);
   st_data->f = _fmpq_vec_init(d+1);
@@ -384,7 +354,6 @@ void ps_static_clear(ps_static_data_t *st_data) {
   int i, d = st_data->d;
   fmpz_clear(st_data->lead);
   fmpz_clear(st_data->q);
-  _fmpz_vec_clear(st_data->cofactor, 3);
   fmpz_mat_clear(st_data->binom_mat);
   _fmpq_vec_clear(st_data->f, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
@@ -807,7 +776,6 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 	}
       }
       _fmpz_vec_scalar_mul_si(sympol, sympol, 2*d+1, st_data->sign);
-      _fmpz_poly_mul_KS(sympol, sympol, 2*d+1, st_data->cofactor, 3);
       ascend = 1;
       flag = 2;
     } else { // Compute children of the current node.
