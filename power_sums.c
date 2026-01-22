@@ -50,8 +50,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
   fmpz *f1     = w + 1*n;
   fmpz *c      = w + 2*n;
   fmpz *d      = w + 2*n+1;
-  fmpz *t;
-  long n0;
+  fmpz *t; // Not allocated, only used to swap pointers
 
   _fmpz_vec_set(f0, poly, n);
   /* Sanitize input so that n = deg(f0). */
@@ -65,9 +64,9 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
 
   while (1) {
     /* At this point deg(f0) = n, deg(f1) = n-1.
-       We explicitly compute the pseudoremainder of f0 modulo f1:
-       f0 := f1[n-1]*f0 - f0[n]*x*f1
-       f0 := f0[n-1]*f1 - f1[n-1]*f0
+       We compute the negated pseudoremainder of f0 modulo f1 in two steps:
+       f0 --> f1[n-1]*f0 - f0[n]*x*f1
+       f0 --> f0[n-1]*f1 - f1[n-1]*f0
     */
     fmpz_set(c, f0+n);
     _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n-1);
@@ -84,19 +83,18 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
     /* If we miss any one sign change, we cannot have enough. */
     if (fmpz_sgn(f0+n-1) != sgn0_l) return(0);
 
-    if (n==1) return(1); /* If f0 is a scalar, it is nonzero and we win. */
+    /* If f0 is a scalar, it is nonzero and we win. */
+    if (n==1) return(1);
 
-    /* Extract content from f0; in practice, this seems to do better than
-       an explicit subresultant computation. */
+    /* Extract content from f0.
+       This seems to do better in practice than an explicit subresultant computation. */
     _fmpz_vec_content(c, f0, n);
     _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, c);
 
-    /* Swap f0 with f1. */
+    /* Swap f0 with f1 at the pointer level. */
     t = f0; f0 = f1; f1 = t;
   }
 }
-
-
 
 /* Set res to floor(a). */
 void fmpq_floor(fmpz_t res, const fmpq_t a) {
@@ -108,10 +106,12 @@ void fmpq_ceil(fmpz_t res, const fmpq_t a) {
   fmpz_cdiv_q(res, fmpq_numref(a), fmpq_denref(a));
 };
 
+/* Set res to floor(sqrt(a)). */
 void fmpz_sqrt_f(fmpz_t res, const fmpz_t a) {
   fmpz_sqrt(res, a);
 }
 
+/* Set res to ceil(sqrt(a)). */
 void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
   int s = fmpz_is_square(a);
   fmpz_sqrt(res, a);
@@ -538,7 +538,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     set_upper(t, t1q, STATE);
     fmpq_neg(t1q, t1q);
     set_lower(t, t1q, STATE);
-    }
+  }
 
   /* Compute the divided (n-1)-st derivative of pol, answer in tpol. */
   for (i=0; i<=k; i++)
@@ -586,8 +586,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
 
   /* If modulus==0, then return 1 iff [lower, upper] contains 0
-     and the Rolle condition is satisfied.
-   */
+     and the Rolle condition is satisfied. */
   if (fmpz_is_zero(modulus)) {
     if ((fmpz_sgn(lower) > 0) || (fmpz_sgn(upper) < 0) ||
 	!_fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree,
@@ -595,8 +594,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpz_zero(lower);
     fmpz_zero(upper);
     return(1);
-  } else
-    if (fmpz_cmp(lower, upper) > 0) return(0);
+  }
 
   /* Condition: nonnegativity of the Hankel determinant.
      TODO: reimplement this as a subresultant. */
@@ -604,7 +602,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (fmpq_sgn(t) > 0) {
       fmpq_div(t0q, t0q, t);
       change_upper(t0q, NULL, STATE);
-      }
+    }
     else if (st_data->force_squarefree || fmpq_sgn(t0q)) return(0);
     else change_upper(fmpq_mat_entry(dy_data->power_sums, k, 0), NULL, STATE);
     if (fmpz_cmp(lower, upper) > 0) return(0);
@@ -709,10 +707,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
 /* Increment the current moving counter and update stored data to match. */
 void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
-  int d = st_data->d, k = d-n;
+  int d = st_data->d, k = d-n, j;
   fmpz *pol = dy_data->pol;
   fmpq *tq = fmpq_mat_entry(dy_data->power_sums, k, 0);
-  int j;
 
   fmpz_add(pol+n, pol+n, st_data->modlist+n);
   fmpq_sub(tq, tq, st_data->f+n);
@@ -765,7 +762,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
     } else if (n < 0) { // Return a solution.
       _fmpz_vec_zero(sympol, 2*d+3);
       for (i=0; i<=d; i++) {
-	fmpz_one(temp);
+	fmpz_set_si(temp, st_data->sign);
 	for (j=0; j<=i; j++) {
 	  fmpz_addmul(sympol+d+i-2*j, pol+i, temp);
 	  if (j<i) {
@@ -775,7 +772,6 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 	  }
 	}
       }
-      _fmpz_vec_scalar_mul_si(sympol, sympol, 2*d+1, st_data->sign);
       ascend = 1;
       flag = 2;
     } else { // Compute children of the current node.
