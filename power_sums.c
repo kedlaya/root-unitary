@@ -233,12 +233,12 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 	  k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], 2*j, k);
 	else
 	  k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], 2*j+1, k);
-	for (l=0; l<=j; l++) if (k-l >=0 && k-l<=i-j) {
-	    fmpz_mul(m, fmpz_mat_entry(st_data->binom_mat, j, l),
-		     fmpz_mat_entry(st_data->binom_mat, i-j, k-l));
-	    if ((j-l)%2==1) fmpz_neg(m, m);
-	    fmpq_add_fmpz(k1, k1, m);
-	  }
+	for (l=0; l<=j; l++) if (k-l>=0 && k-l<=i-j) {
+	  fmpz_mul(m, fmpz_mat_entry(st_data->binom_mat, j, l),
+	     fmpz_mat_entry(st_data->binom_mat, i-j, k-l));
+	  if ((j-l)%2==1) fmpz_neg(m, m);
+	  fmpq_add_fmpz(k1, k1, m);
+	}
 	fmpq_mul_2exp(k1, k1, i-k);
 	for (l=0; l<(i-k)/2; l++) fmpq_mul_fmpz(k1, k1, q);
       }
@@ -397,6 +397,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 
 #define STATE lower, upper, q, f, t0z, t0q, t4q
 #define STATE_DECLARE fmpz_t lower, fmpz_t upper, fmpz_t q, fmpq_t f, fmpz_t t0z, fmpq_t t0q, fmpq_t t4q
+#define POL tpol, k+1, tpol2, st_data->force_squarefree
 
 void set_lower(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
   fmpq_div(t0q, val1, f);
@@ -573,6 +574,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
+  /* If modulus==0, then return 1 iff [lower, upper] contains 0
+     and the Rolle condition is satisfied. */
+  if (fmpz_is_zero(modulus)) {
+    if ((fmpz_sgn(lower) > 0) || (fmpz_sgn(upper) < 0) ||
+	!_fmpz_poly_all_real_roots(POL, NULL, NULL)) return(0);
+    fmpz_zero(lower);
+    fmpz_zero(upper);
+    return(1);
+  }
+
   /* Update Hankel matrices. */
   if (k%2==0) {
     fmpq_mat_one(dy_data->hankel_mat);
@@ -583,17 +594,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_mat_det(t0q, dy_data->hankel_mat);
     t = fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0);
     fmpq_set(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0), t0q);
-  }
-
-  /* If modulus==0, then return 1 iff [lower, upper] contains 0
-     and the Rolle condition is satisfied. */
-  if (fmpz_is_zero(modulus)) {
-    if ((fmpz_sgn(lower) > 0) || (fmpz_sgn(upper) < 0) ||
-	!_fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree,
-				   NULL, NULL)) return(0);
-    fmpz_zero(lower);
-    fmpz_zero(upper);
-    return(1);
   }
 
   /* Condition: nonnegativity of the Hankel determinant.
@@ -621,7 +621,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums2, k, i), t2q);
     }
   }
-  if (fmpz_cmp(lower, upper) > 0) return(0);
+  r = fmpz_cmp(lower, upper);
+  if (r>0) return(0);
 
   /* Condition: log convexity based on Cauchy-Schwarz. */
   /* TODO: extend to q != 1 without losing too much efficiency. */
@@ -644,42 +645,43 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 	       fmpq_mat_entry(dy_data->hausdorff_sums2, k-2, i-2));
       impose_quadratic_condition(t1q, t2q, t3q, STATE);
     }
+    r = fmpz_cmp(lower, upper);
+    if (r>0) return(0);
   }
-  r = fmpz_cmp(lower, upper);
-  if (r>0) return(0);
 
   /* Check the Rolle condition at the midpoint. If it holds, perform a binary
-     search on the left endpoint; otherwise, do a linear search. */
+     search on the left endpoint; otherwise, do a linear search. 
+     If the interval is a single point, we route directly into the linear search. */
   if (r) {
     fmpz_add(t0z, lower, upper);
     fmpz_fdiv_q_2exp(t0z, t0z, 1);
-    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, t0z, modulus);
+    r = _fmpz_poly_all_real_roots(POL, t0z, modulus);
   }
   if (r) {
     fmpz_set(t2z, t0z);
     while (fmpz_cmp(lower, t0z)) {
       fmpz_add(t1z, lower, t0z);
       fmpz_fdiv_q_2exp(t1z, t1z, 1);
-      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, t1z, modulus);
+      r = _fmpz_poly_all_real_roots(POL, t1z, modulus);
       if (r) fmpz_set(t0z, t1z);
       else fmpz_add_ui(lower, t1z, 1);
     }
   } else {
-    r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, lower, modulus);
-    while (!r) {
+    r = _fmpz_poly_all_real_roots(POL, lower, modulus);
+    while (r <= 0) {
       fmpz_add_ui(lower, lower, 1);
       if (fmpz_cmp(lower, upper) > 0) return(0);
-      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, lower, modulus);
+      r = _fmpz_poly_all_real_roots(POL, lower, modulus);
     }
-    if (fmpz_cmp(lower, t0z)<0) fmpz_sub_ui(upper, t0z, 1);
+    if (fmpz_cmp(lower, t0z) < 0) fmpz_sub_ui(upper, t0z, 1);
     fmpz_set(t2z, lower);
   }
   /* Now do a binary search on the right endpoint. */
   while (fmpz_cmp(t2z, upper)) {
       fmpz_add(t1z, t2z, upper);
       fmpz_cdiv_q_2exp(t1z, t1z, 1);
-      r = _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, t1z, modulus);
-      if (r) fmpz_set(t2z, t1z);
+      r = _fmpz_poly_all_real_roots(POL, t1z, modulus);
+      if (r > 0) fmpz_set(t2z, t1z);
       else fmpz_sub_ui(upper, t1z, 1);
   }
 
@@ -716,7 +718,7 @@ void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) 
   if (dy_data->q_is_1) for (j=0; j<=k; j++) {
       tq = fmpq_mat_entry(dy_data->hausdorff_sums1, k, j);
       fmpq_sub(tq, tq, st_data->f+n);
-    }
+  }
   if (k%2==0)
     fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0),
 		st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
