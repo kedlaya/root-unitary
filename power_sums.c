@@ -106,6 +106,18 @@ void fmpq_ceil(fmpz_t res, const fmpq_t a) {
   fmpz_cdiv_q(res, fmpq_numref(a), fmpq_denref(a));
 };
 
+/* Set res to floor((a+b)/2). */
+void fmpz_fmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
+  fmpz_add(res, a, b);
+  fmpz_fdiv_q_2exp(res, res, 1);
+}
+
+/* Set res to ceil((a+b)/2). */
+void fmpz_cmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
+  fmpz_add(res, a, b);
+  fmpz_cdiv_q_2exp(res, res, 1);
+}
+
 /* Set res to floor(sqrt(a)). */
 void fmpz_sqrt_f(fmpz_t res, const fmpz_t a) {
   fmpz_sqrt(res, a);
@@ -393,7 +405,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 
 #define STATE lower, upper, q, f, t0z, t0q, t4q
 #define STATE_DECLARE fmpz_t lower, fmpz_t upper, fmpz_t q, fmpq_t f, fmpz_t t0z, fmpq_t t0q, fmpq_t t4q
-#define POL tpol, k+1, tpol2, st_data->force_squarefree
+#define POL tpol, k+1, tpol2, st_data->force_squarefree, modulus
 
 void set_lower(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
   fmpq_div(t0q, val1, f);
@@ -520,7 +532,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* Condition: the k-th symmetrized power sum must lie in [-2*sqrt(q), 2*sqrt(q)]. */
   fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->power_sums);
   t = fmpq_mat_entry(dy_data->sum_prod, 0, 0);
-
   fmpq_set_si(t1q, 2*d, 1);
   if (!q_is_1) {
     fmpz_pow_ui(t0z, q, k/2);
@@ -574,7 +585,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
      and the Rolle condition is satisfied. */
   if (fmpz_is_zero(modulus)) {
     if ((fmpz_sgn(lower) > 0) || (fmpz_sgn(upper) < 0) ||
-	!_fmpz_poly_all_real_roots(POL, NULL, NULL)) return(0);
+	!_fmpz_poly_all_real_roots(POL, NULL)) return(0);
     fmpz_zero(lower);
     fmpz_zero(upper);
     return(1);
@@ -588,13 +599,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 	fmpq_set(fmpq_mat_entry(dy_data->hankel_mat, i, j),
 		 fmpq_mat_entry(dy_data->power_sums, i+j, 0));
     fmpq_mat_det(t0q, dy_data->hankel_mat);
-    t = fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0);
     fmpq_set(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0), t0q);
-  }
-
+ 
   /* Condition: nonnegativity of the Hankel determinant.
      TODO: reimplement this as a subresultant. */
-  if (k%2==0) {
+    t = fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0);
     if (fmpq_sgn(t) > 0) {
       fmpq_div(t0q, t0q, t);
       change_upper(t0q, NULL, STATE);
@@ -612,26 +621,22 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_set(t2q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i+1, 0));
     if (i%2==0) change_upper(t1q, t2q, STATE);
     else change_lower(t1q, t2q, STATE);
-    if (q_is_1) {
+    if (q_is_1)
       fmpq_add(fmpq_mat_entry(dy_data->hausdorff_sums, k, i), t1q, t2q);
-    }
   }
   r = fmpz_cmp(lower, upper);
   if (r>0) return(0);
 
   /* Condition: log convexity based on Cauchy-Schwarz. */
-  /* TODO: extend to q != 1 without losing too much efficiency. */
   if (q_is_1) {
-    for (i=0; i<=k-2; i++) {
+    for (i=0; i<=k-2; i++)
       impose_quadratic_condition(fmpq_mat_entry(dy_data->hausdorff_sums, k, i),
       fmpq_mat_entry(dy_data->hausdorff_sums, k-1, i),
       fmpq_mat_entry(dy_data->hausdorff_sums, k-2, i), STATE);
-    }
-    for (i=2; i<=k; i++) {
+    for (i=2; i<=k; i++) 
       impose_quadratic_condition(fmpq_mat_entry(dy_data->hausdorff_sums, k, i),
       fmpq_mat_entry(dy_data->hausdorff_sums, k-1, i-1),
       fmpq_mat_entry(dy_data->hausdorff_sums, k-2, i-2), STATE);
-    }
     r = fmpz_cmp(lower, upper);
     if (r>0) return(0);
   }
@@ -640,36 +645,33 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
      search on the left endpoint; otherwise, do a linear search. 
      If the interval is a single point, we route directly into the linear search. */
   if (r) {
-    fmpz_add(t0z, lower, upper);
-    fmpz_fdiv_q_2exp(t0z, t0z, 1);
-    r = _fmpz_poly_all_real_roots(POL, t0z, modulus);
+    fmpz_fmid(t0z, lower, upper);
+    r = _fmpz_poly_all_real_roots(POL, t0z);
   }
   if (r) {
     fmpz_set(t2z, t0z);
     while (fmpz_cmp(lower, t0z)) {
-      fmpz_add(t1z, lower, t0z);
-      fmpz_fdiv_q_2exp(t1z, t1z, 1);
-      r = _fmpz_poly_all_real_roots(POL, t1z, modulus);
+      fmpz_fmid(t1z, lower, t0z);
+      r = _fmpz_poly_all_real_roots(POL, t1z);
       if (r) fmpz_set(t0z, t1z);
       else fmpz_add_ui(lower, t1z, 1);
     }
   } else {
-    r = _fmpz_poly_all_real_roots(POL, lower, modulus);
+    r = _fmpz_poly_all_real_roots(POL, lower);
     while (r <= 0) {
       fmpz_add_ui(lower, lower, 1);
       if (fmpz_cmp(lower, upper) > 0) return(0);
-      r = _fmpz_poly_all_real_roots(POL, lower, modulus);
+      r = _fmpz_poly_all_real_roots(POL, lower);
     }
     if (fmpz_cmp(lower, t0z) < 0) fmpz_sub_ui(upper, t0z, 1);
     fmpz_set(t2z, lower);
   }
   /* Now do a binary search on the right endpoint. */
   while (fmpz_cmp(t2z, upper)) {
-      fmpz_add(t1z, t2z, upper);
-      fmpz_cdiv_q_2exp(t1z, t1z, 1);
-      r = _fmpz_poly_all_real_roots(POL, t1z, modulus);
-      if (r > 0) fmpz_set(t2z, t1z);
-      else fmpz_sub_ui(upper, t1z, 1);
+    fmpz_cmid(t1z, t2z, upper);
+    r = _fmpz_poly_all_real_roots(POL, t1z);
+    if (r > 0) fmpz_set(t2z, t1z);
+    else fmpz_sub_ui(upper, t1z, 1);
   }
 
   /* Set the new upper bound. */
