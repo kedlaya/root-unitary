@@ -305,8 +305,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpq_mat_init(dy_data->hankel_dets, d/2+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets, 0, 0), d, 1);
   fmpq_mat_init(dy_data->hausdorff_prod, 2*d+2, 1);
-  fmpq_mat_init(dy_data->hausdorff_sums1, d+1, d+1);
-  fmpq_mat_init(dy_data->hausdorff_sums2, d+1, d+1);
+  fmpq_mat_init(dy_data->hausdorff_sums, d+1, d+1);
 
   dy_data->upper = _fmpz_vec_init(d+1);
 
@@ -336,10 +335,8 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
       _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
       fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
       fmpq_mat_set(dy_data2->hankel_dets, dy_data->hankel_dets);
-      if (dy_data->q_is_1) {
-	fmpq_mat_set(dy_data2->hausdorff_sums1, dy_data->hausdorff_sums1);
-	fmpq_mat_set(dy_data2->hausdorff_sums2, dy_data->hausdorff_sums2);
-      }
+      if (dy_data->q_is_1)
+	fmpq_mat_set(dy_data2->hausdorff_sums, dy_data->hausdorff_sums);
       fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
       dy_data->ascend = i-n;
       dy_data2->flag = 1; // This process can now itself be split.
@@ -377,8 +374,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   fmpq_mat_clear(dy_data->hankel_mat);
   fmpq_mat_clear(dy_data->hankel_dets);
   fmpq_mat_clear(dy_data->hausdorff_prod);
-  fmpq_mat_clear(dy_data->hausdorff_sums1);
-  fmpq_mat_clear(dy_data->hausdorff_sums2);
+  fmpq_mat_clear(dy_data->hausdorff_sums);
   _fmpz_vec_clear(dy_data->w, dy_data->wlen);
   _fmpq_vec_clear(dy_data->w2, dy_data->w2len);
   free(dy_data);
@@ -617,8 +613,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (i%2==0) change_upper(t1q, t2q, STATE);
     else change_lower(t1q, t2q, STATE);
     if (q_is_1) {
-      fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums1, k, i), t1q);
-      fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums2, k, i), t2q);
+      fmpq_add(fmpq_mat_entry(dy_data->hausdorff_sums, k, i), t1q, t2q);
     }
   }
   r = fmpz_cmp(lower, upper);
@@ -628,22 +623,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* TODO: extend to q != 1 without losing too much efficiency. */
   if (q_is_1) {
     for (i=0; i<=k-2; i++) {
-      fmpq_add(t1q, fmpq_mat_entry(dy_data->hausdorff_sums1, k, i),
-	       fmpq_mat_entry(dy_data->hausdorff_sums2, k, i));
-      fmpq_add(t2q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-1, i),
-	       fmpq_mat_entry(dy_data->hausdorff_sums2, k-1, i));
-      fmpq_add(t3q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-2, i),
-	       fmpq_mat_entry(dy_data->hausdorff_sums2, k-2, i));
-      impose_quadratic_condition(t1q, t2q, t3q, STATE);
+      impose_quadratic_condition(fmpq_mat_entry(dy_data->hausdorff_sums, k, i),
+      fmpq_mat_entry(dy_data->hausdorff_sums, k-1, i),
+      fmpq_mat_entry(dy_data->hausdorff_sums, k-2, i), STATE);
     }
     for (i=2; i<=k; i++) {
-      fmpq_add(t1q, fmpq_mat_entry(dy_data->hausdorff_sums1, k, i),
-	       fmpq_mat_entry(dy_data->hausdorff_sums2, k, i));
-      fmpq_add(t2q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-1, i-1),
-	       fmpq_mat_entry(dy_data->hausdorff_sums2, k-1, i-1));
-      fmpq_add(t3q, fmpq_mat_entry(dy_data->hausdorff_sums1, k-2, i-2),
-	       fmpq_mat_entry(dy_data->hausdorff_sums2, k-2, i-2));
-      impose_quadratic_condition(t1q, t2q, t3q, STATE);
+      impose_quadratic_condition(fmpq_mat_entry(dy_data->hausdorff_sums, k, i),
+      fmpq_mat_entry(dy_data->hausdorff_sums, k-1, i-1),
+      fmpq_mat_entry(dy_data->hausdorff_sums, k-2, i-2), STATE);
     }
     r = fmpz_cmp(lower, upper);
     if (r>0) return(0);
@@ -697,7 +684,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_mul_fmpz(t0q, f, lower);
   fmpq_sub(t1q, t1q, t0q);
   if (q_is_1) for (i=0; i<=k; i++) {
-      t1q = fmpq_mat_entry(dy_data->hausdorff_sums1, k, i);
+      t1q = fmpq_mat_entry(dy_data->hausdorff_sums, k, i);
       fmpq_sub(t1q, t1q, t0q);
     }
   if (k%2==0) {
@@ -716,7 +703,7 @@ void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) 
   fmpz_add(pol+n, pol+n, st_data->modlist+n);
   fmpq_sub(tq, tq, st_data->f+n);
   if (dy_data->q_is_1) for (j=0; j<=k; j++) {
-      tq = fmpq_mat_entry(dy_data->hausdorff_sums1, k, j);
+      tq = fmpq_mat_entry(dy_data->hausdorff_sums, k, j);
       fmpq_sub(tq, tq, st_data->f+n);
   }
   if (k%2==0)

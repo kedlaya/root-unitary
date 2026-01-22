@@ -20,7 +20,7 @@ typedef struct ps_dynamic_data {
   int d, n, ascend, flag, q_is_1;
   long node_count;
   fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets,
-    hausdorff_prod, hausdorff_sums1, hausdorff_sums2;
+    hausdorff_prod, hausdorff_sums;
   fmpz *pol, *sympol, *upper;
 
   /* Scratch space */
