@@ -28,73 +28,9 @@ int has_openmp() {
   return(0);
 }
 
-/*
-    Use a subresultant (Sturm-Habicht) sequence to test whether a given
-    polynomial has all real roots. Note that this test has an early abort
-    mechanism: having all real roots means that the sign sequence has
-    the maximal number of sign changes, so the test aborts as soon
-    as a sign change is missed.
-
-    This function assumes that:
-        - {poly, n} is a normalized vector with n >= 2
-        - {w, 2*n+1} is scratch space.
-    If a and b are not NULL, we add a*b to the constant term before testing.
-
-    Based on code by Sebastian Pancratz from the FLINT repository.
-    TODO: compare with floating-point interval arithmetic.
-*/
-
-int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
-			      const fmpz_t a, const fmpz_t b) {
-  fmpz *f0     = w + 0*n;
-  fmpz *f1     = w + 1*n;
-  fmpz *c      = w + 2*n;
-  fmpz *d      = w + 2*n+1;
-  fmpz *t; // Not allocated, only used to swap pointers
-
-  _fmpz_vec_set(f0, poly, n);
-  /* Sanitize input so that n = deg(f0). */
-  while ((n > 2) && fmpz_is_zero(f0+n-1))
-    n--;
-  if (n <= 2) return(1);
-  if (a != NULL && b != NULL) fmpz_addmul(f0, a, b);
-  _fmpz_poly_derivative(f1, f0, n);
-  n--;
-  int sgn0_l = fmpz_sgn(f0+n);
-
-  while (1) {
-    /* At this point deg(f0) = n, deg(f1) = n-1.
-       We compute the negated pseudoremainder of f0 modulo f1 in two steps:
-       f0 --> f1[n-1]*f0 - f0[n]*x*f1
-       f0 --> f0[n-1]*f1 - f1[n-1]*f0
-    */
-    fmpz_set(c, f0+n);
-    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n-1);
-    _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n-1, c);
-    n--;
-    fmpz_set(c, f0+n);
-    fmpz_neg(d, f1+n);
-    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, d);
-    _fmpz_vec_scalar_addmul_fmpz(f0, f1, n, c);
-
-    /* If f0 = 0, we win unless we are insisting on squarefree. */
-    if (!force_squarefree && _fmpz_vec_is_zero(f0, n)) return(1);
-
-    /* If we miss any one sign change, we cannot have enough. */
-    if (fmpz_sgn(f0+n-1) != sgn0_l) return(0);
-
-    /* If f0 is a scalar, it is nonzero and we win. */
-    if (n==1) return(1);
-
-    /* Extract content from f0.
-       This seems to do better in practice than an explicit subresultant computation. */
-    _fmpz_vec_content(c, f0, n);
-    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, c);
-
-    /* Swap f0 with f1 at the pointer level. */
-    t = f0; f0 = f1; f1 = t;
-  }
-}
+/*****
+  Arithmetic functions
+*****/
 
 /* Set res to floor(a). */
 void fmpq_floor(fmpz_t res, const fmpq_t a) {
@@ -189,6 +125,79 @@ void fmpq_ceil_quad(fmpz_t res, fmpq_t a,
     fmpz_cdiv_q(res, res, bden);
   }
 }
+
+
+/*
+    Use a subresultant (Sturm-Habicht) sequence to test whether a given
+    polynomial has all real roots. Note that this test has an early abort
+    mechanism: having all real roots means that the sign sequence has
+    the maximal number of sign changes, so the test aborts as soon
+    as a sign change is missed.
+
+    This function assumes that:
+        - {poly, n} is a normalized vector with n >= 2
+        - {w, 2*n+1} is scratch space.
+    If a and b are not NULL, we add a*b to the constant term before testing.
+
+    Based on code by Sebastian Pancratz from the FLINT repository.
+    TODO: compare with floating-point interval arithmetic.
+*/
+
+int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
+			      const fmpz_t a, const fmpz_t b) {
+  fmpz *f0     = w + 0*n;
+  fmpz *f1     = w + 1*n;
+  fmpz *c      = w + 2*n;
+  fmpz *d      = w + 2*n+1;
+  fmpz *t; // Not allocated, only used to swap pointers
+
+  _fmpz_vec_set(f0, poly, n);
+  /* Sanitize input so that n = deg(f0). */
+  while ((n > 2) && fmpz_is_zero(f0+n-1))
+    n--;
+  if (n <= 2) return(1);
+  if (a != NULL && b != NULL) fmpz_addmul(f0, a, b);
+  _fmpz_poly_derivative(f1, f0, n);
+  n--;
+  int sgn0_l = fmpz_sgn(f0+n);
+
+  while (1) {
+    /* At this point deg(f0) = n, deg(f1) = n-1.
+       We compute the negated pseudoremainder of f0 modulo f1 in two steps:
+       f0 --> f1[n-1]*f0 - f0[n]*x*f1
+       f0 --> f0[n-1]*f1 - f1[n-1]*f0
+    */
+    fmpz_set(c, f0+n);
+    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n-1);
+    _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n-1, c);
+    n--;
+    fmpz_set(c, f0+n);
+    fmpz_neg(d, f1+n);
+    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, d);
+    _fmpz_vec_scalar_addmul_fmpz(f0, f1, n, c);
+
+    /* If f0 = 0, we win unless we are insisting on squarefree. */
+    if (!force_squarefree && _fmpz_vec_is_zero(f0, n)) return(1);
+
+    /* If we miss any one sign change, we cannot have enough. */
+    if (fmpz_sgn(f0+n-1) != sgn0_l) return(0);
+
+    /* If f0 is a scalar, it is nonzero and we win. */
+    if (n==1) return(1);
+
+    /* Extract content from f0.
+       This seems to do better in practice than an explicit subresultant computation. */
+    _fmpz_vec_content(c, f0, n);
+    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, c);
+
+    /* Swap f0 with f1 at the pointer level. */
+    t = f0; f0 = f1; f1 = t;
+  }
+}
+
+/*****
+  High-level memory management
+*****/
 
 /* Memory allocation and initialization. */
 ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
@@ -310,19 +319,18 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
     for (i=0; i<=d; i++)
       fmpz_set(dy_data->pol+i, coefflist+i);
   } else dy_data->flag = 0;
+  dy_data->upper = _fmpz_vec_init(d+1);
 
   fmpq_mat_init(dy_data->power_sums, d+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->power_sums, 0, 0), d, 1);
+  fmpq_mat_init(dy_data->sum_prod, 1, 1);
   fmpq_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
   fmpq_mat_init(dy_data->hankel_dets, d/2+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets, 0, 0), d, 1);
   fmpq_mat_init(dy_data->hausdorff_prod, 2*d+2, 1);
   fmpq_mat_init(dy_data->hausdorff_sums, d+1, d+1);
 
-  dy_data->upper = _fmpz_vec_init(d+1);
-
   /* Allocate scratch space */
-  fmpq_mat_init(dy_data->sum_prod, 1, 1);
   dy_data->wlen = 3*d+10;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
   dy_data->w2len = 5;
@@ -330,7 +338,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   return(dy_data);
 }
 
-/* Split off a subtree.
+/* Split off a subtree (without allocating new memory).
    The first process gives up on the current branch, up to the first coefficient that is not uniquely specified;
    the remaining work is yielded to the second process, which may in turn be split immediately.
 */
@@ -467,7 +475,7 @@ void change_upper_strict(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
   if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
 }
 
-/* Impose the condition that val1*val3 >= val2, assuming that val1 is a linear 
+/* Impose the condition that val1*val3 >= val2^2, assuming that val1 is a linear
    monic function of the k-th power sum and val2, val3 do not depend on this sum. */
 void impose_quadratic_condition(const fmpq_t val1, const fmpq_t val2,
 				const fmpq_t val3, STATE_DECLARE) {
@@ -497,7 +505,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz *pol = dy_data->pol;
   fmpz *q = st_data->q;
   fmpq *f = (fmpq *)(st_data->f+n-1);
-  fmpq *t;
+  fmpq *t; // Unallocated, will be assigned from existing pointers
 
   /* Allocate temporary variables from persistent scratch space. */
   fmpz *tpol = dy_data->w;
@@ -591,8 +599,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     return(1);
   }
 
-  /* Update Hankel matrices. */
+  /* Condition: nonnegativity of the Hankel determinant.
+     TODO: reimplement this using continued fractions, as in arXiv:2501.05182. */
   if (k%2==0) {
+    /* Update Hankel matrices. */
     fmpq_mat_one(dy_data->hankel_mat);
     for (i=0; i<=k/2; i++)
       for (j=0; j<=k/2; j++)
@@ -600,9 +610,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 		 fmpq_mat_entry(dy_data->power_sums, i+j, 0));
     fmpq_mat_det(t0q, dy_data->hankel_mat);
     fmpq_set(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0), t0q);
- 
-  /* Condition: nonnegativity of the Hankel determinant.
-     TODO: reimplement this as a subresultant. */
     t = fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0);
     if (fmpq_sgn(t) > 0) {
       fmpq_div(t0q, t0q, t);
@@ -615,6 +622,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. 
      TODO: also implement the truncated moment condition. */
+
   fmpq_mat_mul(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], dy_data->power_sums);
   for (i=0; i<=k; i++) {
     fmpq_set(t1q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i, 0));
@@ -652,8 +660,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpz_set(t2z, t0z);
     while (fmpz_cmp(lower, t0z)) {
       fmpz_fmid(t1z, lower, t0z);
-      r = _fmpz_poly_all_real_roots(POL, t1z);
-      if (r) fmpz_set(t0z, t1z);
+      if (_fmpz_poly_all_real_roots(POL, t1z)) fmpz_set(t0z, t1z);
       else fmpz_add_ui(lower, t1z, 1);
     }
   } else {
@@ -682,32 +689,33 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz_addmul(pol+n-1, lower, modulus);
 
   /* Correct the k-th power sum and related quantities. */
-  t1q = fmpq_mat_entry(dy_data->power_sums, k, 0);
+  t = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_mul_fmpz(t0q, f, lower);
-  fmpq_sub(t1q, t1q, t0q);
-  if (q_is_1) for (i=0; i<=k; i++) {
-      t1q = fmpq_mat_entry(dy_data->hausdorff_sums, k, i);
-      fmpq_sub(t1q, t1q, t0q);
+  fmpq_sub(t, t, t0q);
+  if (q_is_1)
+    for (i=0; i<=k; i++) {
+      t = fmpq_mat_entry(dy_data->hausdorff_sums, k, i);
+      fmpq_sub(t, t, t0q);
     }
-  if (k%2==0) {
-    t1q = fmpq_mat_entry(dy_data->hankel_dets, k/2, 0);
-    fmpq_submul(t1q, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0), t0q);
-  }
+  if (k%2==0)
+    fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0),
+                fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0), t0q);
   return(1);
 }
 
 /* Increment the current moving counter and update stored data to match. */
 void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
-  int d = st_data->d, k = d-n, j;
+  int k = st_data->d-n, j;
   fmpz *pol = dy_data->pol;
   fmpq *tq = fmpq_mat_entry(dy_data->power_sums, k, 0);
 
   fmpz_add(pol+n, pol+n, st_data->modlist+n);
   fmpq_sub(tq, tq, st_data->f+n);
-  if (dy_data->q_is_1) for (j=0; j<=k; j++) {
+  if (dy_data->q_is_1)
+    for (j=0; j<=k; j++) {
       tq = fmpq_mat_entry(dy_data->hausdorff_sums, k, j);
       fmpq_sub(tq, tq, st_data->f+n);
-  }
+    }
   if (k%2==0)
     fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0),
 		st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
