@@ -637,39 +637,55 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       impose_quadratic_condition(fmpq_mat_entry(dy_data->hausdorff_sums, k, i),
       fmpq_mat_entry(dy_data->hausdorff_sums, k-1, i-1),
       fmpq_mat_entry(dy_data->hausdorff_sums, k-2, i-2), STATE);
-    r = fmpz_cmp(lower, upper);
-    if (r>0) return(0);
   }
 
-  /* Check the Rolle condition at the midpoint. If it holds, perform a binary
-     search on the left endpoint; otherwise, do a linear search. 
-     If the interval is a single point, we route directly into the linear search. */
-  if (r) {
-    fmpz_fmid(t0z, lower, upper);
-    r = _fmpz_poly_all_real_roots(POL, t0z);
-  }
-  if (r) {
-    fmpz_set(t2z, t0z);
-    while (fmpz_cmp(lower, t0z)) {
-      fmpz_fmid(t1z, lower, t0z);
-      if (_fmpz_poly_all_real_roots(POL, t1z)) fmpz_set(t0z, t1z);
-      else fmpz_add_ui(lower, t1z, 1);
+  /* Condition: given that the derivative of tpol has all real roots,
+     the same holds for tpol either nowhere or on an interval. */
+
+  while (1) {
+    /* If the range is a singleton, test that value. */
+    r = fmpz_cmp(lower, upper);
+    if (!r && _fmpz_poly_all_real_roots(POL, lower)) {
+      fmpz_set(t2z, lower);
+      break;
     }
-  } else {
-    r = _fmpz_poly_all_real_roots(POL, lower);
-    while (r <= 0) {
+    if (r >= 0) return(0);
+
+    /* Test the midpoint of the given range. If we find all real roots,
+       run a binary search for the left endpoint. */
+    fmpz_cmid(t0z, lower, upper);
+    if (_fmpz_poly_all_real_roots(POL, t0z)) {
+      fmpz_set(t2z, t0z); // Start the right endpoint search from here
+      while (fmpz_cmp(lower, t0z)) {
+        fmpz_fmid(t1z, lower, t0z);
+        if (_fmpz_poly_all_real_roots(POL, t1z)) fmpz_set(t0z, t1z);
+        else fmpz_add_ui(lower, t1z, 1);
+      }
+      break;
+    }
+
+    /* Run a linear search up to the midpoint. */
+    while (r) {
+      if (_fmpz_poly_all_real_roots(POL, lower)) break;
       fmpz_add_ui(lower, lower, 1);
-      if (fmpz_cmp(lower, upper) > 0) return(0);
-      r = _fmpz_poly_all_real_roots(POL, lower);
+      r = fmpz_cmp(lower, t0z);
     }
-    if (fmpz_cmp(lower, t0z) < 0) fmpz_sub_ui(upper, t0z, 1);
-    fmpz_set(t2z, lower);
+    if (r) {
+      fmpz_set(t2z, lower);
+      fmpz_sub_ui(upper, t0z, 1); // Use an improved upper bound
+      break;
+    }
+
+    /* Shorten the interval and try again. */
+    fmpz_add_ui(lower, t0z, 1);
   }
-  /* Now do a binary search on the right endpoint. */
+
+  /* Use a binary search to find the right endpoint of the interval where the
+     real roots condition is satisfied. */
   while (fmpz_cmp(t2z, upper)) {
     fmpz_cmid(t1z, t2z, upper);
     r = _fmpz_poly_all_real_roots(POL, t1z);
-    if (r > 0) fmpz_set(t2z, t1z);
+    if (r) fmpz_set(t2z, t1z);
     else fmpz_sub_ui(upper, t1z, 1);
   }
 
@@ -728,7 +744,6 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 
   int ascend = dy_data->ascend;
   int n = dy_data->n;
-  int q_is_1 = dy_data->q_is_1;
   long node_count = dy_data->node_count;
   fmpz *upper = dy_data->upper;
   fmpz *pol = dy_data->pol;
