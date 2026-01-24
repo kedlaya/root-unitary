@@ -216,13 +216,11 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 
   st_data->d = d;
   st_data->sign = coeffsign;
-  fmpz_init(st_data->q);
-  fmpz_set(st_data->q, q);
+  fmpz_init_set(st_data->q, q);
   st_data->node_limit = node_limit;
   st_data->force_squarefree = force_squarefree;
 
-  fmpz_init(st_data->lead);
-  fmpz_set(st_data->lead, lead);
+  fmpz_init_set(st_data->lead, lead);
 
   st_data->modlist = _fmpz_vec_init(d+1);
   st_data->f = _fmpq_vec_init(d+1);
@@ -250,10 +248,8 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
     for (j=0; j<=i; j++)
       for (k=0; k<=i; k++) {
 	// The coefficient of t^k in (t-2 sqrt(q))^j (t+2 sqrt(q))^{i-j}, rounding down the exponent of q.
-	if ((i-k)%2==0)
-	  k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], 2*j, k);
-	else
-	  k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], 2*j+1, k);
+	if ((i-k)%2==0) k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], 2*j, k);
+	else k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], 2*j+1, k);
 	for (l=0; l<=j; l++) if (k-l>=0 && k-l<=i-j) {
 	  fmpz_mul(m, fmpz_mat_entry(st_data->binom_mat, j, l),
 	     fmpz_mat_entry(st_data->binom_mat, i-j, k-l));
@@ -703,9 +699,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
   int k = st_data->d-n, j;
   fmpz *pol = dy_data->pol;
-  fmpq *tq = fmpq_mat_entry(dy_data->power_sums, k, 0);
+  fmpq *tq;
 
   fmpz_add(pol+n, pol+n, st_data->modlist+n);
+  tq = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_sub(tq, tq, st_data->f+n);
   if (dy_data->q_is_1)
     for (j=0; j<=k; j++) {
