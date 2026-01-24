@@ -239,25 +239,25 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
     for (j=0; j<=d; j++)
       fmpz_bin_uiui(fmpz_mat_entry(st_data->binom_mat, i, j), i, j);
 
-  st_data->hausdorff_mats = (fmpq_mat_t *)malloc((d+1)*sizeof(fmpq_mat_t));
+  st_data->hausdorff_mats = (fmpz_mat_t *)malloc((d+1)*sizeof(fmpz_mat_t));
   for (i=0; i<=d; i++) {
 
-    fmpq_mat_init(st_data->hausdorff_mats[i], 2*d+2, d+1);
-    fmpq_mat_zero(st_data->hausdorff_mats[i]);
+    fmpz_mat_init(st_data->hausdorff_mats[i], 2*d+2, d+1);
+    fmpz_mat_zero(st_data->hausdorff_mats[i]);
 
     for (j=0; j<=i; j++)
       for (k=0; k<=i; k++) {
 	// The coefficient of t^k in (t-2 sqrt(q))^j (t+2 sqrt(q))^{i-j}, rounding down the exponent of q.
-	if ((i-k)%2==0) k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], 2*j, k);
-	else k1 = fmpq_mat_entry(st_data->hausdorff_mats[i], 2*j+1, k);
+	if ((i-k)%2==0) k0 = fmpz_mat_entry(st_data->hausdorff_mats[i], 2*j, k);
+	else k0 = fmpz_mat_entry(st_data->hausdorff_mats[i], 2*j+1, k);
 	for (l=0; l<=j; l++) if (k-l>=0 && k-l<=i-j) {
 	  fmpz_mul(m, fmpz_mat_entry(st_data->binom_mat, j, l),
 	     fmpz_mat_entry(st_data->binom_mat, i-j, k-l));
 	  if ((j-l)%2==1) fmpz_neg(m, m);
-	  fmpq_add_fmpz(k1, k1, m);
+	  fmpz_add(k0, k0, m);
 	}
-	fmpq_mul_2exp(k1, k1, i-k);
-	for (l=0; l<(i-k)/2; l++) fmpq_mul_fmpz(k1, k1, q);
+	fmpz_mul_2exp(k0, k0, i-k);
+	for (l=0; l<(i-k)/2; l++) fmpz_mul(k0, k0, q);
       }
   }
 
@@ -367,7 +367,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
   _fmpq_vec_clear(st_data->f, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
   for (i=0; i<=d; i++)  {
-    fmpq_mat_clear(st_data->hausdorff_mats[i]);
+    fmpz_mat_clear(st_data->hausdorff_mats[i]);
     fmpz_mat_clear(st_data->sum_mats[i]);
   }
   free(st_data->hausdorff_mats);
@@ -615,7 +615,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* Condition: the Hausdorff moment criterion for having roots in [-2, 2]. 
      TODO: also implement the truncated moment condition. */
 
-  fmpq_mat_mul(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], dy_data->power_sums);
+  fmpq_mat_mul_r_fmpz_mat(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], 
+                          dy_data->power_sums);
   for (i=0; i<=k; i++) {
     fmpq_set(t1q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i, 0));
     fmpq_set(t2q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i+1, 0));
