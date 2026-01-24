@@ -205,12 +205,12 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   int i, j, k, l;
   ps_static_data_t *st_data;
   fmpz_poly_t pol;
-  fmpz_t m, const1;
+  fmpz_t m;
+  fmpz *k0;
   fmpq *k1;
 
   fmpz_poly_init(pol);
   fmpz_init(m);
-  fmpz_init_set_ui(const1, 1);
 
   st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
 
@@ -265,11 +265,11 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
       }
   }
 
-  st_data->sum_mats = (fmpq_mat_t *)malloc((d+1)*sizeof(fmpq_mat_t));
+  st_data->sum_mats = (fmpz_mat_t *)malloc((d+1)*sizeof(fmpz_mat_t));
   for (i=0; i<=d; i++) {
 
-    fmpq_mat_init(st_data->sum_mats[i], 1, d+1);
-    fmpq_mat_zero(st_data->sum_mats[i]);
+    fmpz_mat_init(st_data->sum_mats[i], 1, d+1);
+    fmpz_mat_zero(st_data->sum_mats[i]);
 
     arith_chebyshev_t_polynomial(pol, i);
     for (j=0; j<=d; j++) {
@@ -277,16 +277,13 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
       /* Coefficients of 2*(i-th Chebyshev polynomial)(x/2).
          If q != 1, the coeff of x^j is multiplied by q^{floor(i-j)/2}. */
       if (j <= i) {
-	k1 = fmpq_mat_entry(st_data->sum_mats[i], 0, j);
-	fmpq_set_fmpz_frac(k1, fmpz_poly_get_coeff_ptr(pol, j), const1);
-	fmpz_mul_2exp(m, const1, j);
-	fmpq_div_fmpz(k1, k1, m);
-	fmpz_set_ui(m, 2);
-	fmpq_mul_fmpz(k1, k1, m);
+	k0 = fmpz_mat_entry(st_data->sum_mats[i], 0, j);
+	fmpz_set(k0, fmpz_poly_get_coeff_ptr(pol, j));
+	if (j == 0) fmpz_mul_2exp(k0, k0, 1);
+	else fmpz_fdiv_q_2exp(k0, k0, j-1);
 	if (!fmpz_is_one(st_data->q) && i%2==j%2) {
-	  fmpz_set(m, st_data->q);
-	  fmpz_pow_ui(m, m, (i-j)/2);
-	  fmpq_mul_fmpz(k1, k1, m);
+	  fmpz_pow_ui(m, st_data->q, (i-j)/2);
+	  fmpz_mul(k0, k0, m);
 	}
       }
 
@@ -295,7 +292,6 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 
   fmpz_poly_clear(pol);
   fmpz_clear(m);
-  fmpz_clear(const1);
 
   return(st_data);
 }
@@ -376,7 +372,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
   _fmpz_vec_clear(st_data->modlist, d+1);
   for (i=0; i<=d; i++)  {
     fmpq_mat_clear(st_data->hausdorff_mats[i]);
-    fmpq_mat_clear(st_data->sum_mats[i]);
+    fmpz_mat_clear(st_data->sum_mats[i]);
   }
   free(st_data->hausdorff_mats);
   free(st_data->sum_mats);
@@ -521,7 +517,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq *t1q = dy_data->w2+1;
   fmpq *t2q = dy_data->w2+2;
   fmpq *t3q = dy_data->w2+3;
-  fmpq *t4q = dy_data->w2+4;
+  fmpq *t4q = dy_data->w2+4; // This gets overwritten by subroutines
 
   /* If k>d, no further coefficients to bound. */
   if (k>d) return(1);
@@ -538,7 +534,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_div_fmpz(t, t, pol+d);
 
   /* Condition: the k-th symmetrized power sum must lie in [-2*sqrt(q), 2*sqrt(q)]. */
-  fmpq_mat_mul(dy_data->sum_prod, st_data->sum_mats[k], dy_data->power_sums);
+  fmpq_mat_mul_r_fmpz_mat(dy_data->sum_prod, st_data->sum_mats[k], dy_data->power_sums);
   t = fmpq_mat_entry(dy_data->sum_prod, 0, 0);
   fmpq_set_si(t1q, 2*d, 1);
   if (!q_is_1) {
