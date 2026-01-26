@@ -140,7 +140,7 @@ inline void fmpq_ceil_quad(fmpz_t res, fmpq_t a,
     If a and b are not NULL, we add a*b to the constant term before testing.
 
     Based on code by Sebastian Pancratz from the FLINT repository.
-    TODO: compare with floating-point interval arithmetic.
+    TODO: reimplement using a half-GCD algorithm.
 */
 
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
