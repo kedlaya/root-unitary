@@ -183,7 +183,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
     if (fmpz_sgn(f0+n-1) != sgn0_l) return(0);
 
     /* If f0 is a scalar, it is nonzero and we win. */
-    if (n==1) return(1);
+    if (n == 1) return(1);
 
     /* Extract content from f0.
        This seems to do better in practice than an explicit subresultant computation. */
@@ -241,14 +241,13 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   st_data->hausdorff_mats = (fmpz_mat_t *)malloc((d+1)*sizeof(fmpz_mat_t));
   for (i=0; i<=d; i++) {
 
-    fmpz_mat_init(st_data->hausdorff_mats[i], 2*d+2, d+1);
+    fmpz_mat_init(st_data->hausdorff_mats[i], d+1, d+1);
     fmpz_mat_zero(st_data->hausdorff_mats[i]);
 
     for (j=0; j<=i; j++)
       for (k=0; k<=i; k++) {
 	// The coefficient of t^k in (t-2)^j (t+2)^{i-j}.
-	if ((i-k)%2==0) k0 = fmpz_mat_entry(st_data->hausdorff_mats[i], 2*j, k);
-	else k0 = fmpz_mat_entry(st_data->hausdorff_mats[i], 2*j+1, k);
+	k0 = fmpz_mat_entry(st_data->hausdorff_mats[i], j, k);
 	for (l=0; l<=j; l++) if (k-l>=0 && k-l<=i-j) {
 	  fmpz_mul(m, fmpz_mat_entry(st_data->binom_mat, j, l),
 	     fmpz_mat_entry(st_data->binom_mat, i-j, k-l));
@@ -317,7 +316,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpq_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
   fmpq_mat_init(dy_data->hankel_dets, d/2+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets, 0, 0), d, 1);
-  fmpq_mat_init(dy_data->hausdorff_prod, 2*d+2, 1);
+  fmpq_mat_init(dy_data->hausdorff_prod, d+1, 1);
   fmpq_mat_init(dy_data->hausdorff_sums, d+1, d+1);
 
   /* Allocate scratch space */
@@ -618,11 +617,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   if (q_is_1) {
     fmpq_mat_mul_r_fmpz_mat(dy_data->hausdorff_prod, st_data->hausdorff_mats[k], 
                           dy_data->power_sums);
-    for (i=0; i<=k; i++) {
-      fmpq_set(t1q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i, 0));
-      fmpq_set(t2q, fmpq_mat_entry(dy_data->hausdorff_prod, 2*i+1, 0));
-      fmpq_add(fmpq_mat_entry(dy_data->hausdorff_sums, k, i), t1q, t2q);
-    }
+    for (i=0; i<=k; i++)
+      fmpq_set(fmpq_mat_entry(dy_data->hausdorff_sums, k, i),
+               fmpq_mat_entry(dy_data->hausdorff_prod, i, 0));
     for (i=0; i<=k-2; i++)
       impose_quadratic_condition(fmpq_mat_entry(dy_data->hausdorff_sums, k, i),
       fmpq_mat_entry(dy_data->hausdorff_sums, k-1, i),
