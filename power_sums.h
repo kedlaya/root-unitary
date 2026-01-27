@@ -3,7 +3,6 @@
 #include <flint/fmpz_poly.h>
 #include <flint/fmpq.h>
 #include <flint/fmpq_mat.h>
-#include <flint/arith.h>
 
 typedef struct ps_static_data {
   int d, sign, force_squarefree;
@@ -18,8 +17,7 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag, q_is_1;
   long node_count;
-  fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets,
-    hausdorff_prod, hausdorff_sums;
+  fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets, hausdorff_sums;
   fmpz *pol, *sympol, *upper;
 
   /* Scratch space */
