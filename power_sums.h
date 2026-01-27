@@ -9,7 +9,7 @@ typedef struct ps_static_data {
   long node_limit;
   fmpz_t a, b, lead, q;
   fmpz_mat_t binom_mat;
-  fmpz *modlist, *sum_mats;
+  fmpz *modlist, *sum_mats, *eval_pm2_mats;
   fmpz_mat_t *hausdorff_mats;
   fmpq *f;
 } ps_static_data_t;

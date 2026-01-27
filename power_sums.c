@@ -309,6 +309,17 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 
   fmpz_poly_clear(pol);
   fmpz_clear(m);
+  
+  st_data->eval_pm2_mats = _fmpz_vec_init(2*(d+1)*(d+1));
+  _fmpz_vec_zero(st_data->eval_pm2_mats, 2*(d+1)*(d+1)); // Redundant?  
+  for (i=0; i<=d; i++) {
+    for (j=0; j<=i; j++) {
+      k0 = st_data->eval_pm2_mats+(d+1)*(2*i+j%2)+j;
+      fmpz_pow_ui(k0, st_data->q, (i-j)/2);
+      fmpz_mul_2exp(k0, k0, j);
+      fmpz_mul_si(k0, k0, -i);
+    }
+  }
 
   return(st_data);
 }
@@ -387,6 +398,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
   _fmpq_vec_clear(st_data->f, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
   _fmpz_vec_clear(st_data->sum_mats, (d+1)*(d+1));
+  _fmpz_vec_clear(st_data->eval_pm2_mats, 2*(d+1)*(d+1));
   for (i=0; i<=d; i++)
     fmpz_mat_clear(st_data->hausdorff_mats[i]);
   free(st_data->hausdorff_mats);
@@ -568,19 +580,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n-1+i, n-1), pol+n-1+i);
 
   /* Condition: Descartes' rule of signs applies at -2*sqrt(q), +2*sqrt(q).
-   This is only a new condition for the evaluations at these points. 
-   TODO: reimplement as multiplication by fixed matrices. */
+   This is only a new condition for the evaluations at these points. */
 
-  for (i=0; 2*i <= k; i++) fmpz_mul_2exp(tpol2+i, tpol+2*i, 2*i);
-  if (q_is_1) _fmpz_vec_sum(t0z, tpol2, (k+2)/2);
-  else _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2)/2, q);
-  fmpz_mul_si(fmpq_numref(t1q), t0z, -k);
+  _fmpz_vec_dot(fmpq_numref(t1q), st_data->eval_pm2_mats+(d+1)*(2*k), tpol, k+1);
   fmpz_set(fmpq_denref(t1q), pol+d);
-
-  for (i=0; 2*i+1 <= k; i++) fmpz_mul_2exp(tpol2+i, tpol+2*i+1, 2*i+1);
-  if (q_is_1) _fmpz_vec_sum(t0z, tpol2, (k+1)/2);
-  else _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+1)/2, q);
-  fmpz_mul_si(fmpq_numref(t2q), t0z, -k);
+  _fmpz_vec_dot(fmpq_numref(t2q), st_data->eval_pm2_mats+(d+1)*(2*k+1), tpol, k+1);
   fmpz_set(fmpq_denref(t2q), pol+d);
 
   /* If checking for squarefree, shear endpoints off the range. */
