@@ -10,14 +10,13 @@ typedef struct ps_static_data {
   fmpz_t a, b, lead, q;
   fmpz_mat_t binom_mat;
   fmpz *modlist, *sum_mats, *eval_pm2_mats;
-  fmpz_mat_t *hausdorff_mats;
   fmpq *f;
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag, q_is_1;
   long node_count;
-  fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets_lower, hankel_dets_upper, hausdorff_sums;
+  fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets_lower, hankel_dets_upper;
   fmpz *pol, *sympol, *upper;
 
   /* Scratch space */
