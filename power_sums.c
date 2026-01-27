@@ -683,16 +683,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     t1 = fmpq_mat_entry(dy_data->hankel_dets_lower, k, 0);
     fmpq_mat_det(t1, hankel_mat);
     fmpq_mat_window_clear(hankel_mat);    
-    if (k > 1) {
-      t = fmpq_mat_entry(dy_data->hankel_dets_lower, k-2, 0);
-      if (fmpq_sgn(t) > 0) {
-        fmpq_div_raw(t1q, t1, t);
-        change_upper(t1q, NULL, STATE);
-      }
-      else if (st_data->force_squarefree || fmpq_sgn(t1)) return(0);
-      else change_upper(fmpq_mat_entry(dy_data->hankel_mat, k/2, k/2), NULL, STATE);
-      if (fmpz_cmp(lower, upper) > 0) return(0);
+    if (k > 1) t = fmpq_mat_entry(dy_data->hankel_dets_lower, k-2, 0);
+    if (k > 1 && fmpq_sgn(t) > 0) {
+      fmpq_div_raw(t1q, t1, t);
+      change_upper(t1q, NULL, STATE);
     }
+    else if ((k > 1 && st_data->force_squarefree) || fmpq_sgn(t1) < 0) return(0);
+    else change_upper(fmpq_mat_entry(dy_data->hankel_mat, k/2, k/2), NULL, STATE);
+    if (fmpz_cmp(lower, upper) > 0) return(0);
   }
 
   /* Condition: nonnegativity of the upper Hankel determinant (odd case). 
@@ -708,20 +706,18 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     t1 = fmpq_mat_entry(dy_data->hankel_dets_upper, k, 0);
     fmpq_mat_det(t1, hankel_mat);
     fmpq_mat_window_clear(hankel_mat);    
-    if (k > 1) {
-      t = fmpq_mat_entry(dy_data->hankel_dets_upper, k-2, 0);
-      if (fmpq_sgn(t) > 0) {
-        fmpq_div_raw(t1q, t1, t);
-        fmpq_neg_raw(t1q, t1q);
-        change_lower(t1q, NULL, STATE);
-      }
-      else if (st_data->force_squarefree || fmpq_sgn(t1)) return(0);
-      else {
-        fmpq_neg_raw(t1q, fmpq_mat_entry(dy_data->hankel_mat, k/2, k/2)); 
-        change_lower(t1q, NULL, STATE);
-      }
-      if (fmpz_cmp(lower, upper) > 0) return(0);
+    if (k > 1) t = fmpq_mat_entry(dy_data->hankel_dets_upper, k-2, 0);
+    if (k > 1 && fmpq_sgn(t) > 0) {
+      fmpq_div_raw(t1q, t1, t);
+      fmpq_neg_raw(t1q, t1q);
+      change_lower(t1q, NULL, STATE);
     }
+    else if ((k > 1 && st_data->force_squarefree) || fmpq_sgn(t1) < 0) return(0);
+    else {
+      fmpq_neg_raw(t1q, fmpq_mat_entry(dy_data->hankel_mat, k/2, k/2));
+      change_lower(t1q, NULL, STATE);
+    }
+    if (fmpz_cmp(lower, upper) > 0) return(0);
   }
 
   /* Condition: log convexity for Hausdorff moments based on Cauchy-Schwarz. */
@@ -736,10 +732,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
                                  fmpq_mat_entry(dy_data->hausdorff_sums, i, k-2), STATE);
   }
 
-  /* Condition: given that the derivative of tpol has all real roots,
-     the same holds for tpol either nowhere or on an interval. */
+  /* Condition: tpol has all real roots.
+     The range of values where this holds, if nonempty, is an interval. */
 
-  if (k >= d/2 || k%2 == 1) {
   while (1) {
     /* If the range is a singleton, test that value. */
     r = fmpz_cmp(lower, upper);
@@ -773,9 +768,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       fmpz_sub_ui(upper, t0z, 1); // Use an improved upper bound
       break;
     }
-
  
- /* Shorten the interval and try again. */
+    /* Shorten the interval and try again. */
     fmpz_add_ui(lower, t0z, 1);
   }
 
@@ -785,7 +779,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpz_cmid(t1z, t2z, upper);
     if (_fmpz_poly_all_real_roots(POL, t1z)) fmpz_set(t2z, t1z);
     else fmpz_sub_ui(upper, t1z, 1);
-  }
   }
 
   /* Set the new upper bound. */
