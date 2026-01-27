@@ -31,7 +31,7 @@ int has_openmp() {
 /*****
   Arithmetic functions
   
-  Note: input fmpq's need *not* be canonicalized.
+  Note: input fmpq's need *not* be canonicalized, and output is not guaranteed to be either.
 *****/
 
 /* Set res to -a without canonicalizing. */
@@ -279,14 +279,14 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   _fmpz_vec_zero(st_data->sum_mats, (d+1)*(d+1)); // Redundant?
   for (i=0; i<=d; i++) {
     arith_chebyshev_t_polynomial(pol, i);
-    for (j=0; j<=i; j++) {
+    for (j=i%2; j<=i; j+=2) {
       /* Coefficients of 2*(i-th Chebyshev polynomial)(x/2).
          If q != 1, the coeff of x^j is multiplied by q^{floor(i-j)/2}. */
       k0 = st_data->sum_mats+(d+1)*i+j;
       fmpz_set(k0, fmpz_poly_get_coeff_ptr(pol, j));
       if (j == 0) fmpz_mul_2exp(k0, k0, 1);
       else fmpz_fdiv_q_2exp(k0, k0, j-1);
-      if (!fmpz_is_one(st_data->q) && i%2==j%2) {
+      if (!fmpz_is_one(st_data->q)) {
         fmpz_pow_ui(m, st_data->q, (i-j)/2);
         fmpz_mul(k0, k0, m);
       }
@@ -477,19 +477,6 @@ inline void change_upper_strict(const fmpq_t val1, const fmpq_t val2, STATE_DECL
   }
   fmpz_sub_ui(t0z, t0z, 1);
   if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
-}
-
-/* Impose the condition that val1*val3 >= val2^2, assuming that val1 is a linear
-   monic function of the k-th power sum and val2, val3 do not depend on this sum. */
-inline void impose_quadratic_condition(const fmpq_t val1, const fmpq_t val2,
-				const fmpq_t val3, STATE_DECLARE) {
-  int s = fmpq_sgn(val3);
-  if (!s) return;
-  fmpq_mul_raw(t0q, val2, val2);
-  fmpq_div_raw(t0q, t0q, val3);
-  fmpq_sub_raw(t0q, val1, t0q);
-  if (s>0) change_upper(t0q, NULL, STATE);
-  else change_lower(t0q, NULL, STATE);
 }
 
 /* The following is the key subroutine: given some initial coefficients, compute
