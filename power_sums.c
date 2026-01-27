@@ -309,13 +309,13 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 
   fmpz_poly_clear(pol);
   fmpz_clear(m);
-  
+
   st_data->eval_pm2_mats = _fmpz_vec_init(2*(d+1)*(d+1));
-  _fmpz_vec_zero(st_data->eval_pm2_mats, 2*(d+1)*(d+1)); // Redundant?  
+  _fmpz_vec_zero(st_data->eval_pm2_mats, 2*(d+1)*(d+1)); // Redundant?
   for (i=0; i<=d; i++) {
     for (j=0; j<=i; j++) {
       k0 = st_data->eval_pm2_mats+(d+1)*(2*i+j%2)+j;
-      fmpz_pow_ui(k0, st_data->q, (i-j)/2);
+      fmpz_pow_ui(k0, st_data->q, j/2);
       fmpz_mul_2exp(k0, k0, j);
       fmpz_mul_si(k0, k0, -i);
     }
