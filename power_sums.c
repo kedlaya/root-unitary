@@ -289,28 +289,21 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
       }
   }
 
-  st_data->sum_mats = (fmpz_mat_t *)malloc((d+1)*sizeof(fmpz_mat_t));
+  st_data->sum_mats = _fmpz_vec_init((d+1)*(d+1));
+  _fmpz_vec_zero(st_data->sum_mats, (d+1)*(d+1)); // Redundant?
   for (i=0; i<=d; i++) {
-
-    fmpz_mat_init(st_data->sum_mats[i], 1, d+1);
-    fmpz_mat_zero(st_data->sum_mats[i]);
-
     arith_chebyshev_t_polynomial(pol, i);
-    for (j=0; j<=d; j++) {
-
+    for (j=0; j<=i; j++) {
       /* Coefficients of 2*(i-th Chebyshev polynomial)(x/2).
          If q != 1, the coeff of x^j is multiplied by q^{floor(i-j)/2}. */
-      if (j <= i) {
-	k0 = fmpz_mat_entry(st_data->sum_mats[i], 0, j);
-	fmpz_set(k0, fmpz_poly_get_coeff_ptr(pol, j));
-	if (j == 0) fmpz_mul_2exp(k0, k0, 1);
-	else fmpz_fdiv_q_2exp(k0, k0, j-1);
-	if (!fmpz_is_one(st_data->q) && i%2==j%2) {
-	  fmpz_pow_ui(m, st_data->q, (i-j)/2);
-	  fmpz_mul(k0, k0, m);
-	}
+      k0 = st_data->sum_mats+(d+1)*i+j;
+      fmpz_set(k0, fmpz_poly_get_coeff_ptr(pol, j));
+      if (j == 0) fmpz_mul_2exp(k0, k0, 1);
+      else fmpz_fdiv_q_2exp(k0, k0, j-1);
+      if (!fmpz_is_one(st_data->q) && i%2==j%2) {
+        fmpz_pow_ui(m, st_data->q, (i-j)/2);
+        fmpz_mul(k0, k0, m);
       }
-
     }
   }
 
@@ -348,7 +341,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpq_mat_init(dy_data->hankel_dets, d/2+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets, 0, 0), d, 1);
   fmpq_mat_init(dy_data->hausdorff_sums, d+1, d+1);
-
+  
   /* Allocate scratch space */
   dy_data->wlen = 3*d+10;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
@@ -393,12 +386,10 @@ void ps_static_clear(ps_static_data_t *st_data) {
   fmpz_mat_clear(st_data->binom_mat);
   _fmpq_vec_clear(st_data->f, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
-  for (i=0; i<=d; i++)  {
+  _fmpz_vec_clear(st_data->sum_mats, (d+1)*(d+1));
+  for (i=0; i<=d; i++)
     fmpz_mat_clear(st_data->hausdorff_mats[i]);
-    fmpz_mat_clear(st_data->sum_mats[i]);
-  }
   free(st_data->hausdorff_mats);
-  free(st_data->sum_mats);
   free(st_data);
 }
 
@@ -544,7 +535,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* If k>d, no further coefficients to bound. */
   if (k>d) return(1);
 
-  /* Update power_sums[k]. */
+  /* Update power_sums[k] using the Girard-Newton formula. */
   t = fmpq_mat_entry(dy_data->power_sums, 0, 0);
   fmpq_set_si(t, k, 1);  
   fmpq_mat_fmpz_vec_mul(t0q, pol+d-k, k, dy_data->power_sums);
@@ -553,24 +544,23 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_set_si(t, d, 1);
 
   /* Condition: the k-th symmetrized power sum must lie in [-2*sqrt(q), 2*sqrt(q)]. */
-  fmpq_mat_mul_r_fmpz_mat(dy_data->sum_prod, st_data->sum_mats[k], dy_data->power_sums);
-  t = fmpq_mat_entry(dy_data->sum_prod, 0, 0);
+  fmpq_mat_fmpz_vec_mul(t2q, st_data->sum_mats+(d+1)*k, k+1, dy_data->power_sums);
   fmpz_set_si(t1z, 2*d);
   if (!q_is_1) {
     fmpz_pow_ui(t0z, q, k/2);
     fmpz_mul(t1z, t1z, t0z);
   }
   if (k%2==0 || q_is_1) {
-    fmpq_sub_fmpz(t0q, t, t1z);
+    fmpq_sub_fmpz(t0q, t2q, t1z);
     set_lower(t0q, NULL, STATE);
-    fmpq_add_fmpz(t0q, t, t1z);
+    fmpq_add_fmpz(t0q, t2q, t1z);
     set_upper(t0q, NULL, STATE);
   } else {
     fmpq_one(t1q);
     fmpz_set(fmpq_numref(t1q), t1z);
-    set_upper(t, t1q, STATE);
+    set_upper(t2q, t1q, STATE);
     fmpq_neg(t1q, t1q);
-    set_lower(t, t1q, STATE);
+    set_lower(t2q, t1q, STATE);
   }
 
   /* Compute the divided (n-1)-st derivative of pol, answer in tpol. */
@@ -578,17 +568,18 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n-1+i, n-1), pol+n-1+i);
 
   /* Condition: Descartes' rule of signs applies at -2*sqrt(q), +2*sqrt(q).
-   This is only a new condition for the evaluations at these points. */
+   This is only a new condition for the evaluations at these points. 
+   TODO: reimplement as multiplication by fixed matrices. */
 
   for (i=0; 2*i <= k; i++) fmpz_mul_2exp(tpol2+i, tpol+2*i, 2*i);
   if (q_is_1) _fmpz_vec_sum(t0z, tpol2, (k+2)/2);
-  else _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2) / 2, q);
+  else _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+2)/2, q);
   fmpz_mul_si(fmpq_numref(t1q), t0z, -k);
   fmpz_set(fmpq_denref(t1q), pol+d);
 
   for (i=0; 2*i+1 <= k; i++) fmpz_mul_2exp(tpol2+i, tpol+2*i+1, 2*i+1);
   if (q_is_1) _fmpz_vec_sum(t0z, tpol2, (k+1)/2);
-  else _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+1) / 2, q);
+  else _fmpz_poly_evaluate_fmpz(t0z, tpol2, (k+1)/2, q);
   fmpz_mul_si(fmpq_numref(t2q), t0z, -k);
   fmpz_set(fmpq_denref(t2q), pol+d);
 
@@ -726,19 +717,20 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
   int k = st_data->d-n, j;
   fmpz *pol = dy_data->pol;
+  fmpq *f = st_data->f+n;
   fmpq *tq;
 
   fmpz_add(pol+n, pol+n, st_data->modlist+n);
   tq = fmpq_mat_entry(dy_data->power_sums, k, 0);
-  fmpq_sub(tq, tq, st_data->f+n);
+  fmpq_sub(tq, tq, f);
   if (dy_data->q_is_1)
     for (j=0; j<=k; j++) {
       tq = fmpq_mat_entry(dy_data->hausdorff_sums, j, k);
-      fmpq_sub(tq, tq, st_data->f+n);
+      fmpq_sub(tq, tq, f);
     }
   if (k%2==0)
     fmpq_submul(fmpq_mat_entry(dy_data->hankel_dets, k/2, 0),
-		st_data->f+n, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
+		f, fmpq_mat_entry(dy_data->hankel_dets, k/2-1, 0));
 }
 
 /* Return value sent back in dy_data->flag:
