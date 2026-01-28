@@ -648,7 +648,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     }
 
     /* Run a linear search up to the midpoint. */
-    do { // Always true at least once
+    do {
       r = _fmpz_poly_all_real_roots(POL, lower);
       if (r) break;
       fmpz_add_ui(lower, lower, 1);
@@ -675,13 +675,29 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n-1, pol+n-1, upper);
 
-  /* Set the new polynomial value. */
-  fmpz_addmul(pol+n-1, lower, modulus);
+  /* Set the new polynomial value, then correct the k-th power sum and related quantities. */
+  step_forward(st_data, dy_data, n-1, lower); // see below
 
-  /* Correct the k-th power sum and related quantities. 
-     Compare the code of the function step_forward. */
+  return(1);
+}
+
+/* Increment the current moving counter and update stored data to match. */
+inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
+  int k = st_data->d-n;
+  fmpz *pol = dy_data->pol;
+  fmpq *f = st_data->f+n;
+  fmpq *t;
+  fmpq *t0q = dy_data->w2;
+  
+  if (step == NULL) {
+    fmpq_set(t0q, f);
+    fmpz_add(pol+n, pol+n, st_data->modlist+n);
+  }
+  else {
+    fmpq_mul_fmpz(t0q, f, step);
+    fmpz_addmul(pol+n, step, st_data->modlist+n);
+  }
   t = fmpq_mat_entry(dy_data->power_sums, k, 0);
-  fmpq_mul_fmpz(t0q, f, lower);
   fmpq_sub(t, t, t0q);
   t = fmpq_mat_entry(dy_data->hankel_dets[0], k, 0);
   if (k > 1) fmpq_submul(t, fmpq_mat_entry(dy_data->hankel_dets[0], k-2, 0), t0q);
@@ -689,25 +705,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   t = fmpq_mat_entry(dy_data->hankel_dets[1], k, 0);
   if (k > 1) fmpq_addmul(t, fmpq_mat_entry(dy_data->hankel_dets[1], k-2, 0), t0q);
   else fmpq_add(t, t, t0q);
-  return(1);
-}
-
-/* Increment the current moving counter and update stored data to match. */
-void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
-  int k = st_data->d-n, j;
-  fmpz *pol = dy_data->pol;
-  fmpq *f = st_data->f+n;
-  fmpq *tq;
-
-  fmpz_add(pol+n, pol+n, st_data->modlist+n);
-  tq = fmpq_mat_entry(dy_data->power_sums, k, 0);
-  fmpq_sub(tq, tq, f);
-  tq = fmpq_mat_entry(dy_data->hankel_dets[0], k, 0);
-  if (k > 1) fmpq_submul(tq, fmpq_mat_entry(dy_data->hankel_dets[0], k-2, 0), f);
-  else fmpq_sub(tq, tq, f);
-  tq = fmpq_mat_entry(dy_data->hankel_dets[1], k, 0);
-  if (k > 1) fmpq_addmul(tq, fmpq_mat_entry(dy_data->hankel_dets[1], k-2, 0), f);
-  else fmpq_add(tq, tq, f);
 }
 
 /* Return value sent back in dy_data->flag:
@@ -744,7 +741,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       if (n>d) flag = 0; // This process is complete.
       else {
 	ascend = (fmpz_is_zero(modlist+n) || (fmpz_cmp(pol+n, upper+n) >= 0));
-	if (!ascend) step_forward(st_data, dy_data, n);
+	if (!ascend) step_forward(st_data, dy_data, n, NULL);
       }
     } else if (n < 0) { // Return a solution.
       _fmpz_vec_zero(sympol, 2*d+3);
