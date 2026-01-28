@@ -205,9 +205,6 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
        We compute the negated pseudoremainder of f0 modulo f1 in two steps:
        f0 --> f1[n-1]*f0 - f0[n]*x*f1
        f0 --> f0[n-1]*f1 - f1[n-1]*f0
-
-       f0 --> f1[n-1]*f0 - f0[n]*x*f1
-       f0 --> f0[n-1]*f1 - f1[n-1]*f0
     */
     fmpz_set(c, f0+n);
     _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n-1);
@@ -249,6 +246,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   fmpz_poly_t pol;
   fmpz_t m;
   fmpz *k0;
+  fmpq *k1;
 
   fmpz_poly_init(pol);
   fmpz_init(m);
@@ -267,13 +265,14 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   st_data->modlist = _fmpz_vec_init(d+1);
   st_data->f = _fmpq_vec_init(d+1);
   for (i=0; i<=d; i++) {
-    fmpz_set(st_data->modlist+i, modlist+d-i);
-    fmpq_set_si(st_data->f+i, d-i, 1);
-    fmpq_div_fmpz(st_data->f+i, st_data->f+i, st_data->lead);
+    k0 = st_data->modlist+i;
+    k1 = st_data->f+i;
+    fmpz_set(k0, modlist+d-i);
+    fmpq_set_si(k1, d-i, 1);
+    fmpq_div_fmpz(k1, k1, st_data->lead);
     /* In order to apply power sums and Descartes' rule of signs
        when the modulus is 0, we must pretend that the modulus is 1. */
-    if (!fmpz_is_zero(st_data->modlist+i))
-      fmpq_mul_fmpz(st_data->f+i, st_data->f+i, st_data->modlist+i);
+    if (!fmpz_is_zero(k0)) fmpq_mul_fmpz(k1, k1, k0);
   }
 
   fmpz_mat_init(st_data->binom_mat, d+1, d+1);
@@ -346,6 +345,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
   dy_data->w2len = 4;
   dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
+
   return(dy_data);
 }
 
@@ -354,7 +354,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
    the remaining work is yielded to the second process, which may in turn be split immediately.
 */
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if ((dy_data == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
+  if ((dy_data == NULL) || (dy_data2 == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
 
   int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
 
@@ -377,7 +377,7 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
 /* Static memory deallocation. */
 void ps_static_clear(ps_static_data_t *st_data) {
   if (st_data == NULL) return;
-  int i, d = st_data->d;
+  int d = st_data->d;
   fmpz_clear(st_data->lead);
   fmpz_clear(st_data->q);
   fmpz_mat_clear(st_data->binom_mat);
@@ -390,10 +390,8 @@ void ps_static_clear(ps_static_data_t *st_data) {
 
 /* Dynamic memory deallocation. */
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
-  int i;
-  
   if (dy_data == NULL) return;
-  int d = dy_data->d;
+  int i, d = dy_data->d;
   _fmpz_vec_clear(dy_data->pol, d+1);
   _fmpz_vec_clear(dy_data->sympol, 2*d+3);
   _fmpz_vec_clear(dy_data->upper, d+1);
@@ -574,7 +572,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
 
   /* Condition: the truncated Hausdorff moment criterion.
-     TODO: implement a computation based on continued fractions, as in arXiv:2501.05182. */
+     TODO: implement a computation based on continued fractions. */
   for (r=0; r<=1; r++) {
     if (k%2 == 1 && !q_is_1) continue; // TODO: remove this restriction
     s = (k%2 == 0 && r == 1) ? 0 : 1;
