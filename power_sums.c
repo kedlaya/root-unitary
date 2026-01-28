@@ -335,10 +335,9 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpq_set_si(fmpq_mat_entry(dy_data->power_sums, 0, 0), d, 1);
   fmpq_mat_init(dy_data->sum_prod, 1, 1);
   fmpq_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
-  fmpq_mat_init(dy_data->hankel_dets_lower, d+1, 1);
-  fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets_lower, 0, 0), d, 1);
-  fmpq_mat_init(dy_data->hankel_dets_upper, d+1, 1);
-  fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets_upper, 0, 0), 1, 1);
+  for (i=0; i<=1; i++) fmpq_mat_init(dy_data->hankel_dets[i], d+1, 1);
+  fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets[0], 0, 0), d, 1);
+  fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets[1], 0, 0), 1, 1);
   
   /* Allocate scratch space */
   dy_data->wlen = 3*d+10;
@@ -355,7 +354,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
   if ((dy_data == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
 
-  int i, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
+  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
 
   for (i=d; i>n+ascend; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) <0) {
@@ -364,8 +363,7 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
       _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
       _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
       fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
-      fmpq_mat_set(dy_data2->hankel_dets_lower, dy_data->hankel_dets_lower);
-      fmpq_mat_set(dy_data2->hankel_dets_upper, dy_data->hankel_dets_upper);
+      for (j=0; j<=1; j++) fmpq_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
       fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
       dy_data->ascend = i-n;
       dy_data2->flag = 1; // This process can now itself be split.
@@ -389,6 +387,8 @@ void ps_static_clear(ps_static_data_t *st_data) {
 }
 
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
+  int i;
+  
   if (dy_data == NULL) return;
   int d = dy_data->d;
   _fmpz_vec_clear(dy_data->pol, d+1);
@@ -397,8 +397,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   fmpq_mat_clear(dy_data->power_sums);
   fmpq_mat_clear(dy_data->sum_prod);
   fmpq_mat_clear(dy_data->hankel_mat);
-  fmpq_mat_clear(dy_data->hankel_dets_lower);
-  fmpq_mat_clear(dy_data->hankel_dets_upper);
+  for (i=0; i<=1; i++) fmpq_mat_clear(dy_data->hankel_dets[i]);
   _fmpz_vec_clear(dy_data->w, dy_data->wlen);
   _fmpq_vec_clear(dy_data->w2, dy_data->w2len);
   free(dy_data);
@@ -503,7 +502,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz *pol = dy_data->pol;
   fmpz *q = st_data->q;
   fmpq *f = (fmpq *)(st_data->f+n-1);
-  fmpq *t, *t1; // Unallocated, will be assigned from existing pointers
+  fmpq *t, *t1, *t2; // Unallocated, will be assigned from existing pointers
   fmpq_mat_t hausdorff_prod, hankel_mat;
 
   /* Allocate temporary variables from persistent scratch space. */
@@ -604,28 +603,22 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   	  fmpq_mul_ui(t, fmpq_mat_entry(dy_data->power_sums, i+j, 0), 4);
   	  if (!q_is_1) fmpq_mul_fmpz(t, t, q);
 	  fmpq_sub(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+2, 0));
-	} else if (k%2 == 1 && r == 0) {
-	  fmpq_mul_ui(t, fmpq_mat_entry(dy_data->power_sums, i+j, 0), 2);
-	  fmpq_add(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+1, 0));
 	} else {
 	  fmpq_mul_ui(t, fmpq_mat_entry(dy_data->power_sums, i+j, 0), 2);
-	  fmpq_sub(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+1, 0));
+	  if (r == 0) fmpq_add(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+1, 0));
+	  else fmpq_sub(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+1, 0));
 	}
-      }
-    if (r == 0) t1 = fmpq_mat_entry(dy_data->hankel_dets_lower, k, 0);
-    else t1 = fmpq_mat_entry(dy_data->hankel_dets_upper, k, 0);
+      } // Final value of t will be used again
+    t1 = fmpq_mat_entry(dy_data->hankel_dets[r], k, 0);
     fmpq_mat_det(t1, hankel_mat);
     fmpq_mat_window_clear(hankel_mat);    
-    if (k > 1)
-      if (r == 0) t = fmpq_mat_entry(dy_data->hankel_dets_lower, k-2, 0);
-      else t = fmpq_mat_entry(dy_data->hankel_dets_upper, k-2, 0);
-    if (k > 1 && fmpq_sgn(t) > 0) {
-      fmpq_div_raw(t1q, t1, t);
+    if (k > 1) t2 = fmpq_mat_entry(dy_data->hankel_dets[r], k-2, 0);
+    if (k > 1 && fmpq_sgn(t2) > 0) {
+      fmpq_div_raw(t1q, t1, t2);
       change_by_sign(t1q, NULL, r, STATE);
     }
     else if ((k > 1 && st_data->force_squarefree) || fmpq_sgn(t1) < 0) return(0);
-    else 
-       change_by_sign(fmpq_mat_entry(dy_data->hankel_mat, k/2+s-1, k/2+s-1), NULL, r, STATE);
+    else change_by_sign(t, NULL, r, STATE); // t was set in the for loop
     if (fmpz_cmp(lower, upper) > 0) return(0);
   }
   
@@ -685,15 +678,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* Set the new polynomial value. */
   fmpz_addmul(pol+n-1, lower, modulus);
 
-  /* Correct the k-th power sum and related quantities. */
+  /* Correct the k-th power sum and related quantities. 
+     Compare the code of the function step_forward. */
   t = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_mul_fmpz(t0q, f, lower);
   fmpq_sub(t, t, t0q);
-  t = fmpq_mat_entry(dy_data->hankel_dets_lower, k, 0);
-  if (k > 1) fmpq_submul(t, fmpq_mat_entry(dy_data->hankel_dets_lower, k-2, 0), t0q);
+  t = fmpq_mat_entry(dy_data->hankel_dets[0], k, 0);
+  if (k > 1) fmpq_submul(t, fmpq_mat_entry(dy_data->hankel_dets[0], k-2, 0), t0q);
   else fmpq_sub(t, t, t0q);
-  t = fmpq_mat_entry(dy_data->hankel_dets_upper, k, 0);
-  if (k > 1) fmpq_addmul(t, fmpq_mat_entry(dy_data->hankel_dets_upper, k-2, 0), t0q);
+  t = fmpq_mat_entry(dy_data->hankel_dets[1], k, 0);
+  if (k > 1) fmpq_addmul(t, fmpq_mat_entry(dy_data->hankel_dets[1], k-2, 0), t0q);
   else fmpq_add(t, t, t0q);
   return(1);
 }
@@ -708,11 +702,11 @@ void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) 
   fmpz_add(pol+n, pol+n, st_data->modlist+n);
   tq = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_sub(tq, tq, f);
-  tq = fmpq_mat_entry(dy_data->hankel_dets_lower, k, 0);
-  if (k > 1) fmpq_submul(tq, fmpq_mat_entry(dy_data->hankel_dets_lower, k-2, 0), f);
+  tq = fmpq_mat_entry(dy_data->hankel_dets[0], k, 0);
+  if (k > 1) fmpq_submul(tq, fmpq_mat_entry(dy_data->hankel_dets[0], k-2, 0), f);
   else fmpq_sub(tq, tq, f);
-  tq = fmpq_mat_entry(dy_data->hankel_dets_upper, k, 0);
-  if (k > 1) fmpq_addmul(tq, fmpq_mat_entry(dy_data->hankel_dets_upper, k-2, 0), f);
+  tq = fmpq_mat_entry(dy_data->hankel_dets[1], k, 0);
+  if (k > 1) fmpq_addmul(tq, fmpq_mat_entry(dy_data->hankel_dets[1], k-2, 0), f);
   else fmpq_add(tq, tq, f);
 }
 
