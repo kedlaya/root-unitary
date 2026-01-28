@@ -16,14 +16,14 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
-  fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets[2];
+  fmpq_mat_t power_sums, hankel_mat, hankel_dets[2];
   fmpz *pol, *sympol, *upper;
 
   /* Scratch space */
   fmpz *w;
-  long wlen; /* = 4*d+10 */
+  long wlen; /* = 3*d+9 */
   fmpq *w2;
-  long w2len; /* = 5 */
+  long w2len; /* = 4 */
 } ps_dynamic_data_t;
 
 int has_openmp();
