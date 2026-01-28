@@ -30,9 +30,9 @@ int has_openmp() {
 
 /*****
   Arithmetic functions
-  
+
   As with FLINT library functions, aliasing is allowed unless specified.
-  
+
   Unlike for FLINT library functions, input fmpq's need not be canonicalized, and
   output fmpq's are not guaranteed to be canonicalized.
 *****/
@@ -98,7 +98,7 @@ inline void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
   if (!fmpz_is_square(a)) fmpz_add_ui(res, res, 1);
 }
 
-/* Set res to floor(a + b sqrt(q)). 
+/* Set res to floor(a + b sqrt(q)).
    If b is NULL it is interpreted as 0. */
 inline void fmpq_floor_quad(fmpz_t res, fmpq_t a,
 		     fmpq_t b, const fmpz_t q, int q_is_1) {
@@ -132,7 +132,7 @@ inline void fmpq_floor_quad(fmpz_t res, fmpq_t a,
   }
 }
 
-/* Set res to ceil(a + b sqrt(q)). 
+/* Set res to ceil(a + b sqrt(q)).
    If b is NULL it is interpreted as 0. */
 inline void fmpq_ceil_quad(fmpz_t res, fmpq_t a,
 		     fmpq_t b, const fmpz_t q, int q_is_1) {
@@ -314,7 +314,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   return(st_data);
 }
 
-/* Dynamic memory allocation and initialization. 
+/* Dynamic memory allocation and initialization.
    Call with coefflist == NULL to prepare an inactive process. */
 ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   ps_dynamic_data_t *dy_data;
@@ -342,7 +342,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets[0], 0, 0), d, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets[1], 0, 0), 1, 1);
   
-  dy_data->wlen = 3*d+9;
+  dy_data->wlen = 3*d+10;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
   dy_data->w2len = 4;
   dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
@@ -431,90 +431,51 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
   else fmpq_add(t, t, t0q);
 }
 
-/* Subroutines to adjust lower and upper bounds within set_range_from_power_sums.
-   These use t0z, t0q, t1q as persistent scratch space.
+/* Adjust lower and upper bounds within set_range_from_power_sums.
+   The arguments t0z, t0q, t1q are used for persistent scratch space.
    The pair (val1, val2) stands for val1 + val2*sqrt(q);
    passing NULL for val2 is a faster variant of passing 0.
+
+   Input fmpq_t's do *not* need to be canonicalized.
+*/
+
+#define STATE lower, upper, q, f, t0z, t0q, t1q, q_is_1, force_squarefree
+#define STATE_DECLARE fmpz_t lower, fmpz_t upper, fmpz_t q, fmpq_t f, fmpz_t t0z, fmpq_t t0q, fmpq_t t1q, int q_is_1, int force_squarefree
+
+inline void change_by_sign(int update, int s, const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
+  fmpq_div_raw(t0q, val1, f);
+  if (val2 == NULL) {
+    if (s ^ force_squarefree) fmpq_ceil(t0z, t0q);
+    else fmpq_floor(t0z, t0q);
+  } else {
+    fmpq_div_raw(t1q, val2, f);
+    if (s ^ force_squarefree) fmpq_ceil_quad(t0z, t0q, t1q, q, q_is_1);
+    else fmpq_floor_quad(t0z, t0q, t1q, q, q_is_1);
+  }
+  if (!s) { // change_upper
+    if (force_squarefree) fmpz_sub_ui(t0z, t0z, 1);
+    if (!update || fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
+  }
+  else { // change_lower
+    if (force_squarefree) fmpz_add_ui(t0z, t0z, 1);
+    if (!update || fmpz_cmp(t0z, lower) > 0) fmpz_set(lower, t0z);
+  }
+}
+
+/* More macros used in set_range_from_power_sums. 
 
   Usage: if g is a monic linear function of the k-th power sum, then
   set_upper(g) or change_upper(g) imposes the condition g >= 0;
   set_lower(g) or change_lower(g) imposes the condition g <= 0.
 
-  Input fmpq_t's do *not* need to be canonicalized.
 */
 
-#define STATE lower, upper, q, f, t0z, t0q, t1q, q_is_1
-#define STATE_DECLARE fmpz_t lower, fmpz_t upper, fmpz_t q, fmpq_t f, fmpz_t t0z, fmpq_t t0q, fmpq_t t1q, int q_is_1
-#define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, tpol2, st_data->force_squarefree, modulus, x)
+#define set_lower(x, y) change_by_sign(0, 1, x, y, STATE)
+#define set_upper(x, y) change_by_sign(0, 0, x, y, STATE)
+#define change_lower(x, y) change_by_sign(1, 1, x, y, STATE)
+#define change_upper(x, y) change_by_sign(1, 0, x, y, STATE)
+#define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, tpol2, force_squarefree, modulus, x)
 #define POW(x) fmpq_mat_entry(dy_data->power_sums, x, 0)
-
-inline void set_lower(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
-  fmpq_div_raw(t0q, val1, f);
-  if (val2==NULL) fmpq_ceil(lower, t0q);
-  else {
-    fmpq_div_raw(t1q, val2, f);
-    fmpq_ceil_quad(lower, t0q, t1q, q, q_is_1);
-  }
-}
-
-inline void set_upper(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
-  fmpq_div_raw(t0q, val1, f);
-  if (val2==NULL) fmpq_floor(upper, t0q);
-  else {
-    fmpq_div_raw(t1q, val2, f);
-    fmpq_floor_quad(upper, t0q, t1q, q, q_is_1);
-  }
-}
-
-inline void change_lower(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
-  fmpq_div_raw(t0q, val1, f);
-  if (val2==NULL) fmpq_ceil(t0z, t0q);
-  else {
-    fmpq_div_raw(t1q, val2, f);
-    fmpq_ceil_quad(t0z, t0q, t1q, q, q_is_1);
-  }
-  if (fmpz_cmp(t0z, lower) > 0) fmpz_set(lower, t0z);
-}
-
-inline void change_upper(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
-  fmpq_div_raw(t0q, val1, f);
-  if (val2==NULL) fmpq_floor(t0z, t0q);
-  else {
-    fmpq_div_raw(t1q, val2, f);
-    fmpq_floor_quad(t0z, t0q, t1q, q, q_is_1);
-  }
-  if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
-}
-
-inline void change_by_sign(const fmpq_t val1, const fmpq_t val2, int s, STATE_DECLARE) {
-  if (s == 0) change_upper(val1, val2, STATE);
-  else {
-    fmpq_neg_raw(t0q, val1);
-    change_lower(t0q, val2, STATE);
-  }
-}
-
-inline void change_lower_strict(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
-  fmpq_div_raw(t0q, val1, f);
-  if (val2==NULL) fmpq_floor(t0z, t0q);
-  else {
-    fmpq_div_raw(t1q, val2, f);
-    fmpq_floor_quad(t0z, t0q, t1q, q, q_is_1);
-  }
-  fmpz_add_ui(t0z, t0z, 1);
-  if (fmpz_cmp(t0z, lower) > 0) fmpz_set(lower, t0z);
-}
-
-inline void change_upper_strict(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
-  fmpq_div_raw(t0q, val1, f);
-  if (val2==NULL) fmpq_ceil(t0z, t0q);
-  else {
-    fmpq_div_raw(t1q, val2, f);
-    fmpq_ceil_quad(t0z, t0q, t1q, q, q_is_1);
-  }
-  fmpz_sub_ui(t0z, t0z, 1);
-  if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
-}
 
 /* The following is the key subroutine: given some initial coefficients, compute
    a lower and upper bound for the next coefficient. Return 1 iff the resulting
@@ -528,6 +489,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   int n = dy_data->n;
   int k = d+1-n;
   int q_is_1 = st_data->q_is_1;
+  int force_squarefree = st_data->force_squarefree;
   fmpz *modulus = st_data->modlist+n-1;
   fmpz *pol = dy_data->pol;
   fmpz *q = st_data->q;
@@ -543,7 +505,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz *upper = dy_data->w+4;
   
   fmpz *tpol = dy_data->w+5; // Length d+1
-  fmpz *tpol2 = dy_data->w+d+6; // Length 2*d+1
+  fmpz *tpol2 = dy_data->w+d+6; // Length 2*d+4
 
   fmpq *t0q = dy_data->w2; // This gets overwritten by subroutines
   fmpq *t1q = dy_data->w2+1; // This gets overwritten by subroutines
@@ -560,28 +522,28 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz_neg(t0z, pol+d);
   fmpq_div_fmpz(POW(k), t0q, t0z);
 
-  /* Condition: the k-th symmetrized power sum must lie in [-2*sqrt(q), 2*sqrt(q)]. */
+  /* Condition: the k-th symmetrized power sum must lie in [-2*d*sqrt(q), 2*d*sqrt(q)]. */
   fmpq_set_si(t, d, 1);
   fmpq_mat_fmpz_vec_mul(t2q, st_data->sum_mats+(d+1)*k, k+1, dy_data->power_sums);
   if (q_is_1) {
     fmpq_sub_ui(t0q, t2q, 2*d);
-    set_lower(t0q, NULL, STATE);
+    set_lower(t0q, NULL);
     fmpq_add_ui(t0q, t2q, 2*d);
-    set_upper(t0q, NULL, STATE);
+    set_upper(t0q, NULL);
   } else {
     fmpz_pow_ui(t0z, q, k/2);
     fmpz_mul_si(t1z, t0z, 2*d);
     if (k%2==0) {
       fmpq_sub_fmpz(t0q, t2q, t1z);
-      set_lower(t0q, NULL, STATE);
+      set_lower(t0q, NULL);
       fmpq_add_fmpz(t0q, t2q, t1z);
-      set_upper(t0q, NULL, STATE);
+      set_upper(t0q, NULL);
     } else {
       fmpq_one(t3q);
       fmpz_set(fmpq_numref(t3q), t1z);
-      set_upper(t2q, t3q, STATE);
+      set_upper(t2q, t3q);
       fmpq_neg(t3q, t3q);
-      set_lower(t2q, t3q, STATE);
+      set_lower(t2q, t3q);
     }
   }
 
@@ -597,19 +559,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   _fmpz_vec_dot(fmpq_numref(t3q), st_data->eval_pm2_mats+(d+1)*(2*k+1), tpol, k+1);
   fmpz_set(fmpq_denref(t3q), pol+d);
 
-  /* If checking for squarefree, shear endpoints off the range. */
-  if (st_data->force_squarefree) {
-    change_lower_strict(t2q, t3q, STATE);
-    fmpq_neg(t3q, t3q);
-    if (k%2==1) change_upper_strict(t2q, t3q, STATE);
-    else change_lower_strict(t2q, t3q, STATE);
-  }
-  else {
-    change_lower(t2q, t3q, STATE);
-    fmpq_neg(t3q, t3q);
-    if (k%2==1) change_upper(t2q, t3q, STATE);
-    else change_lower(t2q, t3q, STATE);
-  }
+  change_lower(t2q, t3q);
+  fmpq_neg_raw(t3q, t3q);
+  change_by_sign(1, 1-(k%2), t2q, t3q, STATE);
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
   /* If modulus==0, then return 1 iff [lower, upper] contains 0
@@ -646,12 +598,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpq_mat_det(t1, hankel_mat);
     fmpq_mat_window_clear(hankel_mat);
     if (k > 1) t2 = fmpq_mat_entry(dy_data->hankel_dets[r], k-2, 0);
-    if (k > 1 && fmpq_sgn(t2) > 0) {
-      fmpq_div_raw(t2q, t1, t2);
-      change_by_sign(t2q, NULL, r, STATE);
-    }
-    else if ((k > 1 && st_data->force_squarefree) || fmpq_sgn(t1) < 0) return(0);
-    else change_by_sign(t, NULL, r, STATE); // t was set in the for loop
+    if (k > 1 && fmpq_sgn(t2) > 0) fmpq_div_raw(t2q, t1, t2);
+    else fmpq_set(t2q, t); // t was set in the for loop
+    if (r == 1) fmpq_neg_raw(t2q, t2q);
+    change_by_sign(1, r, t2q, NULL, STATE);
     if (fmpz_cmp(lower, upper) > 0) return(0);
   }
 
