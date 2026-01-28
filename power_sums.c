@@ -457,6 +457,14 @@ inline void change_upper(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
   if (fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
 }
 
+inline void change_by_sign(const fmpq_t val1, const fmpq_t val2, int s, STATE_DECLARE) {
+  if (s == 0) change_upper(val1, val2, STATE);
+  else {
+    fmpq_neg_raw(t0q, val1);
+    change_lower(t0q, val2, STATE);
+  }
+}
+
 inline void change_lower_strict(const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
   fmpq_div_raw(t0q, val1, f);
   if (val2==NULL) fmpq_floor(t0z, t0q);
@@ -486,7 +494,7 @@ inline void change_upper_strict(const fmpq_t val1, const fmpq_t val2, STATE_DECL
 */
 int set_range_from_power_sums(ps_static_data_t *st_data,
 			      ps_dynamic_data_t *dy_data) {
-  int i, j, r;
+  int i, j, r, s;
   int d = st_data->d;
   int n = dy_data->n;
   int k = d+1-n;
@@ -583,105 +591,44 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   }
 
   /* Condition: the truncated Hausdorff moment criterion. */
-
-  /* Check nonnegativity of the lower Hankel determinant (even case).
-     TODO: reimplement this using continued fractions, as in arXiv:2501.05182. */
-  if (k%2==0) {
-    fmpq_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, k/2+1, k/2+1);
-    for (i=0; i<=k/2; i++)
-      for (j=0; j<=k/2; j++)
-	fmpq_set(fmpq_mat_entry(hankel_mat, i, j),
-		 fmpq_mat_entry(dy_data->power_sums, i+j, 0));
-    t = fmpq_mat_entry(dy_data->hankel_dets_lower, k-2, 0);
-    t1 = fmpq_mat_entry(dy_data->hankel_dets_lower, k, 0);
-    fmpq_mat_det(t1, hankel_mat);
-    fmpq_mat_window_clear(hankel_mat);    
-    if (fmpq_sgn(t) > 0) {
-      fmpq_div_raw(t1q, t1, t);
-      change_upper(t1q, NULL, STATE);
-    }
-    else if (st_data->force_squarefree || fmpq_sgn(t1)) return(0);
-    else change_upper(fmpq_mat_entry(dy_data->hankel_mat, k/2, k/2), NULL, STATE);
-    if (fmpz_cmp(lower, upper) > 0) return(0);
-  }
-
-  /* Check nonnegativity of the upper Hankel determinant (even case). */
-  if (k%2==0) {
-    fmpq_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, k/2, k/2);
-    for (i=0; i<k/2; i++)
-      for (j=0; j<k/2; j++) {
+  for (r=0; r<=1; r++) {
+    if (k%2 == 1 && !q_is_1) continue; // TODO: remove this restriction
+    s = (k%2 == 0 && r == 1) ? 0 : 1;
+    fmpq_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, k/2+s, k/2+s);
+    for (i=0; i<k/2+s; i++)
+      for (j=0; j<k/2+s; j++) {
         t = fmpq_mat_entry(hankel_mat, i, j);
-	fmpq_mul_ui(t, fmpq_mat_entry(dy_data->power_sums, i+j, 0), 4);
-	if (!q_is_1) fmpq_mul_fmpz(t, t, q);
-	fmpq_sub(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+2, 0));
+        if (k%2 == 0 && r == 0) 
+          fmpq_set(t, fmpq_mat_entry(dy_data->power_sums, i+j, 0));
+	else if (k%2 == 0 && r == 1) {
+  	  fmpq_mul_ui(t, fmpq_mat_entry(dy_data->power_sums, i+j, 0), 4);
+  	  if (!q_is_1) fmpq_mul_fmpz(t, t, q);
+	  fmpq_sub(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+2, 0));
+	} else if (k%2 == 1 && r == 0) {
+	  fmpq_mul_ui(t, fmpq_mat_entry(dy_data->power_sums, i+j, 0), 2);
+	  fmpq_add(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+1, 0));
+	} else {
+	  fmpq_mul_ui(t, fmpq_mat_entry(dy_data->power_sums, i+j, 0), 2);
+	  fmpq_sub(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+1, 0));
+	}
       }
-    t1 = fmpq_mat_entry(dy_data->hankel_dets_upper, k, 0);
+    if (r == 0) t1 = fmpq_mat_entry(dy_data->hankel_dets_lower, k, 0);
+    else t1 = fmpq_mat_entry(dy_data->hankel_dets_upper, k, 0);
     fmpq_mat_det(t1, hankel_mat);
     fmpq_mat_window_clear(hankel_mat);    
-    t = fmpq_mat_entry(dy_data->hankel_dets_upper, k-2, 0);
-    if (fmpq_sgn(t) > 0) {
-      fmpq_div_raw(t1q, t1, t);
-      fmpq_neg_raw(t1q, t1q);
-      change_lower(t1q, NULL, STATE);
-    }
-    else if (st_data->force_squarefree || fmpq_sgn(t1)) return(0);
-    else {
-      fmpq_neg_raw(t1q, fmpq_mat_entry(dy_data->hankel_mat, k/2-1, k/2-1)); 
-      change_lower(t1q, NULL, STATE);
-    }
-    if (fmpz_cmp(lower, upper) > 0) return(0);
-  }
-
-  /* Check nonnegativity of the lower Hankel determinant (odd case).
-     TODO: implement for q != 1. */
-  if (k%2==1 && q_is_1) {
-    fmpq_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, k/2+1, k/2+1);
-    for (i=0; i<=k/2; i++)
-      for (j=0; j<=k/2; j++) {
-        t = fmpq_mat_entry(hankel_mat, i, j);
-	fmpq_mul_ui(t, fmpq_mat_entry(dy_data->power_sums, i+j, 0), 2);
-	fmpq_add(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+1, 0));
-      }
-    t1 = fmpq_mat_entry(dy_data->hankel_dets_lower, k, 0);
-    fmpq_mat_det(t1, hankel_mat);
-    fmpq_mat_window_clear(hankel_mat);    
-    if (k > 1) t = fmpq_mat_entry(dy_data->hankel_dets_lower, k-2, 0);
+    if (k > 1)
+      if (r == 0) t = fmpq_mat_entry(dy_data->hankel_dets_lower, k-2, 0);
+      else t = fmpq_mat_entry(dy_data->hankel_dets_upper, k-2, 0);
     if (k > 1 && fmpq_sgn(t) > 0) {
       fmpq_div_raw(t1q, t1, t);
-      change_upper(t1q, NULL, STATE);
+      change_by_sign(t1q, NULL, r, STATE);
     }
     else if ((k > 1 && st_data->force_squarefree) || fmpq_sgn(t1) < 0) return(0);
-    else change_upper(fmpq_mat_entry(dy_data->hankel_mat, k/2, k/2), NULL, STATE);
+    else 
+       change_by_sign(fmpq_mat_entry(dy_data->hankel_mat, k/2+s-1, k/2+s-1), NULL, r, STATE);
     if (fmpz_cmp(lower, upper) > 0) return(0);
   }
-
-  /* Check nonnnegativity of the upper Hankel determinant (odd case). 
-     TODO: implement for q != 1. */
-  if (k%2==1 && q_is_1) {
-    fmpq_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, k/2+1, k/2+1);
-    for (i=0; i<=k/2; i++)
-      for (j=0; j<=k/2; j++) {
-        t = fmpq_mat_entry(hankel_mat, i, j);
-	fmpq_mul_ui(t, fmpq_mat_entry(dy_data->power_sums, i+j, 0), 2);
-	fmpq_sub(t, t, fmpq_mat_entry(dy_data->power_sums, i+j+1, 0));
-      }
-    t1 = fmpq_mat_entry(dy_data->hankel_dets_upper, k, 0);
-    fmpq_mat_det(t1, hankel_mat);
-    fmpq_mat_window_clear(hankel_mat);    
-    if (k > 1) t = fmpq_mat_entry(dy_data->hankel_dets_upper, k-2, 0);
-    if (k > 1 && fmpq_sgn(t) > 0) {
-      fmpq_div_raw(t1q, t1, t);
-      fmpq_neg_raw(t1q, t1q);
-      change_lower(t1q, NULL, STATE);
-    }
-    else if ((k > 1 && st_data->force_squarefree) || fmpq_sgn(t1) < 0) return(0);
-    else {
-      fmpq_neg_raw(t1q, fmpq_mat_entry(dy_data->hankel_mat, k/2, k/2));
-      change_lower(t1q, NULL, STATE);
-    }
-    if (fmpz_cmp(lower, upper) > 0) return(0);
-  }
-
+  
   /* Condition: tpol has all real roots.
      The range of values where this holds, if nonempty, is an interval. */
 
