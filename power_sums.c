@@ -275,10 +275,10 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
     if (!fmpz_is_zero(k0)) fmpq_mul_fmpz(k1, k1, k0);
   }
 
-  fmpz_mat_init(st_data->binom_mat, d+1, d+1);
+  st_data->binom_mat = _fmpz_vec_init((d+1)*(d+1));
   for (i=0; i<=d; i++)
     for (j=0; j<=d; j++)
-      fmpz_bin_uiui(fmpz_mat_entry(st_data->binom_mat, i, j), i, j);
+      fmpz_bin_uiui(st_data->binom_mat+(d+1)*i+j, i, j);
 
   st_data->sum_mats = _fmpz_vec_init((d+1)*(d+1));
   for (i=0; i<=d; i++) {
@@ -380,9 +380,9 @@ void ps_static_clear(ps_static_data_t *st_data) {
   int d = st_data->d;
   fmpz_clear(st_data->lead);
   fmpz_clear(st_data->q);
-  fmpz_mat_clear(st_data->binom_mat);
   _fmpq_vec_clear(st_data->f, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
+  _fmpz_vec_clear(st_data->binom_mat, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->sum_mats, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->eval_pm2_mats, 2*(d+1)*(d+1));
   free(st_data);
@@ -547,7 +547,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   /* Compute the divided (n-1)-st derivative of pol, answer in tpol. */
   for (i=0; i<=k; i++)
-    fmpz_mul(tpol+i, fmpz_mat_entry(st_data->binom_mat, n-1+i, n-1), pol+n-1+i);
+    fmpz_mul(tpol+i, st_data->binom_mat+(d+1)*(n-1+i)+n-1, pol+n-1+i);
 
   /* Condition: Descartes' rule of signs applies at -2*sqrt(q), +2*sqrt(q).
    This is only a new condition for the evaluations at these points. */
@@ -571,8 +571,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     return(1);
   }
 
-  /* Condition: the truncated Hausdorff moment criterion.
-     TODO: implement a computation based on continued fractions. */
+  /* Condition: the truncated Hausdorff moment criterion. */
   for (r=0; r<=1; r++) {
     if (k%2 == 1 && !q_is_1) continue; // TODO: remove this restriction
     s = (k%2 == 0 && r == 1) ? 0 : 1;
@@ -580,9 +579,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     for (i=0; i<k/2+s; i++)
       for (j=0; j<k/2+s; j++) {
         t = fmpq_mat_entry(hankel_mat, i, j);
-        if (k%2 == 0 && r == 0) 
+        if (i > 0 && j+1 < k/2+s) // This is a repeat of a previously computed entry
+          fmpq_set(t, fmpq_mat_entry(hankel_mat, i-1, j+1));
+        else if (k%2 == 0 && r == 0) 
           fmpq_set(t, POW(i+j));
-	else if (k%2 == 0 && r == 1) {
+        else if (k%2 == 0 && r == 1) {
   	  fmpq_mul_2exp(t, POW(i+j), 2);
   	  if (!q_is_1) fmpq_mul_fmpz(t, t, q);
 	  fmpq_sub(t, t, POW(i+j+2));
