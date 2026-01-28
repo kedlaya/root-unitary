@@ -5,7 +5,7 @@
 #include <flint/fmpq_mat.h>
 
 typedef struct ps_static_data {
-  int d, sign, force_squarefree;
+  int d, sign, force_squarefree, q_is_1;
   long node_limit;
   fmpz_t a, b, lead, q;
   fmpz_mat_t binom_mat;
@@ -14,7 +14,7 @@ typedef struct ps_static_data {
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
-  int d, n, ascend, flag, q_is_1;
+  int d, n, ascend, flag;
   long node_count;
   fmpq_mat_t power_sums, sum_prod, hankel_mat, hankel_dets[2];
   fmpz *pol, *sympol, *upper;
