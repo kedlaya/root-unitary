@@ -37,13 +37,13 @@ int has_openmp() {
   output fmpq's are not guaranteed to be canonicalized.
 *****/
 
-/* Set res to -a without canonicalizing. */
+/* Set res to -a. */
 inline void fmpq_neg_raw(fmpq_t res, fmpq_t a) {
   fmpz_neg(fmpq_numref(res), fmpq_numref(a));
   fmpz_set(fmpq_denref(res), fmpq_denref(a));
 }
 
-/* Set res to a-b without canonicalizing. */
+/* Set res to a-b. */
 inline void fmpq_sub_raw(fmpq_t res, fmpq_t a, fmpq_t b) {
  fmpz *anum = fmpq_numref(a);
  fmpz *aden = fmpq_denref(a);
@@ -53,13 +53,13 @@ inline void fmpq_sub_raw(fmpq_t res, fmpq_t a, fmpq_t b) {
  fmpz_mul(fmpq_denref(res), aden, bden);
 }
 
-/* Set res to a*b without canonicalizing. */
+/* Set res to a*b. */
 inline void fmpq_mul_raw(fmpq_t res, fmpq_t a, fmpq_t b) {
   fmpz_mul(fmpq_numref(res), fmpq_numref(a), fmpq_numref(b));
   fmpz_mul(fmpq_denref(res), fmpq_denref(a), fmpq_denref(b));
 }
 
-/* Set res to a/b without canonicalizing. */
+/* Set res to a/b. */
 inline void fmpq_div_raw(fmpq_t res, fmpq_t a, fmpq_t b) {
   fmpz_mul(fmpq_numref(res), fmpq_numref(a), fmpq_denref(b));
   fmpz_mul(fmpq_denref(res), fmpq_denref(a), fmpq_numref(b));
@@ -98,72 +98,54 @@ inline void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
   if (!fmpz_is_square(a)) fmpz_add_ui(res, res, 1);
 }
 
-/* Set res to floor(a + b sqrt(q)).
-   If b is NULL it is interpreted as 0. */
-inline void fmpq_floor_quad(fmpz_t res, fmpq_t a,
-		     fmpq_t b, const fmpz_t q, int q_is_1) {
-  if (b==NULL) fmpq_floor(res, a);
-  else {
-    fmpz *anum = fmpq_numref(a);
-    fmpz *aden = fmpq_denref(a);
-    fmpz *bnum = fmpq_numref(b);
-    fmpz *bden = fmpq_denref(b);
-    int bden_s = fmpz_sgn(bden);
+/* Set res to floor(a + b sqrt(q)). */
+inline void fmpq_floor_quad(fmpz_t res, const fmpq_t a, const fmpq_t b, const fmpz_t q) {
+  fmpz *anum = fmpq_numref(a);
+  fmpz *aden = fmpq_denref(a);
+  fmpz *bnum = fmpq_numref(b);
+  fmpz *bden = fmpq_denref(b);
+  int bden_s = fmpz_sgn(bden);
+  int aden_s = fmpz_sgn(aden);
+  int bnum_s = fmpz_sgn(bnum);
 
-    if (q_is_1) 
-      fmpz_fmma(res, anum, bden, bnum, aden);
-    else {
-      int aden_s = fmpz_sgn(aden);
-      int bnum_s = fmpz_sgn(bnum);
-      fmpz_mul(res, aden, bnum);
-      fmpz_mul(res, res, res);
-      fmpz_mul(res, res, q);
-      if (bnum_s*bden_s >= 0) fmpz_sqrt_f(res, res);
-      else {
-        fmpz_sqrt_c(res, res);
-        fmpz_neg(res, res);
-      }
-      fmpz_mul_si(res, res, aden_s*bden_s);
-      fmpz_addmul(res, anum, bden);
-    }
-    if (bden_s > 0) fmpz_fdiv_q(res, res, aden);
-    else fmpz_cdiv_q(res, res, aden);
-    fmpz_fdiv_q(res, res, bden);
+  fmpz_mul(res, aden, bnum);
+  fmpz_mul(res, res, res);
+  fmpz_mul(res, res, q);
+  if (bnum_s*bden_s >= 0) fmpz_sqrt_f(res, res);
+  else {
+    fmpz_sqrt_c(res, res);
+    fmpz_neg(res, res);
   }
+  fmpz_mul_si(res, res, aden_s*bden_s);
+  fmpz_addmul(res, anum, bden);
+  if (bden_s > 0) fmpz_fdiv_q(res, res, aden);
+  else fmpz_cdiv_q(res, res, aden);
+  fmpz_fdiv_q(res, res, bden);
 }
 
-/* Set res to ceil(a + b sqrt(q)).
-   If b is NULL it is interpreted as 0. */
-inline void fmpq_ceil_quad(fmpz_t res, fmpq_t a,
-		     fmpq_t b, const fmpz_t q, int q_is_1) {
-  if (b==NULL) fmpq_ceil(res, a);
+/* Set res to ceil(a + b sqrt(q)). */
+inline void fmpq_ceil_quad(fmpz_t res, const fmpq_t a, const fmpq_t b, const fmpz_t q) {
+  fmpz *anum = fmpq_numref(a);
+  fmpz *aden = fmpq_denref(a);
+  fmpz *bnum = fmpq_numref(b);
+  fmpz *bden = fmpq_denref(b);
+  int bden_s = fmpz_sgn(bden);
+  int aden_s = fmpz_sgn(aden);
+  int bnum_s = fmpz_sgn(bnum);
+    
+  fmpz_mul(res, aden, bnum);
+  fmpz_mul(res, res, res);
+  fmpz_mul(res, res, q);
+  if (bnum_s*bden_s >= 0) fmpz_sqrt_c(res, res);
   else {
-    fmpz *anum = fmpq_numref(a);
-    fmpz *aden = fmpq_denref(a);
-    fmpz *bnum = fmpq_numref(b);
-    fmpz *bden = fmpq_denref(b);
-    int bden_s = fmpz_sgn(bden);
-
-    if (q_is_1) 
-      fmpz_fmma(res, anum, bden, bnum, aden);
-    else {
-      int aden_s = fmpz_sgn(aden);
-      int bnum_s = fmpz_sgn(bnum);
-      fmpz_mul(res, aden, bnum);
-      fmpz_mul(res, res, res);
-      fmpz_mul(res, res, q);
-      if (bnum_s*bden_s >= 0) fmpz_sqrt_c(res, res);
-      else {
-        fmpz_sqrt_f(res, res);
-        fmpz_neg(res, res);
-      }
-      fmpz_mul_si(res, res, aden_s*bden_s);
-      fmpz_addmul(res, anum, bden);
-    }
-    if (bden_s > 0) fmpz_cdiv_q(res, res, aden);
-    else fmpz_fdiv_q(res, res, aden);
-    fmpz_cdiv_q(res, res, bden);
+    fmpz_sqrt_f(res, res);
+    fmpz_neg(res, res);
   }
+  fmpz_mul_si(res, res, aden_s*bden_s);
+  fmpz_addmul(res, anum, bden);
+  if (bden_s > 0) fmpz_cdiv_q(res, res, aden);
+  else fmpz_fdiv_q(res, res, aden);
+  fmpz_cdiv_q(res, res, bden);
 }
 
 /*
@@ -199,6 +181,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
   _fmpz_poly_derivative(f1, f0, n);
   n--;
   int sgn0_l = fmpz_sgn(f0+n);
+  long n0 = n;
 
   while (1) {
     /* At this point deg(f0) = n, deg(f1) = n-1.
@@ -321,7 +304,6 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
 
   dy_data = (ps_dynamic_data_t *)malloc(sizeof(ps_dynamic_data_t));
   dy_data->d = d;
-
   dy_data->n = d;
   dy_data->node_count = 0;
   dy_data->ascend = 0;
@@ -429,49 +411,8 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
   else fmpq_add(t, t, t0q);
 }
 
-/* Adjust lower and upper bounds within set_range_from_power_sums.
-   The arguments t0z, t0q, t1q are used for persistent scratch space.
-   The pair (val1, val2) stands for val1 + val2*sqrt(q);
-   passing NULL for val2 is a faster variant of passing 0.
+/* Macros used in set_range_from_power_sums. */
 
-   Input fmpq_t's do *not* need to be canonicalized.
-*/
-
-#define STATE lower, upper, q, f, t0z, t0q, t1q, q_is_1, force_squarefree
-#define STATE_DECLARE fmpz_t lower, fmpz_t upper, fmpz_t q, fmpq_t f, fmpz_t t0z, fmpq_t t0q, fmpq_t t1q, int q_is_1, int force_squarefree
-
-inline void change_by_sign(int update, int s, const fmpq_t val1, const fmpq_t val2, STATE_DECLARE) {
-  fmpq_div_raw(t0q, val1, f);
-  if (val2 == NULL) {
-    if (s ^ force_squarefree) fmpq_ceil(t0z, t0q);
-    else fmpq_floor(t0z, t0q);
-  } else {
-    fmpq_div_raw(t1q, val2, f);
-    if (s ^ force_squarefree) fmpq_ceil_quad(t0z, t0q, t1q, q, q_is_1);
-    else fmpq_floor_quad(t0z, t0q, t1q, q, q_is_1);
-  }
-  if (!s) { // change_upper
-    if (force_squarefree) fmpz_sub_ui(t0z, t0z, 1);
-    if (!update || fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
-  }
-  else { // change_lower
-    if (force_squarefree) fmpz_add_ui(t0z, t0z, 1);
-    if (!update || fmpz_cmp(t0z, lower) > 0) fmpz_set(lower, t0z);
-  }
-}
-
-/* More macros used in set_range_from_power_sums. 
-
-  Usage: if g is a monic linear function of the k-th power sum, then
-  set_upper(g) or change_upper(g) imposes the condition g >= 0;
-  set_lower(g) or change_lower(g) imposes the condition g <= 0.
-
-*/
-
-#define set_lower(x, y) change_by_sign(0, 1, x, y, STATE)
-#define set_upper(x, y) change_by_sign(0, 0, x, y, STATE)
-#define change_lower(x, y) change_by_sign(1, 1, x, y, STATE)
-#define change_upper(x, y) change_by_sign(1, 0, x, y, STATE)
 #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, tpol2, force_squarefree, modulus, x)
 #define POW(x) fmpq_mat_entry(dy_data->power_sums, x, 0)
 
@@ -496,19 +437,52 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpq_mat_t hankel_mat;
 
   /* Allocate temporary variables from persistent scratch space. */
-  fmpz *t0z = dy_data->w; // This gets overwritten by subroutines
+  fmpz *t0z = dy_data->w; // This gets overwritten by change_by_sign
   fmpz *t1z = dy_data->w+1;
   fmpz *t2z = dy_data->w+2;
   fmpz *lower = dy_data->w+3;
   fmpz *upper = dy_data->w+4;
-  
   fmpz *tpol = dy_data->w+5; // Length d+1
   fmpz *tpol2 = dy_data->w+d+6; // Length 2*d+4
 
-  fmpq *t0q = dy_data->w2; // This gets overwritten by subroutines
-  fmpq *t1q = dy_data->w2+1; // This gets overwritten by subroutines
+  fmpq *t0q = dy_data->w2; // This gets overwritten by change_by_sign
+  fmpq *t1q = dy_data->w2+1; // This gets overwritten by change_by_sign
   fmpq *t2q = dy_data->w2+2;
   fmpq *t3q = dy_data->w2+3; 
+
+  /* Adjust lower and upper bounds within set_range_from_power_sums.
+     The arguments t0z, t0q, t1q are used for persistent scratch space;
+     t1q is only used if val2 != NULL.
+     The values in val1 and val2 need not be canonicalized.
+     The pair (val1, val2) stands for val1 + val2*sqrt(q);
+     passing NULL for val2 is a faster variant of passing 0.
+     Given that this value is a monic linear function of the k-th power sum, then:
+
+     -- passing s = 0 imposes the condition g >= 0 (or g > 0 if force_squarefree != 0);
+     -- passing s = 1 imposes the condition g <= 0 (or g < 0 if force_squarefree != 0);
+     -- passing update = 0 means we are setting the initial bounds;
+     -- passing update = 1 means we are updating previously set bounds.
+  */
+
+  inline void change_by_sign(int update, int s, const fmpq_t val1, const fmpq_t val2) {
+    fmpq_div_raw(t0q, val1, f);
+    if (val2 == NULL) {
+      if (s ^ force_squarefree) fmpq_ceil(t0z, t0q);
+      else fmpq_floor(t0z, t0q);
+    } else {
+      fmpq_div_raw(t1q, val2, f);
+      if (s ^ force_squarefree) fmpq_ceil_quad(t0z, t0q, t1q, q);
+      else fmpq_floor_quad(t0z, t0q, t1q, q);
+    }
+    if (!s) { // change_upper
+      if (force_squarefree) fmpz_sub_ui(t0z, t0z, 1);
+      if (!update || fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
+    }
+    else { // change_lower
+      if (force_squarefree) fmpz_add_ui(t0z, t0z, 1);
+      if (!update || fmpz_cmp(t0z, lower) > 0) fmpz_set(lower, t0z);
+    }
+  }
 
   /* If k>d, no further coefficients to bound. */
   if (k>d) return(1);
@@ -516,62 +490,57 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* Update power_sums[k] using the Girard-Newton formula. */
   t = POW(0);
   fmpq_set_si(t, k, 1);  
-  fmpq_mat_fmpz_vec_mul(t0q, pol+n-1, k, dy_data->power_sums);
-  fmpz_neg(t0z, pol+d);
-  fmpq_div_fmpz(POW(k), t0q, t0z);
-
-  /* Condition: the k-th symmetrized power sum must lie in [-2*d*sqrt(q), 2*d*sqrt(q)]. */
+  fmpq_mat_fmpz_vec_mul(t2q, pol+n-1, k, dy_data->power_sums);
+  fmpz_neg(t1z, pol+d);
+  fmpq_div_fmpz(POW(k), t2q, t1z);
   fmpq_set_si(t, d, 1);
+
+  /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*sqrt(q), 2*d*sqrt(q)]. */
   fmpq_mat_fmpz_vec_mul(t2q, st_data->sum_mats+(d+1)*k, k+1, dy_data->power_sums);
-  if (q_is_1) {
-    fmpq_sub_ui(t0q, t2q, 2*d);
-    set_lower(t0q, NULL);
-    fmpq_add_ui(t0q, t2q, 2*d);
-    set_upper(t0q, NULL);
-  } else {
-    fmpz_pow_ui(t0z, q, k/2);
-    fmpz_mul_si(t1z, t0z, 2*d);
-    if (k%2==0) {
-      fmpq_sub_fmpz(t0q, t2q, t1z);
-      set_lower(t0q, NULL);
-      fmpq_add_fmpz(t0q, t2q, t1z);
-      set_upper(t0q, NULL);
-    } else {
-      fmpq_one(t3q);
-      fmpz_set(fmpq_numref(t3q), t1z);
-      set_upper(t2q, t3q);
-      fmpq_neg(t3q, t3q);
-      set_lower(t2q, t3q);
-    }
+  
+  if (q_is_1) fmpz_set_ui(t1z, 2*d);
+  else {
+    fmpz_pow_ui(t2z, q, k/2);
+    fmpz_mul_si(t1z, t2z, 2*d);
   }
+  if (q_is_1 || k%2 == 0) {
+    fmpq_sub_fmpz(t3q, t2q, t1z);
+    fmpq_add_fmpz(t2q, t2q, t1z);
+    t = NULL; t1 = t2q; t2 = t3q;
+  } else {
+    fmpq_set_fmpz(t3q, t1z);
+    t = t3q; t1 = t2q; t2 = t2q;
+  }
+  change_by_sign(0, 0, t1, t);
+  if (t != NULL) fmpq_neg_raw(t, t);
+  change_by_sign(0, 1, t2, t);
 
   /* Compute the divided (n-1)-st derivative of pol, answer in tpol. */
   for (i=0; i<=k; i++)
     fmpz_mul(tpol+i, st_data->binom_mat+(d+1)*(n-1+i)+n-1, pol+n-1+i);
 
-  /* Condition: Descartes' rule of signs applies at -2*sqrt(q), +2*sqrt(q).
-   This is only a new condition for the evaluations at these points. */
+  /* Descartes criterion: the evaluations of tpol at -2*sqrt(q), 2*sqrt(q) have the correct signs. */
 
-  _fmpz_vec_dot(fmpq_numref(t2q), st_data->eval_pm2_mats+(d+1)*(2*k), tpol, k+1);
-  fmpz_set(fmpq_denref(t2q), pol+d);
-  _fmpz_vec_dot(fmpq_numref(t3q), st_data->eval_pm2_mats+(d+1)*(2*k+1), tpol, k+1);
+  _fmpz_vec_dot(t1z, st_data->eval_pm2_mats+(d+1)*(2*k), tpol, k+1);
+  _fmpz_vec_dot(t2z, st_data->eval_pm2_mats+(d+1)*(2*k+1), tpol, k+1);
   fmpz_set(fmpq_denref(t3q), pol+d);
-
-  change_lower(t2q, t3q);
-  fmpq_neg_raw(t3q, t3q);
-  change_by_sign(1, 1-(k%2), t2q, t3q, STATE);
+  if (q_is_1) {
+    fmpz_add(fmpq_numref(t3q), t1z, t2z);
+    change_by_sign(1, 1, t3q, NULL);
+    fmpz_sub(fmpq_numref(t3q), t1z, t2z);
+    change_by_sign(1, 1-(k%2), t3q, NULL);
+  } else {
+    fmpz_set(fmpq_numref(t2q), t1z);
+    fmpz_set(fmpq_numref(t3q), t2z);
+    fmpz_set(fmpq_denref(t2q), pol+d);
+    change_by_sign(1, 1, t2q, t3q);
+    fmpz_neg(fmpq_numref(t3q), t2z);
+    change_by_sign(1, 1-(k%2), t2q, t3q);
+  }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
-  /* If modulus==0, then return 1 iff [lower, upper] contains 0
-     and the Rolle condition is satisfied. */
-  if (fmpz_is_zero(modulus)) {
-    if (fmpz_sgn(lower) > 0 || fmpz_sgn(upper) < 0 || !TEST_ROOTS(NULL)) return(0);
-    fmpz_zero(lower);
-    fmpz_zero(upper);
-    return(1);
-  }
-
-  /* Condition: the truncated Hausdorff moment criterion. */
+  /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant.
+     TODO: implement a multimodular computation where the mod-p work is done using continued fractions. */
   for (r=0; r<=1; r++) {
     if (k%2 == 1 && !q_is_1) continue; // TODO: remove this restriction
     s = (k%2 == 0 && r == 1) ? 0 : 1;
@@ -596,56 +565,64 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     t1 = fmpq_mat_entry(dy_data->hankel_dets[r], k, 0);
     fmpq_mat_det(t1, hankel_mat);
     fmpq_mat_window_clear(hankel_mat);
-    if (k > 1) t2 = fmpq_mat_entry(dy_data->hankel_dets[r], k-2, 0);
-    if (k > 1 && fmpq_sgn(t2) > 0) fmpq_div_raw(t2q, t1, t2);
+    if (k > 1 && fmpq_sgn(t2 = fmpq_mat_entry(dy_data->hankel_dets[r], k-2, 0)) > 0)
+      fmpq_div_raw(t2q, t1, t2);
     else fmpq_set(t2q, t); // t was set in the for loop
     if (r == 1) fmpq_neg_raw(t2q, t2q);
-    change_by_sign(1, r, t2q, NULL, STATE);
+    change_by_sign(1, r, t2q, NULL);
     if (fmpz_cmp(lower, upper) > 0) return(0);
   }
 
-  /* Condition: tpol has all real roots by Rolle's theorem.
-     The range of values where this holds, if nonempty, is an interval. */
-
-  while (1) {
-    /* If the current range is a singleton, test that value. */
-    r = fmpz_cmp(lower, upper);
-    if (!r && TEST_ROOTS(lower)) {
-      fmpz_set(t2z, lower);
-      break;
-    }
-    if (r >= 0) return(0);
-
-    /* Test the midpoint of the current range. If we find all real roots,
-       run a binary search for the left endpoint. */
-    fmpz_cmid(t0z, lower, upper);
-    if (TEST_ROOTS(t0z)) {
-      fmpz_set(t2z, t0z); // Start the right endpoint search from here
-      while (fmpz_cmp(lower, t0z)) {
-        fmpz_fmid(t1z, lower, t0z);
-        if (TEST_ROOTS(t1z)) fmpz_set(t0z, t1z);
-        else fmpz_add_ui(lower, t1z, 1); 
-      }
-      break;
-    }
-
-    /* Run a linear search up to the tested point. */
-    do {
-      r = TEST_ROOTS(lower);
-      if (r) break;
-      fmpz_add_ui(lower, lower, 1);
-    } while (fmpz_cmp(lower, t0z));
-    if (r) {
-      fmpz_set(t2z, lower);
-      fmpz_sub_ui(upper, t0z, 1); // Use an improved upper bound
-      break;
-    }
- 
-    /* Shorten the interval and try again. */
-    fmpz_add_ui(lower, t0z, 1);
+  /* If modulus==0, then return 1 iff [lower, upper] contains 0
+     and the Rolle condition is satisfied. */
+  if (fmpz_is_zero(modulus)) {
+    if (fmpz_sgn(lower) > 0 || fmpz_sgn(upper) < 0 || !TEST_ROOTS(NULL)) return(0);
+    fmpz_zero(lower);
+    fmpz_zero(upper);
+    return(1);
   }
 
-  /* Run a binary search for the right endpoint. */
+  /* Rolle criterion: tpol has all roots real.
+    Note: we do not call change_by_sign hereafter, so it is now safe to assign to t0z. */
+     
+  /* Recursively find a single value where the Rolle criterion holds, or else exit. 
+     No aliasing allowed between inputs and outputs. */
+  int rolle_hit(fmpz_t ans, fmpz_t left, fmpz_t right, const fmpz_t a, const fmpz_t b) {
+    int r;
+    /* Check for an empty interval, then test the midpoint.
+       If the interval is a point, no need to proceed further. */
+    if ((r = fmpz_cmp(a, b)) > 0) return(0);
+    fmpz_cmid(ans, a, b);
+    if (TEST_ROOTS(ans)) {
+      fmpz_set(left, a);
+      fmpz_set(right, b);
+      return(1);
+    }
+    if (!r) return(0);
+
+    /* Spawn a new temporary fmpz in order to recurse on a shorter interval. */
+    fmpz_t x;
+    fmpz_init(x);
+    fmpz_sub_ui(x, ans, 1);
+    if (!(r = rolle_hit(ans, left, right, a, x))) {
+      fmpz_add_ui(x, x, 2);
+      r = rolle_hit(ans, left, right, x, b);
+    }
+    fmpz_clear(x);
+    return(r);
+  }
+  
+  if (!rolle_hit(t0z, t1z, t2z, lower, upper)) return(0);
+  fmpz_set(lower, t1z);
+  fmpz_set(upper, t2z);
+  fmpz_set(t2z, t0z);
+
+  /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
+  while (fmpz_cmp(lower, t0z)) {
+    fmpz_fmid(t1z, lower, t0z);
+    if (TEST_ROOTS(t1z)) fmpz_set(t0z, t1z);
+    else fmpz_add_ui(lower, t1z, 1); 
+  }
   while (fmpz_cmp(t2z, upper)) {
     fmpz_cmid(t1z, t2z, upper);
     if (TEST_ROOTS(t1z)) fmpz_set(t2z, t1z);
@@ -662,9 +639,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   return(1);
 }
 
-/* Return value sent back in dy_data->flag:
+/* Top-level flow control: allow one process to run for up to max_steps iterations,
+   or until it finds a polynomial to be returned, whichever comes first.
+
+   Return value sent back in dy_data->flag:
    1: in process
-   2: found a solution
+   2: found a solution (returned in dy_data->sympol)
    0: tree exhausted
    -1: maximum number of nodes reached
 */
@@ -692,7 +672,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
     count_steps += 1;
     if (ascend) { // Ascend the tree and step forward as needed.
       n += ascend;
-      if (n>d) flag = 0; // This process is complete.
+      if (n > d) flag = 0; // This process is complete.
       else {
 	ascend = (fmpz_is_zero(modlist+n) || (fmpz_cmp(pol+n, dy_data->upper+n) >= 0));
 	if (!ascend) step_forward(st_data, dy_data, n, NULL);
