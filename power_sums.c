@@ -564,17 +564,17 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* Recursively find a single value where the Rolle criterion holds, or else exit. 
      No aliasing allowed between inputs and outputs. */
   int find_rolle_hit(fmpz_t ans, fmpz_t left, fmpz_t right, const fmpz_t a, const fmpz_t b) {
+    /* Check for an empty interval, then test the midpoint. */
     int r = fmpz_cmp(a, b);
-    /* Check for an empty interval, then test the midpoint.
-       If the interval is a point, no need to proceed further. */
     if (r > 0) return(0);
-    fmpz_cmid(ans, a, b);
+    if (!r) fmpz_set(ans, a); else fmpz_cmid(ans, a, b);
     if (TEST_ROOTS(ans)) {
       fmpz_set(left, a);
       fmpz_set(right, b);
       return(1);
     }
-    if (!r) return(0);
+    if (!r) return(0); // Case b == a
+    if (!fmpz_cmp(ans, b)) return find_rolle_hit(ans, left, right, a, a); // Case b == a+1
 
     /* Spawn a new temporary fmpz in order to recurse on a shorter interval. */
     fmpz_t x;
