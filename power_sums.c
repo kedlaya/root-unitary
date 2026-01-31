@@ -512,7 +512,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   change_by_sign(1, 1, t1, t);
   if (t != NULL) fmpq_neg_raw(t, t);
   change_by_sign(1, 1-(k%2), t2, t);
-  if (fmpz_cmp(lower, upper) > 0) return(0);
+  if ((s = fmpz_cmp(lower, upper)) > 0) return(0);
 
   /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant.
      TODO: implement a multimodular computation where the mod-p work is done using continued fractions. */
@@ -545,7 +545,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     else fmpq_set(t2q, t); // t was set in the for loop
     if (r == 1) fmpq_neg_raw(t2q, t2q);
     change_by_sign(1, r, t2q, NULL);
-    if (fmpz_cmp(lower, upper) > 0) return(0);
+    if ((s = fmpz_cmp(lower, upper)) > 0) return(0);
   }
 
   /* Rolle criterion: tpol has all roots real.
@@ -561,49 +561,49 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     return(1);
   }
 
-  /* Recursively find a single value where the Rolle criterion holds, or else exit. 
-     No aliasing allowed between inputs and outputs. */
-  int find_rolle_hit(fmpz_t ans, fmpz_t left, fmpz_t right, const fmpz_t a, const fmpz_t b) {
-    /* Check for an empty interval, then test the midpoint. */
-    int r = fmpz_cmp(a, b);
-    if (r > 0) return(0);
-    if (!r) fmpz_set(ans, a); else fmpz_cmid(ans, a, b);
-    if (TEST_ROOTS(ans)) {
-      fmpz_set(left, a);
-      fmpz_set(right, b);
-      return(1);
-    }
-    if (!r) return(0); // Case b == a
-    if (!fmpz_cmp(ans, b)) return find_rolle_hit(ans, left, right, a, a); // Case b == a+1
+  if (!s) { // upper == lower
+    if (!TEST_ROOTS(lower)) return(0);
+  } else {
+    /* Find a single value where the Rolle criterion holds. */
+    fmpz_sub(t1z, upper, lower);
+    fmpz_add_ui(t1z, t1z, 1);
+    r = fmpz_flog_ui(t1z, 2);
+    fmpz_ui_pow_ui(t0z, 2, r);
+    s = 0;
+    do {
+      if (r > 0) {
+        fmpz_add(t1z, lower, t0z);
+        fmpz_sub_ui(t1z, t1z, 1);
+      } else fmpz_set(t1z, lower);
+      do {
+        if (!(s = TEST_ROOTS(t1z))) fmpz_addmul_ui(t1z, t0z, 2);
+      } while (!s && fmpz_cmp(t1z, upper) <= 0);
+      if (!s) {
+        r--;
+        fmpz_divexact_ui(t0z, t0z, 2);
+      }
+    } while (!s && r >= 0);
+    if (!s) return(0);
 
-    /* Spawn a new temporary fmpz in order to recurse on a shorter interval. */
-    fmpz_t x;
-    fmpz_init(x);
-    fmpz_sub_ui(x, ans, 1);
-    r = find_rolle_hit(ans, left, right, a, x);
-    if (!r) {
-      fmpz_add_ui(x, x, 2);
-      r = find_rolle_hit(ans, left, right, x, b);
-    }
-    fmpz_clear(x);
-    return(r);
-  }
-  
-  if (!find_rolle_hit(t0z, t1z, t2z, lower, upper)) return(0);
-  fmpz_set(lower, t1z);
-  fmpz_set(upper, t2z);
-  fmpz_set(t2z, t0z);
+    /* Shorten the interval based on tested values. */
+    fmpz_sub(t2z, t1z, t0z);
+    fmpz_add_ui(lower, t2z, 1);
+    fmpz_add(t2z, t1z, t0z);
+    fmpz_sub_ui(t2z, t2z, 1);
+    if (fmpz_cmp(t2z, upper) < 0) fmpz_set(upper, t2z);
 
-  /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
-  while (fmpz_cmp(lower, t0z)) {
-    fmpz_fmid(t1z, lower, t0z);
-    if (TEST_ROOTS(t1z)) fmpz_set(t0z, t1z);
-    else fmpz_add_ui(lower, t1z, 1); 
-  }
-  while (fmpz_cmp(t2z, upper)) {
-    fmpz_cmid(t1z, t2z, upper);
-    if (TEST_ROOTS(t1z)) fmpz_set(t2z, t1z);
-    else fmpz_sub_ui(upper, t1z, 1);
+    /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
+    fmpz_set(t2z, t1z);
+    while (fmpz_cmp(lower, t1z)) {
+      fmpz_fmid(t0z, lower, t1z);
+      if (TEST_ROOTS(t0z)) fmpz_set(t1z, t0z);
+      else fmpz_add_ui(lower, t0z, 1);
+    }
+    while (fmpz_cmp(t2z, upper)) {
+      fmpz_cmid(t1z, t2z, upper);
+      if (TEST_ROOTS(t1z)) fmpz_set(t2z, t1z);
+      else fmpz_sub_ui(upper, t1z, 1);
+    }
   }
 
   /* Set the new upper bound. */
