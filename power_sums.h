@@ -1,5 +1,7 @@
 #pragma once
 #include <flint/flint.h>
+#include <flint/fmpz.h>
+#include <flint/fmpz_vec.h>
 #include <flint/fmpz_poly.h>
 #include <flint/fmpq.h>
 #include <flint/fmpq_mat.h>

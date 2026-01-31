@@ -3,7 +3,6 @@
   This code does not implement parallelism; see the Cython wrapper.
 
   TODO: check for memory leaks.
-  TODO: try the Routh-Hurwitz criterion.
 
 #*****************************************************************************
 #       Copyright (C) 2019-2026 Kiran S. Kedlaya <kskedl@gmail.com>
@@ -210,13 +209,8 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 				 fmpz *modlist, long node_limit, int force_squarefree) {
   int i, j, k, l;
   ps_static_data_t *st_data;
-  fmpz_poly_t pol;
-  fmpz_t m;
-  fmpz *k0;
+  fmpz *k0, *pol;
   fmpq *k1;
-
-  fmpz_poly_init(pol);
-  fmpz_init(m);
 
   st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
 
@@ -237,7 +231,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
     fmpz_set(k0, modlist+d-i);
     fmpq_set_si(k1, d-i, 1);
     fmpq_div_fmpz(k1, k1, st_data->lead);
-    /* In order to apply power sums and Descartes' rule of signs
+    /* In order to apply the Chebyshev and Descartes criteria
        when the modulus is 0, we must pretend that the modulus is 1. */
     if (!fmpz_is_zero(k0)) fmpq_mul_fmpz(k1, k1, k0);
   }
@@ -248,24 +242,22 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
       fmpz_bin_uiui(st_data->binom_mat+(d+1)*i+j, i, j);
 
   st_data->sum_mats = _fmpz_vec_init((d+1)*(d+1));
+  pol = _fmpz_vec_init(d+1);
   for (i=0; i<=d; i++) {
-    arith_chebyshev_t_polynomial(pol, i);
+    /* Coefficients of 2*(i-th Chebyshev polynomial)(x/2).
+       If q != 1, the coeff of x^j is multiplied by q^{floor(i-j)/2}. */
+    _fmpz_poly_chebyshev_t(pol, i);
+    _fmpz_poly_scale_2exp(pol, i+1, -1);
     for (j=i%2; j<=i; j+=2) {
-      /* Coefficients of 2*(i-th Chebyshev polynomial)(x/2).
-         If q != 1, the coeff of x^j is multiplied by q^{floor(i-j)/2}. */
       k0 = st_data->sum_mats+(d+1)*i+j;
-      fmpz_set(k0, fmpz_poly_get_coeff_ptr(pol, j));
-      if (j == 0) fmpz_mul_2exp(k0, k0, 1);
-      else fmpz_fdiv_q_2exp(k0, k0, j-1);
+      fmpz_set(k0, pol+j);
       if (!fmpz_is_one(st_data->q)) {
-        fmpz_pow_ui(m, st_data->q, (i-j)/2);
-        fmpz_mul(k0, k0, m);
+        fmpz_pow_ui(pol+j, st_data->q, (i-j)/2);
+        fmpz_mul(k0, k0, pol+j);
       }
     }
   }
-
-  fmpz_poly_clear(pol);
-  fmpz_clear(m);
+  _fmpz_vec_clear(pol, d+1);
 
   st_data->eval_pm2_mats = _fmpz_vec_init(2*(d+1)*(d+1));
   for (i=0; i<=d; i++) {
@@ -369,7 +361,8 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   free(dy_data);
 }
 
-/* Increment the current moving counter and update stored data to match. */
+/* Increment the current moving counter and update stored data to match. 
+   If step is NULL it is interpreted as 1. */
 inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
   int k = st_data->d-n;
   fmpz *pol = dy_data->pol;
@@ -437,23 +430,23 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
      passing NULL for val2 is a faster variant of passing 0.
      Given that this value is a monic linear function of the k-th power sum, then:
 
-     -- passing s = 0 imposes the condition g >= 0 (or g > 0 if force_squarefree != 0);
-     -- passing s = 1 imposes the condition g <= 0 (or g < 0 if force_squarefree != 0);
+     -- passing r = 0 imposes the condition g >= 0 (or g > 0 if force_squarefree != 0);
+     -- passing r = 1 imposes the condition g <= 0 (or g < 0 if force_squarefree != 0);
      -- passing update = 0 means we are setting the initial bounds;
      -- passing update = 1 means we are updating previously set bounds.
   */
 
-  inline void change_by_sign(int update, int s, const fmpq_t val1, const fmpq_t val2) {
+  inline void change_by_sign(int update, int r, const fmpq_t val1, const fmpq_t val2) {
     fmpq_div_raw(t0q, val1, f);
     if (val2 == NULL) {
-      if (s ^ force_squarefree) fmpq_ceil(t0z, t0q);
+      if (r ^ force_squarefree) fmpq_ceil(t0z, t0q);
       else fmpq_floor(t0z, t0q);
     } else {
       fmpq_div_raw(t1q, val2, f);
-      if (s ^ force_squarefree) fmpq_ceil_quad(t0z, t0q, t1q, q);
+      if (r ^ force_squarefree) fmpq_ceil_quad(t0z, t0q, t1q, q);
       else fmpq_floor_quad(t0z, t0q, t1q, q);
     }
-    if (!s) { // change_upper
+    if (!r) { // change_upper
       if (force_squarefree) fmpz_sub_ui(t0z, t0z, 1);
       if (!update || fmpz_cmp(t0z, upper) < 0) fmpz_set(upper, t0z);
     }
@@ -469,11 +462,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   /* Update power_sums[k] using the Girard-Newton formula. */
   #define POW(x) fmpq_mat_entry(dy_data->power_sums, x, 0)
   tz = fmpq_numref(POW(0));
-  fmpz_set_ui(tz, k);
+  fmpz_set_ui(tz, k); // Temporary change to apply Girard-Newton
   fmpq_mat_fmpz_vec_mul(t2q, pol+n-1, k, dy_data->power_sums);
   fmpz_neg(t1z, pol+d);
   fmpq_div_fmpz(POW(k), t2q, t1z);
-  fmpz_set_ui(tz, d);
+  fmpz_set_ui(tz, d); // Change back to the correct value
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
   fmpq_mat_fmpz_vec_mul(t2q, st_data->sum_mats+(d+1)*k, k+1, dy_data->power_sums);
@@ -553,8 +546,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (fmpz_cmp(lower, upper) > 0) return(0);
   }
 
+  /* Rolle criterion: tpol has all roots real.
+    Note: we do not call change_by_sign hereafter, so it is now safe to assign to t0z. */
+
   /* If modulus==0, then return 1 iff [lower, upper] contains 0
-     and the Rolle condition is satisfied. */
+     and the Rolle condition is satisfied at 0. */
   #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, tpol2, force_squarefree, modulus, x)
   if (fmpz_is_zero(modulus)) {
     if (fmpz_sgn(lower) > 0 || fmpz_sgn(upper) < 0 || !TEST_ROOTS(NULL)) return(0);
@@ -563,12 +559,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     return(1);
   }
 
-  /* Rolle criterion: tpol has all roots real.
-    Note: we do not call change_by_sign hereafter, so it is now safe to assign to t0z. */
-     
   /* Recursively find a single value where the Rolle criterion holds, or else exit. 
      No aliasing allowed between inputs and outputs. */
-  int rolle_hit(fmpz_t ans, fmpz_t left, fmpz_t right, const fmpz_t a, const fmpz_t b) {
+  int find_rolle_hit(fmpz_t ans, fmpz_t left, fmpz_t right, const fmpz_t a, const fmpz_t b) {
     int r = fmpz_cmp(a, b);
     /* Check for an empty interval, then test the midpoint.
        If the interval is a point, no need to proceed further. */
@@ -585,16 +578,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     fmpz_t x;
     fmpz_init(x);
     fmpz_sub_ui(x, ans, 1);
-    r = rolle_hit(ans, left, right, a, x);
+    r = find_rolle_hit(ans, left, right, a, x);
     if (!r) {
       fmpz_add_ui(x, x, 2);
-      r = rolle_hit(ans, left, right, x, b);
+      r = find_rolle_hit(ans, left, right, x, b);
     }
     fmpz_clear(x);
     return(r);
   }
   
-  if (!rolle_hit(t0z, t1z, t2z, lower, upper)) return(0);
+  if (!find_rolle_hit(t0z, t1z, t2z, lower, upper)) return(0);
   fmpz_set(lower, t1z);
   fmpz_set(upper, t2z);
   fmpz_set(t2z, t0z);
