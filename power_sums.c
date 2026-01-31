@@ -141,7 +141,7 @@ inline void fmpq_ceil_quad(fmpz_t res, const fmpq_t a, const fmpq_t b, const fmp
 
     This function assumes that:
         - {poly, n} is a normalized vector with n >= 2
-        - {w, 2*n+2} is scratch space.
+        - {w, 2*n} is scratch space.
     If a and b are not NULL, we add a*b to the constant term before testing.
 
     Based on code by Sebastian Pancratz from the FLINT repository.
@@ -152,39 +152,41 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   fmpz *f0     = w + 0*n;
   fmpz *f1     = w + 1*n;
-  fmpz *c      = w + 2*n;
-  fmpz *d      = w + 2*n+1;
+  fmpz *c      = w + 2*n-1;
   fmpz *t; // Not allocated, only used to swap pointers
 
-  _fmpz_vec_set(f0, poly, n);
-  /* Sanitize input so that n = deg(f0). */
-  while ((n > 2) && fmpz_is_zero(f0+n-1))
-    n--;
-  if (n <= 2) return(1);
-  if (a != NULL && b != NULL) fmpz_addmul(f0, a, b);
-  _fmpz_poly_derivative(f1, f0, n);
-  n--;
-  int sgn0_l = fmpz_sgn(f0+n);
+  /* Sanitize input so that n = deg(poly). */
+  do {n--;} while ((n > 1) && fmpz_is_zero(poly+n));
+  if (n <= 1) return(1);  // Constant or linear polynomial
 
+  /* Set f0 := poly+a*b and f1 = deriv(poly). */
+  _fmpz_vec_set(f0, poly, n+1);
+  _fmpz_poly_derivative(f1, poly, n+1);
+  if (a != NULL && b != NULL) fmpz_addmul(f0, a, b);
+
+  int sgn0_l = fmpz_sgn(poly+n); // Sign of initial leading coefficient
+  int n0 = n; // Initial degree
+  
   while (1) {
     /* At this point deg(f0) = n, deg(f1) = n-1.
-       We compute the negated pseudoremainder of f0 modulo f1 in two steps:
+       We compute the pseudoremainder of f0 modulo f1 in two steps:
        f0 --> f1[n-1]*f0 - f0[n]*x*f1
-       f0 --> f0[n-1]*f1 - f1[n-1]*f0
+       f0 --> f1[n-1]*f0 - f0[n-1]*f1
     */
-    fmpz_set(c, f0+n);
-    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n-1);
-    _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n-1, c);
     n--;
+    fmpz_set(c, f0+n+1);
+    _fmpz_vec_scalar_mul_fmpz(f0, f0, n+1, f1+n);
+    _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n, c);
     fmpz_set(c, f0+n);
-    fmpz_neg(d, f1+n);
-    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, d);
-    _fmpz_vec_scalar_addmul_fmpz(f0, f1, n, c);
+    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n);
+    _fmpz_vec_scalar_submul_fmpz(f0, f1, n, c);
 
-    /* If f0 = 0, we win unless we are insisting on squarefree. */
+    /* At this point deg(f0) = n-1, deg(f1) = n.
+       If f0 = 0, we win unless we are insisting on squarefree. */
     if (!force_squarefree && _fmpz_vec_is_zero(f0, n)) return(1);
 
     /* If we miss any one sign change, we cannot have enough. */
+    if ((n0-n) % 2 == 1) sgn0_l = -sgn0_l;
     if (fmpz_sgn(f0+n-1) != sgn0_l) return(0);
 
     /* If f0 is a scalar, it is nonzero and we win. */
@@ -299,7 +301,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets[0], 0, 0), d, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets[1], 0, 0), 1, 1);
   
-  dy_data->wlen = 3*d+10;
+  dy_data->wlen = 3*d+8;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
   dy_data->w2len = 4;
   dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
