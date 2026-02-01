@@ -509,8 +509,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   change_by_sign(0, 1, t2, t);
 
   /* Compute the divided (n-1)-st derivative of pol, answer in tpol. */
-  tz = st_data->binom_mat + n - 1;
-  for (i=0; i<=k; i++) fmpz_mul(tpol+i, t+(d+1)*(n-1+i), pol+i);
+  tz = st_data->binom_mat + (d+2)*(n-1);
+  for (i=0; i<=k; i++) fmpz_mul(tpol+i, tz+(d+1)*i, pol+i);
 
   /* Descartes criterion: the evaluations of tpol at -2*sqrt(q), 2*sqrt(q) have the correct signs. */
   _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), tpol, k+1);
