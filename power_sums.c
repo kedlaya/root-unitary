@@ -230,8 +230,6 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
   st_data->node_limit = node_limit;
   st_data->force_squarefree = force_squarefree;
 
-  fmpz_init_set(st_data->lead, lead);
-
   st_data->modlist = _fmpz_vec_init(d+1);
   st_data->f = _fmpq_vec_init(d+1);
   k0 = st_data->modlist; // Used as a temporary variable for now
@@ -255,7 +253,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
     k1 = st_data->f + i;
     fmpz_set(k0, modlist+d-i);
     fmpq_set_si(k1, d-i, 1);
-    fmpq_div_fmpz(k1, k1, st_data->lead);
+    fmpq_div_fmpz(k1, k1, lead);
     /* In order to apply the Chebyshev and Descartes criteria
        when the modulus is 0, we must pretend that the modulus is 1. */
     if (!fmpz_is_zero(k0)) fmpq_mul_fmpz(k1, k1, k0);
@@ -315,18 +313,19 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
 }
 
 /* Split off a subtree (without allocating new memory).
-   The first process gives up on the current branch, up to the first coefficient that is not uniquely specified;
-   the remaining work is yielded to the second process, which may in turn be split immediately.
+   The donor process yields its current branch at the first coefficient that is not uniquely specified.
+   The donee process may in turn be split immediately.
+
+   It is safe to run this in parallel as long as the instances of dy_data are pairwise distinct
+   and the instances of dy_data2 are pairwise distinct.
 */
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
   if ((dy_data == NULL) || (dy_data2 == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
 
-  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend, flag;
+  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
 
   for (i=d; i>n+ascend; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
-      flag = dy_data->flag;
-      dy_data->flag = -1; // Make the first process unavailable
       dy_data2->n = n;
       dy_data2->ascend = ascend;
       _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
@@ -335,7 +334,6 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
       for (j=0; j<=1; j++) fmpq_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
       fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
       dy_data->ascend = i-n;
-      dy_data->flag = flag; // Make the first process available
       dy_data2->flag = 1; // Make the second process available for further splitting
       return;
   }
@@ -346,7 +344,6 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
 void ps_static_clear(ps_static_data_t *st_data) {
   if (st_data == NULL) return;
   int d = st_data->d;
-  fmpz_clear(st_data->lead);
   fmpz_clear(st_data->q);
   _fmpq_vec_clear(st_data->f, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
@@ -631,10 +628,17 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
    2: found a solution (returned in dy_data->sympol)
    0: tree exhausted
    -1: maximum number of nodes reached
+
+   It is *not* threadsafe to run next_pol and dynamic_split simultaneously on the same dy_data.
 */
 
 void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
+  if (dy_data==NULL || !dy_data->flag) return; // No work assigned to this process
+  dy_data->flag = 0; // Prevent work-stealing while this process is running
+
   int d = st_data->d;
+  if (n>d) return; // This process is exhausted.
+
   int node_limit = st_data->node_limit;
   fmpz *modlist = st_data->modlist;
 
@@ -647,16 +651,11 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
 
   int i, j, flag = 1, count_steps = 0;
 
-  if (dy_data==NULL || !dy_data->flag) return; // No work assigned to this process
-  if (n>d) return;
-
-  dy_data->flag = 0; // Prevent work-stealing while this process is running
-
   while (flag == 1 && count_steps <= max_steps) {
     count_steps += 1;
     if (ascend) { // Ascend the tree and step forward as needed.
       n += ascend;
-      if (n > d) flag = 0; // This process is complete.
+      if (n > d) flag = 0; // This process is exhausted.
       else {
 	ascend = (fmpz_is_zero(modlist+n) || (fmpz_cmp(pol+n, dy_data->upper+n) >= 0));
 	if (!ascend) step_forward(st_data, dy_data, n, NULL);
