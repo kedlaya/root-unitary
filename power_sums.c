@@ -152,8 +152,8 @@ inline void fmpq_ceil_quad(fmpz_t res, const fmpq_t a, const fmpq_t b, const fmp
     as a sign change is missed.
 
     This function assumes that:
-        - {poly, n} is a normalized vector with n >= 2
-        - {w, 2*n} is scratch space.
+        - {poly, n} is a normalized vector with n >= 2 and nonzero leading coefficient
+        - {w, 2*n - 1} is scratch space.
     If a and b are not NULL, we add a*b to the constant term before testing.
 
     Based on code by Sebastian Pancratz from the FLINT repository.
@@ -162,36 +162,41 @@ inline void fmpq_ceil_quad(fmpz_t res, const fmpq_t a, const fmpq_t b, const fmp
 
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
+  if (n <= 2) return(1);  // Constant or linear polynomial
+
   fmpz *f0     = w + 0*n;
   fmpz *f1     = w + 1*n;
-  fmpz *c      = w + 2*n-1;
   fmpz *t; // Not allocated, only used to swap pointers
+  int i;
 
-  /* Sanitize input so that n = deg(poly). */
-  do {n--;} while ((n > 1) && fmpz_is_zero(poly+n));
-  if (n <= 1) return(1);  // Constant or linear polynomial
+  /* Set f1 := deriv(poly). */
+  _fmpz_poly_derivative(f1, poly, n);
 
-  /* Set f0 := poly+a*b and f1 = deriv(poly). */
-  _fmpz_vec_set(f0, poly, n+1);
-  _fmpz_poly_derivative(f1, poly, n+1);
-  if (a != NULL && b != NULL) fmpz_addmul(f0, a, b);
-
-  int sgn0_l = fmpz_sgn(poly+n); // Sign of initial leading coefficient
+  n--; // now n = deg(poly)
   int n0 = n; // Initial degree
-  
-  while (1) {
-    /* At this point deg(f0) = n, deg(f1) = n-1.
+  int sgn0_l = fmpz_sgn(poly+n); // Sign of initial leading coefficient
+
+  while (1) { // At this point deg(f0) = n, deg(f1) = n-1.
+    /* 
        We compute the pseudoremainder of f0 modulo f1 in two steps:
        f0 --> f1[n-1]*f0 - f0[n]*x*f1
        f0 --> f1[n-1]*f0 - f0[n-1]*f1
     */
-    n--;
-    fmpz_set(c, f0+n+1);
-    _fmpz_vec_scalar_mul_fmpz(f0, f0, n+1, f1+n);
-    _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n, c);
-    fmpz_set(c, f0+n);
+    
+    i = (n == n0);
+    t = i ? poly : f0; // if n == n0, f0 is not yet initialized
+    _fmpz_vec_scalar_mul_fmpz(f0+i, t+i, n-i, f1+n-1);
+    _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n-1, t+n);
+    if (i) // Fill in constant term of f0 using a and b
+      if (a != NULL && b != NULL) {
+        fmpz_mul(f0, a, b);
+        fmpz_fmma(f0, f0, f1+n-1, poly, f1+n-1);
+      }
+      else fmpz_mul(f0, poly, f1+n-1);
+
+    n--; // At this point deg(f0) = deg(f1) = n.
     _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n);
-    _fmpz_vec_scalar_submul_fmpz(f0, f1, n, c);
+    _fmpz_vec_scalar_submul_fmpz(f0, f1, n, f0+n);
 
     /* At this point deg(f0) = n-1, deg(f1) = n.
        If f0 = 0, we win unless we are insisting on squarefree. */
@@ -206,8 +211,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
 
     /* Extract content from f0.
        This seems to do better in practice than an explicit subresultant computation. */
-    _fmpz_vec_content(c, f0, n);
-    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, c);
+    _fmpz_vec_content(f0+n, f0, n);
+    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, f0+n);
 
     /* Swap f0 with f1 at the pointer level. */
     t = f0; f0 = f1; f1 = t;
@@ -308,7 +313,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets[0], 0, 0), d, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets[1], 0, 0), 1, 1);
   
-  dy_data->wlen = 3*d+8;
+  dy_data->wlen = 3*d+7;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
   dy_data->w2len = 4;
   dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
@@ -427,7 +432,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz *lower = dy_data->w+3;
   fmpz *upper = dy_data->w+4;
   fmpz *tpol = dy_data->w+5; // Length d+1
-  fmpz *tpol2 = dy_data->w+d+6; // Length 2*d+2
+  fmpz *tpol2 = dy_data->w+d+6; // Length 2*d+1
 
   fmpq *t0q = dy_data->w2; // This gets overwritten by change_by_sign
   fmpq *t1q = dy_data->w2+1; // This gets overwritten by change_by_sign
