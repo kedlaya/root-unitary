@@ -637,13 +637,13 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   dy_data->flag = 0; // Prevent work-stealing while this process is running
 
   int d = st_data->d;
+  int n = dy_data->n;
   if (n>d) return; // This process is exhausted.
 
   int node_limit = st_data->node_limit;
   fmpz *modlist = st_data->modlist;
 
   int ascend = dy_data->ascend;
-  int n = dy_data->n;
   long node_count = dy_data->node_count;
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;

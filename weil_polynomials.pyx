@@ -201,7 +201,7 @@ cdef class dfs_manager:
         cdef int i, j, k = 1, d = self.d, t = 1, u = 0, np = self.num_processes, max_steps = 1000
         cdef list l
         cdef long ans_count = 0, ans_max = 10000
-        cdef mpz_t z
+        cdef mpz_ptr z
         cdef Integer temp
         ans = []
 
@@ -226,11 +226,11 @@ cdef class dfs_manager:
                     l = []
                     # Convert a vector of fmpz's into mpz's, then Integers.
                     for j in range(2*d + 3):
-                        flint_mpz_init_set_readonly(z, &self.dy_data_buf[i].sympol[j])
+                        z = _fmpz_promote_val(&self.dy_data_buf[i].sympol[j])
                         temp = Integer()
                         mpz_set(temp.value, z)
                         l.append(temp)
-                        flint_mpz_clear_readonly(z)
+                        _fmpz_demote_val(&self.dy_data_buf[i].sympol[j])
                     ans.append(l)
                     ans_count += 1
         if u:
