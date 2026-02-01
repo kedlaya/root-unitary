@@ -44,6 +44,10 @@ int num_threads() {
   output fmpq's are not guaranteed to be canonicalized.
 *****/
 
+inline int is_mpz(fmpz f) {
+  return(COEFF_IS_MPZ(f));
+}
+
 /* Set res to -a. */
 inline void fmpq_neg_raw(fmpq_t res, fmpq_t a) {
   fmpz_neg(fmpq_numref(res), fmpq_numref(a));

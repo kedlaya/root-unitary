@@ -29,9 +29,13 @@ AUTHOR:
   -- (2019-02-02): update for Python3
                    improve parallel mode
   -- (2019-12-19): final packaging for Sage (with help from David Roe)
-  -- (2026-01-31): improved algorithm for computing ranges
+  -- (2026-0,-01): extensive low-level optimization and reorganization
+                   move some input sanitization out of C layer
+                   improved algorithm for computing ranges
                      (using truncated Hausdorff moment condition)
+                   more efficient application of Rolle condition (binary search)
                    choose number of processes based on available cores
+                   import fmpz's directly as longs when possible
 """
 
 #*****************************************************************************
@@ -45,7 +49,7 @@ AUTHOR:
 #*****************************************************************************
 
 cimport cython
-from cython.parallel import prange
+from cython.parallel cimport prange
 from libc.stdlib cimport malloc, free
 from cysignals.signals cimport sig_check
 
@@ -55,7 +59,6 @@ from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.functions.generalized import sgn
 
 from sage.rings.integer cimport Integer
-from sage.libs.gmp.types cimport mpz_t
 from sage.libs.gmp.mpz cimport mpz_set
 from sage.libs.flint.fmpz cimport *
 from sage.libs.flint.fmpz_vec cimport *
@@ -73,6 +76,7 @@ cdef extern from "power_sums.c":
 
     int has_openmp()
     int num_threads()
+    int is_mpz(fmpz f)
     ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
                                      long node_limit, int force_squarefree)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist)
@@ -199,6 +203,7 @@ cdef class dfs_manager:
             [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3, 0, 0]
         """
         cdef int i, j, k = 1, d = self.d, t = 1, u = 0, np = self.num_processes, max_steps = 1000
+        cdef long val
         cdef list l
         cdef long ans_count = 0, ans_max = 10000
         cdef mpz_ptr z
@@ -225,12 +230,17 @@ cdef class dfs_manager:
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     l = []
                     # Convert a vector of fmpz's into mpz's, then Integers.
-                    for j in range(2*d + 3):
-                        z = _fmpz_promote_val(&self.dy_data_buf[i].sympol[j])
-                        temp = Integer()
-                        mpz_set(temp.value, z)
-                        l.append(temp)
-                        _fmpz_demote_val(&self.dy_data_buf[i].sympol[j])
+                    for j in range(2*d+3):
+                        if is_mpz(self.dy_data_buf[i].sympol[j]):
+                            z = _fmpz_promote_val(&self.dy_data_buf[i].sympol[j])
+                            temp = Integer()
+                            mpz_set(temp.value, z)
+                            l.append(temp)
+                            _fmpz_demote_val(&self.dy_data_buf[i].sympol[j])
+                        else: # Returned value fits into a long
+                            val = <long>(self.dy_data_buf[i].sympol[j])
+                            temp = Integer(val)
+                            l.append(temp)
                     ans.append(l)
                     ans_count += 1
         if u:
@@ -385,7 +395,7 @@ class WeilPolynomials_iter():
         EXAMPLES::
 
             sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: next(it)
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
@@ -399,7 +409,7 @@ class WeilPolynomials_iter():
 
         EXAMPLES::
 
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: l = list(it)
             sage: it.node_count()
@@ -465,9 +475,9 @@ class WeilPolynomials():
 
     Some simple cases::
 
-        sage: list(WeilPolynomials(2,2))
+        sage: list(WeilPolynomials(2, 2))
         [x^2 + 2*x + 2, x^2 + x + 2, x^2 + 2, x^2 - x + 2, x^2 - 2*x + 2]
-        sage: l = list(WeilPolynomials(4,2))
+        sage: l = list(WeilPolynomials(4, 2))
         sage: l[0], l[-1]
         (x^4 + 4*x^3 + 8*x^2 + 8*x + 4, x^4 - 4*x^3 + 8*x^2 - 8*x + 4)
         sage: l = list(WeilPolynomials(3, 1, sign=-1))
@@ -494,11 +504,11 @@ class WeilPolynomials():
 
     Generating Weil polynomials with prescribed initial coefficients::
 
-        sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+        sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
         sage: it = iter(w)
         sage: next(it)
         3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
-        sage: w = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
+        sage: w = WeilPolynomials(10, 1, sign=-1, lead=[3,1,1])
         sage: it = iter(w)
         sage: next(it)
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
@@ -509,15 +519,15 @@ class WeilPolynomials():
 
     Test restriction of initial coefficients::
 
-        sage: w1 = WeilPolynomials(10,1,sign=1,lead=3)
+        sage: w1 = WeilPolynomials(10, 1, sign=1, lead=3)
         sage: l1 = list(w1)
-        sage: w2 = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+        sage: w2 = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
         sage: l2 = list(w2)
         sage: l3 = [i for i in l1 if i[1] == 1 and i[2] == 1]
         sage: l2 == l3
         True
 
-        sage: w = WeilPolynomials(4,2,lead=((1,0),(2,2)))
+        sage: w = WeilPolynomials(4, 2, lead=((1,0), (2,2)))
         sage: l = list(w)
         sage: l[0], l[-1]
         (x^4 + 4*x^3 + 8*x^2 + 8*x + 4, x^4 - 4*x^3 + 8*x^2 - 8*x + 4)
@@ -526,10 +536,10 @@ class WeilPolynomials():
 
     Test restriction to squarefree polynomials::
 
-        sage: for (d,q,sign) in ((6,2,1),(6,4,-1),(5,4,-1)):
-        ....:     w1 = WeilPolynomials(d,q,sign=sign)
+        sage: for (d,q,sign) in ((6,2,1), (6,4,-1), (5,4,-1)):
+        ....:     w1 = WeilPolynomials(d, q, sign=sign)
         ....:     l1 = list(w1)
-        ....:     w2 = WeilPolynomials(d,q,sign=sign,squarefree=True)
+        ....:     w2 = WeilPolynomials(d, q, sign=sign, squarefree=True)
         ....:     l2 = list(w2)
         ....:     l3 = [i for i in l1 if i.is_squarefree()]
         ....:     print(l2 == l3)
@@ -571,8 +581,8 @@ class WeilPolynomials():
 
         EXAMPLES::
 
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
-            sage: w.__init__(10,1,sign=1,lead=[3,1,-1]) # Change parameters before iterating
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
+            sage: w.__init__(10, 1, sign=1, lead=[3,1,-1]) # Change parameters before iterating
             sage: it = iter(w)
             sage: next(it) # Results reflect the changed parameters
             3*x^10 + x^9 - x^8 + 7*x^7 + 5*x^6 - 2*x^5 + 5*x^4 + 7*x^3 - x^2 + x + 3
@@ -587,7 +597,7 @@ class WeilPolynomials():
 
         EXAMPLES::
 
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = w.__iter__()
             sage: next(it)
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
@@ -602,7 +612,7 @@ class WeilPolynomials():
 
         EXAMPLES::
 
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: l = list(w)
             sage: w.node_count()
             158
