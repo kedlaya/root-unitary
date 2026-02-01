@@ -215,8 +215,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
 *****/
 
 /* Static memory allocation and initialization. */
-ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-				 fmpz *modlist, long node_limit, int force_squarefree) {
+ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist, 
+                                 long node_limit, int force_squarefree) {
   int i, j, k, l;
   ps_static_data_t *st_data;
   fmpz *k0, *pol;
@@ -225,7 +225,6 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
   st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
 
   st_data->d = d;
-  st_data->sign = coeffsign;
   fmpz_init_set(st_data->q, q);
   st_data->node_limit = node_limit;
   st_data->force_squarefree = force_squarefree;
@@ -667,7 +666,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
     } else if (n < 0) { // Return a solution.
       _fmpz_vec_zero(sympol, 2*d+3);
       for (i=0; i<=d; i++) {
-	fmpz_set_si(temp, st_data->sign);
+	fmpz_one(temp);
 	for (j=0; j<=i; j++) {
 	  fmpz_addmul(sympol+d+i-2*j, pol+i, temp);
 	  if (j<i) {

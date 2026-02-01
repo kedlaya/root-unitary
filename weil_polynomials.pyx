@@ -49,8 +49,7 @@ from cython.parallel import prange
 from libc.stdlib cimport malloc, free
 from cysignals.signals cimport sig_check
 
-from sage.arith.misc import next_prime, is_prime, primitive_root
-from sage.rings.finite_rings.finite_field_constructor import GF
+from sage.arith.misc import next_prime, primitive_root
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.functions.generalized import sgn
@@ -74,8 +73,8 @@ cdef extern from "power_sums.c":
 
     int has_openmp()
     int num_threads()
-    ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
-                                     fmpz *modlist, long node_limit, int force_squarefree)
+    ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
+                                     long node_limit, int force_squarefree)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist)
     void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
     void ps_static_clear(ps_static_data_t *st_data)
@@ -95,7 +94,7 @@ cdef class dfs_manager:
     cdef ps_static_data_t *ps_st_data
     cdef ps_dynamic_data_t **dy_data_buf
 
-    def __cinit__(self, int d, q, coefflist, modlist, int sign,
+    def __cinit__(self, int d, q, coefflist, modlist,
                   long node_limit, int parallel, int force_squarefree):
         """
         Perform required C-level initialization (e.g., memory allocation).
@@ -115,20 +114,19 @@ cdef class dfs_manager:
         cdef fmpz_t temp_q
         cdef fmpz *temp_array
         cdef int i
-        cdef Integer p
+        cdef Integer np
 
         self.d = d
         if parallel:
-            p = Integer(num_threads())
-            p = p**2
-            p = p.next_prime()
-            while (primitive_root(p) != 2):
-                p = p.next_prime()
-            self.num_processes = p
+            np = Integer(num_threads())**2
+            while True:
+                np = np.next_prime()
+                if primitive_root(np) == 2:
+                    break
         else:
-            self.num_processes = 1
-        self.dy_data_buf = <ps_dynamic_data_t **>malloc(self.num_processes
-                           * cython.sizeof(cython.pointer(ps_dynamic_data_t)))
+            np = Integer(1)
+        self.num_processes = np
+        self.dy_data_buf = <ps_dynamic_data_t **>malloc(np * cython.sizeof(cython.pointer(ps_dynamic_data_t)))
         self.node_limit = node_limit
         fmpz_init(temp_lead)
         fmpz_set_mpz(temp_lead, Integer(coefflist[-1]).value)
@@ -137,7 +135,7 @@ cdef class dfs_manager:
         temp_array = _fmpz_vec_init(d + 1)
         for i in range(d + 1):
             fmpz_set_mpz(temp_array + i, Integer(modlist[i]).value)
-        self.ps_st_data = ps_static_init(d, temp_q, sign, temp_lead,
+        self.ps_st_data = ps_static_init(d, temp_q, temp_lead,
                                          temp_array, node_limit, force_squarefree)
 
         # Initialize processes, but assign work to only one process.
@@ -145,7 +143,7 @@ cdef class dfs_manager:
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(coefflist[i]).value)
         self.dy_data_buf[0] = ps_dynamic_init(d, temp_q, temp_array)
-        for i in range(1, self.num_processes):
+        for i in range(1, np):
             self.dy_data_buf[i] = ps_dynamic_init(d, temp_q, NULL)
 
         fmpz_clear(temp_lead)
@@ -200,13 +198,13 @@ cdef class dfs_manager:
             sage: it.process.advance_exhaust()[0]
             [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3, 0, 0]
         """
-        cdef int i, j, k, d = self.d, t = 1, u = 0, np = self.num_processes, max_steps = 1000
+        cdef int i, j, k = 1, d = self.d, t = 1, u = 0, np = self.num_processes, max_steps = 1000
+        cdef list l
         cdef long ans_count = 0, ans_max = 10000
         cdef mpz_t z
         cdef Integer temp
         ans = []
 
-        k=1
         while (t and not u and ans_count < ans_max):
             sig_check() # Check for interrupts
             if np == 1: # Serial mode
@@ -219,7 +217,7 @@ cdef class dfs_manager:
                     for i in prange(np, schedule='dynamic'):  # Step each process forward
                         next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
                         if self.dy_data_buf[i].flag: t += 1
-                        if self.dy_data_buf[i].flag == -1: u += 1
+                        elif self.dy_data_buf[i].flag == -1: u += 1
                     for i in prange(np, schedule='dynamic'):  # Redistribute work to idle processes
                         j = (i-k+np) % np
                         ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
@@ -236,7 +234,6 @@ cdef class dfs_manager:
                     ans.append(l)
                     ans_count += 1
         if u:
-            print(u)
             raise RuntimeError("Node limit ({0:%d}) exceeded".format(self.node_limit))
         return ans
 
@@ -334,11 +331,12 @@ class WeilPolynomials_iter():
             coefflist.append(0)
             modlist.append(1)
         coeffsign = sgn(coefflist[0])
+        self.cofactor *= coeffsign
         coefflist = [x*coeffsign for x in reversed(coefflist)]
         if node_limit is None:
             node_limit = -1
         force_squarefree = Integer(squarefree)
-        self.process = dfs_manager(d2, q, coefflist, modlist, coeffsign,
+        self.process = dfs_manager(d2, q, coefflist, modlist,
                                    node_limit, parallel, force_squarefree)
         self.q = q
         self.squarefree = squarefree
