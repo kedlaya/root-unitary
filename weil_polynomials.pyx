@@ -138,9 +138,9 @@ cdef class dfs_manager:
         fmpz_set_mpz(temp_lead, Integer(coefflist[-1]).value)
         fmpz_init(temp_q)
         fmpz_set_mpz(temp_q, Integer(q).value)
-        temp_array = _fmpz_vec_init(d + 1)
-        for i in range(d + 1):
-            fmpz_set_mpz(temp_array + i, Integer(modlist[i]).value)
+        temp_array = _fmpz_vec_init(d+1)
+        for i in range(d+1):
+            fmpz_set_mpz(temp_array+i, Integer(modlist[i]).value)
         self.ps_st_data = ps_static_init(d, temp_q, temp_lead,
                                          temp_array, node_limit, force_squarefree)
 
@@ -154,7 +154,7 @@ cdef class dfs_manager:
 
         fmpz_clear(temp_lead)
         fmpz_clear(temp_q)
-        _fmpz_vec_clear(temp_array, d + 1)
+        _fmpz_vec_clear(temp_array, d+1)
 
     def __dealloc__(self):
         """
@@ -255,11 +255,11 @@ class WeilPolynomials_iter():
 
     EXAMPLES::
 
-        sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+        sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
         sage: it = iter(w)
         sage: next(it)
         3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
-        sage: w = WeilPolynomials(10,1,sign=-1,lead=[3,1,1])
+        sage: w = WeilPolynomials(10, 1, sign=-1, lead=[3,1,1])
         sage: it = iter(w)
         sage: next(it)
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
@@ -270,7 +270,7 @@ class WeilPolynomials_iter():
 
         EXAMPLES::
 
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: next(it)
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
@@ -328,17 +328,17 @@ class WeilPolynomials_iter():
         # Remove cofactor from initial coefficients
         if num_cofactor == 1: #cofactor x + sqrt(q)
             for i in range(1, len(coefflist)):
-                coefflist[i] -= coefflist[i-1]*q.sqrt()
+                coefflist[i] -= coefflist[i-1] * q.sqrt()
         elif num_cofactor == 2: #cofactor x - sqrt(q)
             for i in range(1, len(coefflist)):
-                coefflist[i] += coefflist[i-1]*q.sqrt()
+                coefflist[i] += coefflist[i-1] * q.sqrt()
         elif num_cofactor == 3: #cofactor x^2 - q
             for i in range(2, len(coefflist)):
                 coefflist[i] += coefflist[i-2]*q
         # Asymmetrize initial coefficients
         for i in range(len(coefflist)):
             for j in range(1, (len(coefflist)-i+1)//2):
-                coefflist[i+2*j] -= (d2-i).binomial(j)*(q**j)*coefflist[i]
+                coefflist[i+2*j] -= (d2-i).binomial(j) * (q**j) * coefflist[i]
         for _ in range(d2+1-len(coefflist)):
             coefflist.append(0)
             modlist.append(1)
@@ -360,7 +360,7 @@ class WeilPolynomials_iter():
 
         EXAMPLES::
 
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: it.__iter__() is it
             True
@@ -373,7 +373,7 @@ class WeilPolynomials_iter():
 
         EXAMPLES::
 
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: next(it)
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
