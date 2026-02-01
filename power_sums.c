@@ -220,7 +220,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
 }
 
 /*****
-  High-level memory management
+  Memory allocation and deallocation
 *****/
 
 /* Static memory allocation and initialization. */
@@ -321,34 +321,6 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   return(dy_data);
 }
 
-/* Split off a subtree (without allocating new memory).
-   The donor process yields its current branch at the first coefficient that is not uniquely specified.
-   The donee process may in turn be split immediately.
-
-   It is safe to run this in parallel as long as the instances of dy_data are pairwise distinct
-   and the instances of dy_data2 are pairwise distinct.
-*/
-void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if ((dy_data == NULL) || (dy_data2 == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
-
-  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
-
-  for (i=d; i>n+ascend; i--)
-    if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
-      dy_data2->n = n;
-      dy_data2->ascend = ascend;
-      _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
-      _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
-      fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
-      for (j=0; j<=1; j++) fmpq_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
-      fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
-      dy_data->ascend = i-n;
-      dy_data2->flag = 1; // Make the second process available for further splitting
-      return;
-  }
-  return;
-}
-
 /* Static memory deallocation. */
 void ps_static_clear(ps_static_data_t *st_data) {
   if (st_data == NULL) return;
@@ -375,6 +347,38 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   _fmpz_vec_clear(dy_data->w, dy_data->wlen);
   _fmpq_vec_clear(dy_data->w2, dy_data->w2len);
   free(dy_data);
+}
+
+/*****
+  Flow control
+*****/
+
+/* Split off a subtree (without allocating new memory).
+   The donor process yields its current branch at the first coefficient that is not uniquely specified.
+   The donee process may in turn be split immediately.
+
+   It is safe to run this in parallel as long as the instances of dy_data are pairwise distinct
+   and the instances of dy_data2 are pairwise distinct.
+*/
+void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
+  if ((dy_data == NULL) || (dy_data2 == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
+
+  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
+
+  for (i=d; i>n+ascend; i--)
+    if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
+      dy_data2->n = n;
+      dy_data2->ascend = ascend;
+      _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
+      _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
+      fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
+      for (j=0; j<=1; j++) fmpq_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
+      fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
+      dy_data->ascend = i-n;
+      dy_data2->flag = 1; // Make the second process available for further splitting
+      return;
+  }
+  return;
 }
 
 /* Increment the current moving counter and update stored data to match. 
