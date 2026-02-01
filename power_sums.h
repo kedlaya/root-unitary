@@ -28,6 +28,7 @@ typedef struct ps_dynamic_data {
 } ps_dynamic_data_t;
 
 int has_openmp();
+int num_threads();
 ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
 				 fmpz *modlist, long node_limit, int force_squarefree);
 ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist);

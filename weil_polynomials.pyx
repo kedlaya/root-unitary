@@ -29,10 +29,13 @@ AUTHOR:
   -- (2019-02-02): update for Python3
                    improve parallel mode
   -- (2019-12-19): final packaging for Sage (with help from David Roe)
+  -- (2026-01-31): improved algorithm for computing ranges
+                     (using truncated Hausdorff moment condition)
+                   choose number of processes based on available cores
 """
 
 #*****************************************************************************
-#       Copyright (C) 2019 Kiran S. Kedlaya <kskedl@gmail.com>
+#       Copyright (C) 2019-2026 Kiran S. Kedlaya <kskedl@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -46,7 +49,7 @@ from cython.parallel import prange
 from libc.stdlib cimport malloc, free
 from cysignals.signals cimport sig_check
 
-from sage.arith.misc import next_prime, is_prime
+from sage.arith.misc import next_prime, is_prime, primitive_root
 from sage.rings.finite_rings.finite_field_constructor import GF
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
@@ -70,6 +73,7 @@ cdef extern from "power_sums.c":
         fmpz *sympol    # Return value (a polynomial)
 
     int has_openmp()
+    int num_threads()
     ps_static_data_t *ps_static_init(int d, fmpz_t q, int coeffsign, fmpz_t lead,
                                      fmpz *modlist, long node_limit, int force_squarefree)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist)
@@ -110,11 +114,21 @@ cdef class dfs_manager:
         cdef fmpz_t temp_lead
         cdef fmpz_t temp_q
         cdef fmpz *temp_array
-        cdef int i = 101 if parallel else 1
+        cdef int i
+        cdef Integer p
 
         self.d = d
-        self.num_processes = i
-        self.dy_data_buf = <ps_dynamic_data_t **>malloc(i*cython.sizeof(cython.pointer(ps_dynamic_data_t)))
+        if parallel:
+            p = Integer(num_threads())
+            p = p**2
+            p = p.next_prime()
+            while (primitive_root(p) != 2):
+                p = p.next_prime()
+            self.num_processes = p
+        else:
+            self.num_processes = 1
+        self.dy_data_buf = <ps_dynamic_data_t **>malloc(self.num_processes
+                           * cython.sizeof(cython.pointer(ps_dynamic_data_t)))
         self.node_limit = node_limit
         fmpz_init(temp_lead)
         fmpz_set_mpz(temp_lead, Integer(coefflist[-1]).value)
@@ -213,7 +227,7 @@ cdef class dfs_manager:
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     l = []
                     # Convert a vector of fmpz's into mpz's, then Integers.
-                    for j in range(2 * d + 3):
+                    for j in range(2*d + 3):
                         flint_mpz_init_set_readonly(z, &self.dy_data_buf[i].sympol[j])
                         temp = Integer()
                         mpz_set(temp.value, z)
@@ -241,7 +255,7 @@ class WeilPolynomials_iter():
         sage: next(it)
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
     """
-    def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree, polring=None, minimum_num_processes=101):
+    def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree, polring=None):
         r"""
         Create an iterator for Weil polynomials.
 
@@ -252,7 +266,6 @@ class WeilPolynomials_iter():
             sage: next(it)
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         """
-        self.num_processes = minimum_num_processes
         if polring is None:
             polring = PolynomialRing(QQ, name='x')
         self.pol = polring
@@ -568,7 +581,6 @@ class WeilPolynomials():
         """
         if parallel and not has_openmp():
             raise RuntimeError("Parallel execution not supported")
-        self.num_processes = 101
         self.data = (d, q, sign, lead, node_limit, parallel, squarefree, polring)
 
     def __iter__(self):
@@ -582,7 +594,7 @@ class WeilPolynomials():
             sage: next(it)
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         """
-        w = WeilPolynomials_iter(*self.data + (self.num_processes,))
+        w = WeilPolynomials_iter(*self.data)
         self.w = w
         return w
 

@@ -17,6 +17,9 @@
 */
 
 #include "power_sums.h"
+#if defined(_OPENMP)
+  #include <omp.h>
+#endif
 
 /* Check for OpenMP at runtime.
 */
@@ -25,6 +28,11 @@ int has_openmp() {
   return(1);
   #endif
   return(0);
+}
+
+int num_threads() {
+  if (has_openmp()) return omp_get_max_threads(); 
+  else return(1);
 }
 
 /*****
