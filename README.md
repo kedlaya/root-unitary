@@ -14,15 +14,16 @@ plus some additional improvements described in:
 >    quartic K3 surfaces over F_2, LMS Journal of Computing 19
 >    special issue A (2016), 1-11.
 
-For the version circa 2015, see the branch archive-2015.
+For the version circa 2015, see the branch archive-2015. 
+For an upcoming version with further improvements, see the branch 2026.
 
-As of December 2019, the code is slated for inclusion into Sage: try
+As of December 2019, the code is available in Sage: try
 ```
 sage: R.<x> = ZZ[]
 sage: R.weil_polynomials?
 ```
-to learn more. I plan to maintain this repository with bugfixes to the
-underlying C code, as well as auxiliary code that is not intended for 
+to learn more. I plan to maintain this repository with bugfixes and improvements
+to the underlying C code, as well as auxiliary code that is not intended for
 inclusion in Sage. That includes scripts from the aforementioned papers 
 as well as code for abelian varieties in the L-Functions and Modular 
 Forms Database (https://www.lmfdb.org).
@@ -51,11 +52,16 @@ There are also some test scripts. See the README files in the following director
 * k3-scripts: Build tables associated to K3 surfaces
 * k3-quartic-f2: Scripts and data associated to smooth quartic surfaces over F2
 
+This code is made available under the Lesser GNU Public License (LGPL), 
+version 3.0 or any later version.
+
 POSSIBLE TODO LIST: 
 * Improve scheduling of parallel computation in the current Cython model.
 * Add a Julia wrapper for use in Nemo.
-* Use real root isolation instead of (or in addition to) Sturm's theorem. One
-   possible implementation, again using FLINT, is available in e-antic.
+* Use real root isolation instead of (or in addition to) Sturm's theorem. 
 * Use the mts library for budgeted reverse search:
-  http://cgm.cs.mcgill.ca/~avis/doc/tutorial.html
-
+   http://cgm.cs.mcgill.ca/~avis/doc/tutorial.html
+* Compute subresultant sequences using a half-GCD algorithm.
+* Compute Hankel determinants using a multimodular algorithm, using continued
+   fractions to handle the mod-p case.
+* Compute Hankel determinants even when they are valued in QQ(sqrt(q)) rather than QQ.
