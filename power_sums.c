@@ -291,7 +291,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
     dy_data->flag = 1; // Activate this process
     for (i=0; i<=d; i++)
       fmpz_set(dy_data->pol+i, coefflist+i);
-  } else dy_data->flag = 0;
+  } else dy_data->flag = 0; // Flag this process as inactive
   dy_data->upper = _fmpz_vec_init(d+1);
 
   fmpq_mat_init(dy_data->power_sums, d+1, 1);
@@ -316,10 +316,12 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
   if ((dy_data == NULL) || (dy_data2 == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
 
-  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
+  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend, flag;
 
   for (i=d; i>n+ascend; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
+      flag = dy_data->flag;
+      dy_data->flag = -1; // Make the first process unavailable
       dy_data2->n = n;
       dy_data2->ascend = ascend;
       _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
@@ -328,7 +330,8 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
       for (j=0; j<=1; j++) fmpq_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
       fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
       dy_data->ascend = i-n;
-      dy_data2->flag = 1; // This process can now itself be split.
+      dy_data->flag = flag; // Make the first process available
+      dy_data2->flag = 1; // Make the second process available for further splitting
       return;
   }
   return;
@@ -418,7 +421,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz *lower = dy_data->w+3;
   fmpz *upper = dy_data->w+4;
   fmpz *tpol = dy_data->w+5; // Length d+1
-  fmpz *tpol2 = dy_data->w+d+6; // Length 2*d+4
+  fmpz *tpol2 = dy_data->w+d+6; // Length 2*d+2
 
   fmpq *t0q = dy_data->w2; // This gets overwritten by change_by_sign
   fmpq *t1q = dy_data->w2+1; // This gets overwritten by change_by_sign
@@ -567,30 +570,29 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     /* Find a single value where the Rolle criterion holds. */
     fmpz_sub(t1z, upper, lower);
     fmpz_add_ui(t1z, t1z, 1);
-    r = fmpz_flog_ui(t1z, 2);
-    fmpz_ui_pow_ui(t0z, 2, r);
+    r = fmpz_flog_ui(t1z, 2); // r = floor(log_2 (upper-lower+1))
     s = 0;
     do {
-      if (r > 0) {
+      if (!r) {
+        fmpz_one(t0z);
+        fmpz_set(t1z, lower);
+      } else {
+        fmpz_one_2exp(t0z, r);
         fmpz_add(t1z, lower, t0z);
         fmpz_sub_ui(t1z, t1z, 1);
-      } else fmpz_set(t1z, lower);
+      }
       do {
         if (!(s = TEST_ROOTS(t1z))) fmpz_addmul_ui(t1z, t0z, 2);
       } while (!s && fmpz_cmp(t1z, upper) <= 0);
-      if (!s) {
-        r--;
-        fmpz_divexact_ui(t0z, t0z, 2);
-      }
+      if (!s) r--;
     } while (!s && r >= 0);
     if (!s) return(0);
 
     /* Shorten the interval based on tested values. */
     fmpz_sub(t2z, t1z, t0z);
-    fmpz_add_ui(lower, t2z, 1);
+    fmpz_add_ui(lower, t2z, 1); // Does not decrease lower
     fmpz_add(t2z, t1z, t0z);
-    fmpz_sub_ui(t2z, t2z, 1);
-    if (fmpz_cmp(t2z, upper) < 0) fmpz_set(upper, t2z);
+    if (fmpz_cmp(t2z, upper) <= 0) fmpz_sub_ui(upper, t2z, 1);
 
     /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
     fmpz_set(t2z, t1z);
