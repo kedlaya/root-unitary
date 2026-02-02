@@ -46,14 +46,8 @@ inline int is_mpz(fmpz f) {
   return(COEFF_IS_MPZ(f));
 }
 
-/* Set res to -a. */
-inline void fmpq_neg_raw(fmpq_t res, fmpq_t a) {
-  fmpz_neg(fmpq_numref(res), fmpq_numref(a));
-  fmpz_set(fmpq_denref(res), fmpq_denref(a));
-}
-
-/* Set res to a/b. */
-inline void fmpq_div_raw(fmpq_t res, fmpq_t a, fmpq_t b) {
+/* Set res to a/b. No aliasing allowed. */
+inline void fmpq_div_raw(fmpq_t res, const fmpq_t a, const fmpq_t b) {
   fmpz_mul(fmpq_numref(res), fmpq_numref(a), fmpq_denref(b));
   fmpz_mul(fmpq_denref(res), fmpq_denref(a), fmpq_numref(b));
 }
@@ -71,13 +65,13 @@ inline void fmpq_ceil(fmpz_t res, const fmpq_t a) {
 /* Set res to floor((a+b)/2). */
 inline void fmpz_fmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
   fmpz_add(res, a, b);
-  fmpz_fdiv_q_2exp(res, res, 1);
+  fmpz_fdiv_q_ui(res, res, 2);
 }
 
 /* Set res to ceil((a+b)/2). */
 inline void fmpz_cmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
   fmpz_add(res, a, b);
-  fmpz_cdiv_q_2exp(res, res, 1);
+  fmpz_cdiv_q_ui(res, res, 2);
 }
 
 /* Set res to floor(sqrt(a)). */
@@ -87,8 +81,7 @@ inline void fmpz_sqrt_f(fmpz_t res, const fmpz_t a) {
 
 /* Set res to ceil(sqrt(a)). */
 inline void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
-  int s = fmpz_is_square(a);
-  fmpz_sqrt(res, a);
+  int s = fmpz_root(res, a, 2);
   if (!s) fmpz_add_ui(res, res, 1);
 }
 
@@ -151,19 +144,16 @@ inline void fmpq_ceil_quad(fmpz_t res, const fmpq_t a, const fmpq_t b, const fmp
 
     This function assumes that:
         - {poly, n} is a normalized vector with n >= 2 and nonzero leading coefficient
-        - {w, 2*n - 1} is scratch space.
+        - {f0, n} and {f1, n-1} are scratch space.
     If a and b are not NULL, we add a*b to the constant term before testing.
 
     Based on code by Sebastian Pancratz from the FLINT repository.
 */
 
-int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
+int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
-
-  fmpz *f0     = w + 0*n;
-  fmpz *f1     = w + 1*n;
-  fmpz *t; // Not allocated, only used to swap pointers
+  fmpz *t;
   int i;
 
   /* Set f1 := deriv(poly). */
@@ -207,7 +197,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *w, int force_squarefree,
     if (n == 1) return(1);
 
     /* Extract content from f0.
-       This seems to do better in practice than an explicit subresultant computation. */
+       This seems to do better in practice than an explicit subresultant computation.
+       Note that f0+n is now allocated but unused, so available for a temporary value. */
     _fmpz_vec_content(f0+n, f0, n);
     _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, f0+n);
 
@@ -268,7 +259,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
   st_data->binom_mat = _fmpz_vec_init((d+1)*(d+1));
   for (i=0; i<=d; i++)
     for (j=0; j<=d; j++)
-      fmpz_bin_uiui(st_data->binom_mat+(d+1)*i+j, i, j);
+      fmpz_bin_uiui(st_data->binom_mat+(d+1)*i+j, j, i);
 
   st_data->eval_pm2_mats = _fmpz_vec_init(2*(d+1)*(d+1));
   for (i=0; i<=d; i++)
@@ -433,7 +424,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   fmpz *t1z = dy_data->w+3;
   fmpz *t2z = dy_data->w+4; // Affected by change_by_sign
   fmpz *tpol = dy_data->w+5; // Length d+1
-  fmpz *w = dy_data->w+d+6; // Length 2*d+1
+  fmpz *f0 = dy_data->w+d+6; // Length d+1
+  fmpz *f1 = dy_data->w+2*d+7; // Length d
 
   fmpq *t0q = dy_data->w2;
   fmpq *t1q = dy_data->w2+1;
@@ -469,12 +461,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       else fmpq_floor_quad(t2z, t2q, t3q, q);
     }
     if (!r) { // change_upper
-      if (force_squarefree) fmpz_sub_ui(t2z, t2z, 1);
-      if (!update || fmpz_cmp(t2z, upper) < 0) fmpz_set(upper, t2z);
+      if (force_squarefree && (!update || fmpz_cmp(t2z, upper) <= 0)) fmpz_sub_ui(upper, t2z, 1);
+      else if (!update || fmpz_cmp(t2z, upper) < 0) fmpz_set(upper, t2z);
     }
     else { // change_lower
-      if (force_squarefree) fmpz_add_ui(t2z, t2z, 1);
-      if (!update || fmpz_cmp(t2z, lower) > 0) fmpz_set(lower, t2z);
+      if (force_squarefree && (!update || fmpz_cmp(t2z, lower) >= 0)) fmpz_add_ui(lower, t2z, 1);
+      else if (!update || fmpz_cmp(t2z, lower) > 0) fmpz_set(lower, t2z);
     }
   }
 
@@ -505,12 +497,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     t = t1q; t1 = t0q; t2 = t0q;
   }
   change_by_sign(0, 0, t1, t);
-  if (t != NULL) fmpq_neg_raw(t, t);
+  if (t != NULL) fmpz_neg(fmpq_numref(t), fmpq_numref(t));
   change_by_sign(0, 1, t2, t);
 
   /* Compute the divided (n-1)-st derivative of pol, answer in tpol. */
   tz = st_data->binom_mat + (d+2)*(n-1);
-  for (i=0; i<=k; i++) fmpz_mul(tpol+i, tz+(d+1)*i, pol+i);
+  for (i=0; i<=k; i++) fmpz_mul(tpol+i, tz+i, pol+i);
 
   /* Descartes criterion: the evaluations of tpol at -2*sqrt(q), 2*sqrt(q) have the correct signs. */
   _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), tpol, k+1);
@@ -527,7 +519,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     t = t1q; t1 = t0q; t2 = t0q;
   }
   change_by_sign(1, 1, t1, t);
-  if (t != NULL) fmpq_neg_raw(t, t);
+  if (t != NULL) fmpz_neg(fmpq_numref(t), fmpq_numref(t));
   change_by_sign(1, 1-(k%2), t2, t);
   if ((s = fmpz_cmp(lower, upper)) > 0) return(0);
 
@@ -559,7 +551,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (k > 1 && fmpq_sgn(t2 = fmpq_mat_entry(dy_data->hankel_dets[r], k-2, 0)) > 0)
       fmpq_div_raw(t0q, t1, t2);
     else fmpq_set(t0q, t); // t was set in the for loop
-    if (r == 1) fmpq_neg_raw(t0q, t0q);
+    if (r == 1) fmpz_neg(fmpq_numref(t0q), fmpq_numref(t0q));
     change_by_sign(1, r, t0q, NULL);
     if ((s = fmpz_cmp(lower, upper)) > 0) return(0);
   }
@@ -569,7 +561,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   /* If modulus==0, then return 1 iff [lower, upper] contains 0
      and the Rolle condition is satisfied at 0. */
-  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, w, force_squarefree, modulus, x)
+  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, f0, f1, force_squarefree, modulus, x)
   if (fmpz_is_zero(modulus)) {
     if (fmpz_sgn(lower) > 0 || fmpz_sgn(upper) < 0 || !TEST_ROOTS(NULL)) return(0);
     fmpz_zero(lower);
