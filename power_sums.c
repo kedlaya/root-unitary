@@ -269,6 +269,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
       else fmpz_pow_ui(k0, st_data->q, j/2);
       fmpz_mul_2exp(k0, k0, j);
       fmpz_mul_si(k0, k0, -i);
+      fmpz_mul(k0, k0, st_data->binom_mat + (d+2)*(d-i) + j);
     }
 
   return(st_data);
@@ -379,13 +380,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   /* Static data */
   int i, j, r, s;
   int d = st_data->d;
-  int k = d + 1 - n;
+  int k = d - n;
   int force_squarefree = st_data->force_squarefree;
-  fmpz *modulus = st_data->modlist + n - 1;
-  fmpz *pol = dy_data->pol + n - 1;
+  fmpz *modulus = st_data->modlist + n;
+  fmpz *pol = dy_data->pol + n;
   fmpz *q = st_data->q;
   int q_is_1 = fmpz_is_one(q);
-  fmpq *f = st_data->f + n - 1;
+  fmpq *f = st_data->f + n;
 
   /* Pointers into persistent working memory */
   fmpz *lower = dy_data->w;
@@ -471,13 +472,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   if (t != NULL) fmpz_neg(fmpq_numref(t), fmpq_numref(t));
   change_by_sign(0, 1, t2, t);
 
-  /* Compute the divided (n-1)-st derivative of pol, answer in tpol. */
-  tz = st_data->binom_mat + (d+2)*(n-1);
-  for (i=0; i<=k; i++) fmpz_mul(tpol+i, tz+i, pol+i);
-
-  /* Descartes criterion: the evaluations of tpol at -2*sqrt(q), 2*sqrt(q) have the correct signs. */
-  _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), tpol, k+1);
-  _fmpz_vec_dot(t1z, st_data->eval_pm2_mats+(d+1)*(2*k+1), tpol, k+1);
+  /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
+     have the correct signs. */
+  _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), pol, k+1);
+  _fmpz_vec_dot(t1z, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
   fmpz_set(fmpq_denref(t0q), pol+k);
   fmpz_set(fmpq_denref(t1q), pol+k);
   if (q_is_1) {
@@ -527,19 +525,20 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     if ((s = fmpz_cmp(lower, upper)) > 0) return(0);
   }
 
-  /* Rolle criterion: tpol has all roots real.
-    Note: we do not call change_by_sign hereafter, so it is now safe to assign to t2z. */
-
-  /* If modulus==0, then return 1 iff [lower, upper] contains 0
-     and the Rolle condition is satisfied at 0. */
+  /* If modulus==0, reduce the interval to [0]. */
   #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, f0, f1, force_squarefree, modulus, x)
   if (fmpz_is_zero(modulus)) {
-    if (fmpz_sgn(lower) > 0 || fmpz_sgn(upper) < 0 || !TEST_ROOTS(NULL)) return(0);
+    if (fmpz_sgn(lower) > 0 || fmpz_sgn(upper) < 0) return(0);
     fmpz_zero(lower);
     fmpz_zero(upper);
-    fmpz_set(dy_data->upper+n-1, pol);
-    return(1);
   }
+
+  /* Compute the divided n-th derivative of pol, answer in tpol. */
+  tz = st_data->binom_mat + (d+2)*n;
+  for (i=0; i<=k; i++) fmpz_mul(tpol+i, tz+i, pol+i);
+
+  /* Rolle criterion: tpol has all roots real.
+    Note: we do not call change_by_sign hereafter, so it is now safe to assign to t2z. */
 
   if (!s) { /* Handle the case upper == lower directly. */
     if (!TEST_ROOTS(lower)) return(0);
@@ -585,10 +584,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Set the new upper bound. */
   fmpz_mul(upper, upper, modulus);
-  fmpz_add(dy_data->upper+n-1, pol, upper);
+  fmpz_add(dy_data->upper+n, pol, upper);
 
   /* Set the new polynomial value, then correct the k-th power sum and related quantities. */
-  step_forward(st_data, dy_data, n-1, lower);
+  step_forward(st_data, dy_data, n, lower);
 
   return(1);
 }
@@ -650,8 +649,6 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   int n = dy_data->n;
   if (n>d) return; // This process is exhausted.
 
-  fmpz *modlist = st_data->modlist;
-
   int ascend = dy_data->ascend;
   long node_limit = st_data->node_limit;
   long node_count = dy_data->node_count;
@@ -689,8 +686,8 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       ascend = 1;
       flag = 2;
     } else { // Compute children of the current node.
-      ascend = !set_range_from_power_sums(st_data, dy_data, n);
       n -= 1;
+      ascend = !set_range_from_power_sums(st_data, dy_data, n);
       if (ascend) { // Found a terminal node
 	node_count += 1;
 	if (node_limit != -1 && node_count >= node_limit) flag = -1;
