@@ -338,36 +338,8 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 }
 
 /*****
-  Flow control
+  Low-level flow control
 *****/
-
-/* Split off a subtree (without allocating new memory).
-   The donor process yields its current branch at the first coefficient that is not uniquely specified.
-   The donee process may in turn be split immediately.
-
-   It is safe to run this in parallel as long as the instances of dy_data are pairwise distinct
-   and the instances of dy_data2 are pairwise distinct.
-*/
-void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if ((dy_data == NULL) || (dy_data2 == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
-
-  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
-
-  for (i=d; i>n+ascend; i--)
-    if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
-      dy_data2->n = n;
-      dy_data2->ascend = ascend;
-      _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
-      _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
-      fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
-      for (j=0; j<=1; j++) fmpq_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
-      fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
-      dy_data->ascend = i - n;
-      dy_data2->flag = 1; // Make the second process available for further splitting
-      return;
-  }
-  return;
-}
 
 /* Increment the current moving counter and update stored data to match. 
    If step is NULL it is interpreted as 1. */
@@ -403,12 +375,10 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
    interval is nonempty.
 
 */
-int set_range_from_power_sums(ps_static_data_t *st_data,
-			      ps_dynamic_data_t *dy_data) {
+int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
   /* Static data */
   int i, j, r, s;
   int d = st_data->d;
-  int n = dy_data->n;
   int k = d + 1 - n;
   int force_squarefree = st_data->force_squarefree;
   fmpz *modulus = st_data->modlist + n - 1;
@@ -623,6 +593,43 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
   return(1);
 }
 
+/*****
+  High-level flow control
+*****/
+
+/* Split off a subtree (without allocating new memory).
+   The donor process yields its current branch at the first coefficient that is not uniquely specified.
+   The donee process may in turn be split immediately.
+
+   It is safe to run this in parallel as long as the instances of dy_data are pairwise distinct
+   and the instances of dy_data2 are pairwise distinct.
+*/
+void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
+  if ((dy_data == NULL) || (dy_data2 == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
+
+  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
+
+  for (i=d; i>n+ascend; i--)
+    if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
+      /* Copy the current state of the donor to the donee process. */
+      dy_data2->n = n;
+      dy_data2->ascend = ascend;
+      _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
+      _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
+      fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
+      for (j=0; j<=1; j++) fmpq_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
+      
+      /* Restrict the donee process to the current branch. */
+      fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
+      /* Remove the current branch from the donor process. */
+      dy_data->ascend = i - n;
+      /* Make the donee process available for further splitting. */
+      dy_data2->flag = 1;
+      break;
+    }
+}
+
+
 /* Top-level flow control: allow one process to run for up to max_steps iterations,
    or until it finds a polynomial to be returned, whichever comes first.
 
@@ -682,8 +689,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       ascend = 1;
       flag = 2;
     } else { // Compute children of the current node.
-      dy_data->n = n;
-      ascend = !set_range_from_power_sums(st_data, dy_data);
+      ascend = !set_range_from_power_sums(st_data, dy_data, n);
       n -= 1;
       if (ascend) { // Found a terminal node
 	node_count += 1;
