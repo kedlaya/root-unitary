@@ -461,12 +461,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
       else fmpq_floor_quad(t2z, t2q, t3q, q);
     }
     if (!r) { // change_upper
-      if (force_squarefree && (!update || fmpz_cmp(t2z, upper) <= 0)) fmpz_sub_ui(upper, t2z, 1);
-      else if (!update || fmpz_cmp(t2z, upper) < 0) fmpz_set(upper, t2z);
-    }
-    else { // change_lower
-      if (force_squarefree && (!update || fmpz_cmp(t2z, lower) >= 0)) fmpz_add_ui(lower, t2z, 1);
-      else if (!update || fmpz_cmp(t2z, lower) > 0) fmpz_set(lower, t2z);
+      if (force_squarefree) {
+        if (!update || fmpz_cmp(t2z, upper) <= 0) fmpz_sub_ui(upper, t2z, 1);
+      } else if (!update || fmpz_cmp(t2z, upper) < 0) fmpz_set(upper, t2z);
+    } else { // change_lower
+      if (force_squarefree) {
+        if (!update || fmpz_cmp(t2z, lower) >= 0) fmpz_add_ui(lower, t2z, 1);
+      } else if (!update || fmpz_cmp(t2z, lower) > 0) fmpz_set(lower, t2z);
     }
   }
 
@@ -525,7 +526,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
 
   /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant. */
   for (r=0; r<=1; r++) {
-    if (k%2 == 1 && !q_is_1) continue; // Skip cases where the Hankel matrix is not defined over Q
+    if (k%2 == 1 && !q_is_1) continue; // Hankel matrix is not defined over Q
     s = k/2 + !(k%2 == 0 && r == 1);
     fmpq_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, s, s);
     for (i=0; i<s; i++)
@@ -533,7 +534,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
         t = fmpq_mat_entry(hankel_mat, i, j);
         if (i > 0 && j+1 < s) // This is a repeat of a previously computed entry
           fmpq_set(t, fmpq_mat_entry(hankel_mat, i-1, j+1));
-        else if (k%2 == 0 && r == 0) 
+        else if (k%2 == 0 && r == 0)
           fmpq_set(t, POW(i+j));
         else if (k%2 == 0 && r == 1) {
           fmpq_mul_ui(t, POW(i+j), 4);
@@ -566,6 +567,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data,
     if (fmpz_sgn(lower) > 0 || fmpz_sgn(upper) < 0 || !TEST_ROOTS(NULL)) return(0);
     fmpz_zero(lower);
     fmpz_zero(upper);
+    fmpz_set(dy_data->upper+n-1, pol);
     return(1);
   }
 
@@ -641,14 +643,13 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   int n = dy_data->n;
   if (n>d) return; // This process is exhausted.
 
-  int node_limit = st_data->node_limit;
   fmpz *modlist = st_data->modlist;
 
   int ascend = dy_data->ascend;
+  long node_limit = st_data->node_limit;
   long node_count = dy_data->node_count;
   fmpz *pol = dy_data->pol;
-  fmpz *sympol = dy_data->sympol;
-  fmpz *t;
+  fmpz *upper = dy_data->upper;
 
   int i, j, flag = 1, count_steps = 0;
 
@@ -658,21 +659,25 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       n += ascend;
       if (n > d) flag = 0; // This process is exhausted.
       else {
-	ascend = (fmpz_is_zero(modlist+n) || fmpz_cmp(pol+n, dy_data->upper+n) >= 0);
+	ascend = (fmpz_cmp(pol+n, upper+n) >= 0);
 	if (!ascend) step_forward(st_data, dy_data, n, NULL);
       }
     } else if (n < 0) { // Return a solution.
-      _fmpz_vec_zero(sympol, 2*d+3);
+      fmpz *sympol = dy_data->sympol;
+      fmpz *t;
+      fmpz *q = st_data->q;
+      int q_is_1 = fmpz_is_one(q);
+
       for (i=0; i<=d; i++) {
-        t = sympol + d + i;
-	fmpz_one(t);
-	for (j=1; j<=i; j++) {
-          fmpz_mul(t, t, st_data->q);
-	  fmpz_mul_ui(t, t, i-j+1);
-	  fmpz_divexact_ui(t, t, j);
-	  fmpz_addmul(t-2*j, pol+i, t);
+        t = sympol + d - i; 
+	fmpz_set(t, pol+i);
+	for (j=i; j>0; j--) {
+	  if (j==i) fmpz_set(t+2*i, t);
+	  else fmpz_add(t+2*j, t+2*j, t);
+          if (!q_is_1) fmpz_mul(t, t, q);
+	  fmpz_mul_ui(t, t, j);
+	  fmpz_divexact_ui(t, t, i-j+1);
 	}
-        fmpz_set(t, pol+i);
       }
       ascend = 1;
       flag = 2;
