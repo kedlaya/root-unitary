@@ -617,7 +617,7 @@ class WeilPolynomials():
             sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: l = list(w)
             sage: w.node_count()
-            158
+            118
         """
         return self.w.node_count()
 

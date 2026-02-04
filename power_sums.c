@@ -15,9 +15,6 @@
 */
 
 #include "power_sums.h"
-#if defined(_OPENMP)
-  #include <omp.h>
-#endif
 
 /* Check for OpenMP at runtime.
 */
@@ -344,7 +341,6 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 
 /* Increment the current moving counter and update stored data to match. 
    If step is NULL it is interpreted as 1. */
-#define POW(x) fmpq_mat_entry(dy_data->power_sums, x, 0)
 
 inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
   int k = st_data->d - n;
@@ -352,6 +348,7 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
   fmpq *f = st_data->f + n;
   fmpq *t2q = dy_data->w2;
   fmpq *t;
+  fmpq_mat_struct *hankel_dets;
 
   if (step == NULL) {
     fmpq_set(t2q, f);
@@ -361,13 +358,15 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
     fmpq_mul_fmpz(t2q, f, step);
     fmpz_addmul(pol+n, step, st_data->modlist+n);
   }
-  t = POW(k);
+  t = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_sub(t, t, t2q);
-  t = fmpq_mat_entry(dy_data->hankel_dets[0], k, 0);
-  if (k > 1) fmpq_submul(t, fmpq_mat_entry(dy_data->hankel_dets[0], k-2, 0), t2q);
+  hankel_dets = dy_data->hankel_dets[0];
+  t = fmpq_mat_entry(hankel_dets, k, 0);
+  if (k > 1) fmpq_submul(t, fmpq_mat_entry(hankel_dets, k-2, 0), t2q);
   else fmpq_sub(t, t, t2q);
-  t = fmpq_mat_entry(dy_data->hankel_dets[1], k, 0);
-  if (k > 1) fmpq_addmul(t, fmpq_mat_entry(dy_data->hankel_dets[1], k-2, 0), t2q);
+  hankel_dets = dy_data->hankel_dets[1];
+  t = fmpq_mat_entry(hankel_dets, k, 0);
+  if (k > 1) fmpq_addmul(t, fmpq_mat_entry(hankel_dets, k-2, 0), t2q);
   else fmpq_add(t, t, t2q);
 }
 
@@ -375,35 +374,44 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
    a lower and upper bound for the next coefficient. Return 1 iff the resulting
    interval is nonempty.
 
+   The value of dy_data->pol+n is assumed to be correct modulo st_data->modlist+n.
 */
 int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
   /* Static data */
+
   int i, j, r, s;
   int d = st_data->d;
   int k = d - n;
   int force_squarefree = st_data->force_squarefree;
   fmpz *modulus = st_data->modlist + n;
-  fmpz *pol = dy_data->pol + n;
   fmpz *q = st_data->q;
   int q_is_1 = fmpz_is_one(q);
   fmpq *f = st_data->f + n;
 
+  /* Dynamic data */
+
+  fmpz *pol = dy_data->pol + n;
+  fmpq_mat_struct *power_sums = dy_data->power_sums;
+  fmpq_mat_struct *hankel_dets;
+
   /* Pointers into persistent working memory */
+
   fmpz *lower = dy_data->w;
-  fmpz *upper = dy_data->w+1;
-  fmpz *t0z = dy_data->w+2;
-  fmpz *t1z = dy_data->w+3;
-  fmpz *t2z = dy_data->w+4; // Affected by change_by_sign
-  fmpz *tpol = dy_data->w+5; // Length d+1
-  fmpz *f0 = dy_data->w+d+6; // Length d+1
-  fmpz *f1 = dy_data->w+2*d+7; // Length d
+  fmpz *upper = lower+1;
+  fmpz *t0z = lower+2;
+  fmpz *t1z = lower+3;
+  fmpz *t2z = lower+4; // Affected by change_by_sign
+  fmpz *tpol = lower+5; // Length d+1
+  fmpz *f0 = lower+d+6; // Length d+1
+  fmpz *f1 = lower+2*d+7; // Length d
 
   fmpq *t0q = dy_data->w2;
-  fmpq *t1q = dy_data->w2+1;
-  fmpq *t2q = dy_data->w2+2; // Affected by change_by_sign
-  fmpq *t3q = dy_data->w2+3; // Affected by change_by_sign
+  fmpq *t1q = t0q+1;
+  fmpq *t2q = t0q+2; // Affected by change_by_sign
+  fmpq *t3q = t0q+3; // Affected by change_by_sign
 
   /* Unallocated pointers */
+
   fmpz *tz;
   fmpq *t, *t1, *t2;
   fmpq_mat_t hankel_mat;
@@ -443,25 +451,30 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   }
 
   /* If k>d, no further coefficients to bound. */
+
   if (k>d) return(1);
 
-  /* Update power_sums[k] using the Girard-Newton formula. */
-  tz = fmpq_numref(POW(0));
-  fmpz_set_ui(tz, k); // Temporary change to apply Girard-Newton
-  fmpq_mat_fmpz_vec_mul(t0q, pol, k, dy_data->power_sums);
-  fmpz_neg(t0z, pol+k);
-  fmpq_div_fmpz(POW(k), t0q, t0z);
-  fmpz_set_ui(tz, d); // Change back to the correct value, needed for Chebyshev criterion
-
   /* If modulus==0, reduce the interval to [0]. */
+
   i = fmpz_is_zero(modulus);
   if (i) {
     fmpz_zero(lower);
     fmpz_zero(upper);
   }
 
+  /* Update power_sums[k] using the Girard-Newton formula. */
+
+  #define POW(x) fmpq_mat_entry(power_sums, x, 0)
+  tz = fmpq_numref(POW(0));
+  fmpz_set_ui(tz, k); // Temporary change to apply Girard-Newton
+  fmpq_mat_fmpz_vec_mul(t0q, pol, k, power_sums);
+  fmpz_neg(t0z, pol+k);
+  fmpq_div_fmpz(POW(k), t0q, t0z);
+  fmpz_set_ui(tz, d); // Change back to the correct value, needed for Chebyshev criterion
+
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
-  fmpq_mat_fmpz_vec_mul(t0q, st_data->sum_mats+(d+1)*k, k+1, dy_data->power_sums);
+
+  fmpq_mat_fmpz_vec_mul(t0q, st_data->sum_mats+(d+1)*k, k+1, power_sums);
   if (q_is_1 || k == 1) fmpz_set_ui(t0z, 2*d);
   else {
     fmpz_pow_ui(t1z, q, k/2);
@@ -475,7 +488,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     fmpq_set_fmpz(t1q, t0z);
     t = t1q; t1 = t0q; t2 = t0q;
   }
-  change_by_sign(i, 0, t1, t);
+  change_by_sign(i, 0, t1, t); // i == fmpz_is_zero(modulus)
   if (t != NULL) fmpz_neg(fmpq_numref(t), fmpq_numref(t));
   change_by_sign(i, 1, t2, t);
 
@@ -500,18 +513,20 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   if ((s = fmpz_cmp(lower, upper)) > 0) return(0);
 
   /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant. */
+
   for (r=0; r<=1; r++) {
     if (k%2 == 1 && !q_is_1) continue; // Hankel matrix is not defined over Q
-    s = k/2 + !(k%2 == 0 && r == 1);
-    fmpq_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, s, s);
+    s = k/2 + !(r == 1 && k%2 == 0);
+    if (r == 0 || k%2 == 0)
+      fmpq_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, s, s);
     for (i=0; i<s; i++)
       for (j=0; j<s; j++) {
         t = fmpq_mat_entry(hankel_mat, i, j);
         if (i > 0 && j+1 < s) // This is a repeat of a previously computed entry
           fmpq_set(t, fmpq_mat_entry(hankel_mat, i-1, j+1));
-        else if (k%2 == 0 && r == 0)
+        else if (r == 0 && k%2 == 0)
           fmpq_set(t, POW(i+j));
-        else if (k%2 == 0 && r == 1) {
+        else if (r == 1 && k%2 == 0) {
           fmpq_mul_ui(t, POW(i+j), 4);
   	  if (!q_is_1) fmpq_mul_fmpz(t, t, q);
 	  fmpq_sub(t, t, POW(i+j+2));
@@ -521,10 +536,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 	  else fmpq_sub(t, t, POW(i+j+1));
 	}
       } // Final value of t will be used again
-    t1 = fmpq_mat_entry(dy_data->hankel_dets[r], k, 0);
+    hankel_dets = dy_data->hankel_dets[r];
+    t1 = fmpq_mat_entry(hankel_dets, k, 0);
     fmpq_mat_det(t1, hankel_mat);
-    fmpq_mat_window_clear(hankel_mat);
-    if (k > 1 && fmpq_sgn(t2 = fmpq_mat_entry(dy_data->hankel_dets[r], k-2, 0)) > 0)
+    if (r == 1 || k%2 == 0) // Otherwise reuse the window size
+      fmpq_mat_window_clear(hankel_mat);
+    if (k > 1 && fmpq_sgn(t2 = fmpq_mat_entry(hankel_dets, k-2, 0)) > 0)
       fmpq_div_raw(t0q, t1, t2);
     else fmpq_set(t0q, t); // t was set in the for loop
     if (r == 1) fmpz_neg(fmpq_numref(t0q), fmpq_numref(t0q));
@@ -533,6 +550,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   }
 
   /* Compute the divided n-th derivative of pol, answer in tpol. */
+
   tz = st_data->binom_mat + (d+2)*n;
   for (i=0; i<=k; i++) fmpz_mul(tpol+i, tz+i, pol+i);
 
@@ -606,15 +624,15 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
   if ((dy_data == NULL) || (dy_data2 == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
 
-  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend;
+  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend, k = n + ascend;
 
-  for (i=d; i>n+ascend; i--)
+  for (i=d; i>k; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
       /* Copy the current state of the donor to the donee process. */
       dy_data2->n = n;
       dy_data2->ascend = ascend;
-      _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
-      _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
+      _fmpz_vec_set(dy_data2->pol+k, dy_data->pol+k, d+1-k);
+      _fmpz_vec_set(dy_data2->upper+k, dy_data->upper+k, d+1-k);
       fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
       for (j=0; j<=1; j++) fmpq_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
       

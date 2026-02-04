@@ -6,6 +6,10 @@
 #include <flint/fmpq.h>
 #include <flint/fmpq_mat.h>
 
+#if defined(_OPENMP)
+  #include <omp.h>
+#endif
+
 typedef struct ps_static_data {
   int d, force_squarefree;
   long node_limit;
