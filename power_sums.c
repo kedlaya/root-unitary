@@ -150,13 +150,14 @@ inline void fmpq_ceil_quad(fmpz_t res, const fmpq_t a, const fmpq_t b, const fmp
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
+
   fmpz *t;
   int i;
 
   /* Set f1 := deriv(poly). */
   _fmpz_poly_derivative(f1, poly, n);
-
   n--; // now n = deg(poly)
+
   int n0 = n; // Initial degree
   int sgn0_l = fmpz_sgn(poly+n); // Sign of initial leading coefficient
 
@@ -212,11 +213,10 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
 ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist, 
                                  long node_limit, int force_squarefree) {
   int i, j, q_is_1;
-  ps_static_data_t *st_data;
   fmpz *k0, *pol;
   fmpq *k1;
 
-  st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
+  ps_static_data_t *st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
 
   st_data->d = d;
   fmpz_init_set(st_data->q, q);
@@ -275,10 +275,10 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
 /* Dynamic memory allocation and initialization.
    Call with coefflist == NULL to prepare an inactive process. */
 ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
-  ps_dynamic_data_t *dy_data;
   int i;
 
-  dy_data = (ps_dynamic_data_t *)malloc(sizeof(ps_dynamic_data_t));
+  ps_dynamic_data_t *dy_data = (ps_dynamic_data_t *)malloc(sizeof(ps_dynamic_data_t));
+
   dy_data->d = d;
   dy_data->n = d;
   dy_data->node_count = 0;
@@ -310,7 +310,9 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
 /* Static memory deallocation. */
 void ps_static_clear(ps_static_data_t *st_data) {
   if (st_data == NULL) return;
+
   int d = st_data->d;
+
   fmpz_clear(st_data->q);
   _fmpq_vec_clear(st_data->f, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
@@ -323,7 +325,10 @@ void ps_static_clear(ps_static_data_t *st_data) {
 /* Dynamic memory deallocation. */
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   if (dy_data == NULL) return;
-  int i, d = dy_data->d;
+  
+  int i;
+  int d = dy_data->d;
+
   _fmpz_vec_clear(dy_data->pol, d+1);
   _fmpz_vec_clear(dy_data->sympol, 2*d+3);
   _fmpz_vec_clear(dy_data->upper, d+1);
@@ -370,6 +375,65 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
   else fmpq_add(t, t, t2q);
 }
 
+/* Given a polynomial tpol of degree k, shrink the interval [lower, upper] to the range of constant terms
+   which when added to tpol give a polynomial with all real roots. Returns 0 if this range is empty (with
+   lower, upper now undefined) and 1 otherwise (with lower, upper now the endpoints of the new range). */
+
+int apply_rolle_condition(const fmpz *tpol, int k, int force_squarefree, const fmpz_t modulus, fmpz_t lower, fmpz_t upper, fmpz *w) {
+  int r, s;
+  
+  fmpz *t0z = w;
+  fmpz *t1z = w+1;
+  fmpz *t2z = w+2;
+  fmpz *f0 = w+3; // Length k+1
+  fmpz *f1 = w+k+4; // Length k
+
+  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, f0, f1, force_squarefree, modulus, x)
+  
+  if (!fmpz_cmp(lower, upper)) { /* Handle the case upper == lower directly. */
+    if (!TEST_ROOTS(lower)) return(0);
+  } else {
+    /* Find a single value where the Rolle criterion holds. */
+    fmpz_sub(t0z, upper, lower);
+    fmpz_add_ui(t0z, t0z, 1);
+    r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1))
+    s = 0;
+    do {
+      fmpz_one_2exp(t2z, r);
+      if (!r) fmpz_set(t0z, lower);
+      else {
+        fmpz_add(t0z, lower, t2z);
+        fmpz_sub_ui(t0z, t0z, 1);
+      }
+      do {
+        if (!(s = TEST_ROOTS(t0z))) fmpz_addmul_ui(t0z, t2z, 2);
+      } while (!s && fmpz_cmp(t0z, upper) <= 0);
+      if (!s) r--;
+    } while (!s && r >= 0);
+    if (!s) return(0);
+
+    /* Shorten the interval based on tested values. */
+    fmpz_sub(t1z, t0z, t2z);
+    fmpz_add_ui(lower, t1z, 1); // Does not decrease lower
+    fmpz_add(t1z, t0z, t2z);
+    if (fmpz_cmp(t1z, upper) <= 0) fmpz_sub_ui(upper, t1z, 1);
+
+    /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
+    fmpz_set(t1z, t0z);
+    while (fmpz_cmp(lower, t0z)) {
+      fmpz_fmid(t2z, lower, t0z);
+      if (TEST_ROOTS(t2z)) fmpz_set(t0z, t2z);
+      else fmpz_add_ui(lower, t2z, 1);
+    }
+    while (fmpz_cmp(t1z, upper)) {
+      fmpz_cmid(t0z, t1z, upper);
+      if (TEST_ROOTS(t0z)) fmpz_set(t1z, t0z);
+      else fmpz_sub_ui(upper, t0z, 1);
+    }
+  }
+  return(1);
+}
+
 /* The following is the key subroutine: given some initial coefficients, compute
    a lower and upper bound for the next coefficient. Return 1 iff the resulting
    interval is nonempty.
@@ -396,14 +460,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Pointers into persistent working memory */
 
-  fmpz *lower = dy_data->w;
-  fmpz *upper = lower+1;
-  fmpz *t0z = lower+2;
-  fmpz *t1z = lower+3;
-  fmpz *t2z = lower+4; // Affected by change_by_sign
-  fmpz *tpol = lower+5; // Length d+1
-  fmpz *f0 = lower+d+6; // Length d+1
-  fmpz *f1 = lower+2*d+7; // Length d
+  fmpz *tpol = dy_data->w; // Length d+1
+  fmpz *lower = tpol+d+1;
+  fmpz *upper = tpol+d+2;
+  fmpz *t0z = tpol+d+3;
+  fmpz *t1z = tpol+d+4;
+  fmpz *t2z = tpol+d+5; // Affected by change_by_sign
 
   fmpq *t0q = dy_data->w2;
   fmpq *t1q = t0q+1;
@@ -554,51 +616,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   tz = st_data->binom_mat + (d+2)*n;
   for (i=0; i<=k; i++) fmpz_mul(tpol+i, tz+i, pol+i);
 
-  /* Rolle criterion: tpol has all roots real.
-    Note: we do not call change_by_sign hereafter, so it is now safe to assign to t2z. */
-
-  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, f0, f1, force_squarefree, modulus, x)
-  if (!s) { /* Handle the case upper == lower directly. */
-    if (!TEST_ROOTS(lower)) return(0);
-  } else {
-    /* Find a single value where the Rolle criterion holds. */
-    fmpz_sub(t0z, upper, lower);
-    fmpz_add_ui(t0z, t0z, 1);
-    r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1))
-    s = 0;
-    do {
-      fmpz_one_2exp(t2z, r);
-      if (!r) fmpz_set(t0z, lower);
-      else {
-        fmpz_add(t0z, lower, t2z);
-        fmpz_sub_ui(t0z, t0z, 1);
-      }
-      do {
-        if (!(s = TEST_ROOTS(t0z))) fmpz_addmul_ui(t0z, t2z, 2);
-      } while (!s && fmpz_cmp(t0z, upper) <= 0);
-      if (!s) r--;
-    } while (!s && r >= 0);
-    if (!s) return(0);
-
-    /* Shorten the interval based on tested values. */
-    fmpz_sub(t1z, t0z, t2z);
-    fmpz_add_ui(lower, t1z, 1); // Does not decrease lower
-    fmpz_add(t1z, t0z, t2z);
-    if (fmpz_cmp(t1z, upper) <= 0) fmpz_sub_ui(upper, t1z, 1);
-
-    /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
-    fmpz_set(t1z, t0z);
-    while (fmpz_cmp(lower, t0z)) {
-      fmpz_fmid(t2z, lower, t0z);
-      if (TEST_ROOTS(t2z)) fmpz_set(t0z, t2z);
-      else fmpz_add_ui(lower, t2z, 1);
-    }
-    while (fmpz_cmp(t1z, upper)) {
-      fmpz_cmid(t0z, t1z, upper);
-      if (TEST_ROOTS(t0z)) fmpz_set(t1z, t0z);
-      else fmpz_sub_ui(upper, t0z, 1);
-    }
-  }
+  /* Rolle criterion: tpol has all roots real. */
+    
+  s = apply_rolle_condition(tpol, k, force_squarefree, modulus, lower, upper, t0z);
+  if (!s) return(0);
 
   /* Set the new upper bound. */
   fmpz_mul(upper, upper, modulus);
@@ -624,7 +645,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
   if ((dy_data == NULL) || (dy_data2 == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
 
-  int i, j, d = dy_data->d, n = dy_data->n, ascend = dy_data->ascend, k = n + ascend;
+  int i, j;
+  int d = dy_data->d;
+  int n = dy_data->n;
+  int ascend = dy_data->ascend;
+  int k = n + ascend;
 
   for (i=d; i>k; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
@@ -673,7 +698,9 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   fmpz *pol = dy_data->pol;
   fmpz *upper = dy_data->upper;
 
-  int i, j, flag = 1, count_steps = 0;
+  int i, j;
+  int flag = 1;
+  int count_steps = 0;
 
   while (flag == 1 && count_steps <= max_steps) {
     count_steps += 1;
