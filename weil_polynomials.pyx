@@ -415,7 +415,7 @@ class WeilPolynomials_iter():
             sage: it = iter(w)
             sage: l = list(it)
             sage: it.node_count()
-            158
+            118
         """
         if self.process is None:
             return self.count

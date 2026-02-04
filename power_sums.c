@@ -453,6 +453,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpq_div_fmpz(POW(k), t0q, t0z);
   fmpz_set_ui(tz, d); // Change back to the correct value, needed for Chebyshev criterion
 
+  /* If modulus==0, reduce the interval to [0]. */
+  i = fmpz_is_zero(modulus);
+  if (i) {
+    fmpz_zero(lower);
+    fmpz_zero(upper);
+  }
+
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
   fmpq_mat_fmpz_vec_mul(t0q, st_data->sum_mats+(d+1)*k, k+1, dy_data->power_sums);
   if (q_is_1 || k == 1) fmpz_set_ui(t0z, 2*d);
@@ -468,9 +475,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     fmpq_set_fmpz(t1q, t0z);
     t = t1q; t1 = t0q; t2 = t0q;
   }
-  change_by_sign(0, 0, t1, t);
+  change_by_sign(i, 0, t1, t);
   if (t != NULL) fmpz_neg(fmpq_numref(t), fmpq_numref(t));
-  change_by_sign(0, 1, t2, t);
+  change_by_sign(i, 1, t2, t);
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
      have the correct signs. */
@@ -525,14 +532,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     if ((s = fmpz_cmp(lower, upper)) > 0) return(0);
   }
 
-  /* If modulus==0, reduce the interval to [0]. */
-  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, f0, f1, force_squarefree, modulus, x)
-  if (fmpz_is_zero(modulus)) {
-    if (fmpz_sgn(lower) > 0 || fmpz_sgn(upper) < 0) return(0);
-    fmpz_zero(lower);
-    fmpz_zero(upper);
-  }
-
   /* Compute the divided n-th derivative of pol, answer in tpol. */
   tz = st_data->binom_mat + (d+2)*n;
   for (i=0; i<=k; i++) fmpz_mul(tpol+i, tz+i, pol+i);
@@ -540,6 +539,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   /* Rolle criterion: tpol has all roots real.
     Note: we do not call change_by_sign hereafter, so it is now safe to assign to t2z. */
 
+  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, f0, f1, force_squarefree, modulus, x)
   if (!s) { /* Handle the case upper == lower directly. */
     if (!TEST_ROOTS(lower)) return(0);
   } else {
