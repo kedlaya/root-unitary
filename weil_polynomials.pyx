@@ -232,7 +232,7 @@ cdef class dfs_manager:
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     l = []
                     # Convert a vector of fmpz's into mpz's, then Integers.
-                    for j in range(2*d+3):
+                    for j in range(2*d+1):
                         if is_mpz(self.dy_data_buf[i].sympol[j]):
                             z = _fmpz_promote_val(&self.dy_data_buf[i].sympol[j])
                             temp = Integer()

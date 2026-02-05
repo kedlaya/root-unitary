@@ -175,7 +175,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     if (i) // Fill in constant term of f0 using a and b
       if (a != NULL && b != NULL) {
         fmpz_mul(f0, a, b);
-        fmpz_fmma(f0, f0, f1+n-1, poly, f1+n-1);
+        fmpz_add(f0, f0, poly);
+        fmpz_mul(f0, f0, f1+n-1);
       }
       else fmpz_mul(f0, poly, f1+n-1);
 
@@ -284,11 +285,10 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   dy_data->node_count = 0;
   dy_data->ascend = 0;
   dy_data->pol = _fmpz_vec_init(d+1);
-  dy_data->sympol = _fmpz_vec_init(2*d+3);
+  dy_data->sympol = _fmpz_vec_init(2*d+1);
   if (coefflist != NULL) {
     dy_data->flag = 1; // Activate this process
-    for (i=0; i<=d; i++)
-      fmpz_set(dy_data->pol+i, coefflist+i);
+    _fmpz_vec_set(dy_data->pol, coefflist, d+1);
   } else dy_data->flag = 0; // Flag this process as inactive
   dy_data->upper = _fmpz_vec_init(d+1);
 
@@ -330,7 +330,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   int d = dy_data->d;
 
   _fmpz_vec_clear(dy_data->pol, d+1);
-  _fmpz_vec_clear(dy_data->sympol, 2*d+3);
+  _fmpz_vec_clear(dy_data->sympol, 2*d+1);
   _fmpz_vec_clear(dy_data->upper, d+1);
   fmpq_mat_clear(dy_data->power_sums);
   fmpq_mat_clear(dy_data->hankel_mat);
@@ -358,8 +358,7 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
   if (step == NULL) {
     fmpq_set(t2q, f);
     fmpz_add(pol+n, pol+n, st_data->modlist+n);
-  }
-  else {
+  } else {
     fmpq_mul_fmpz(t2q, f, step);
     fmpz_addmul(pol+n, step, st_data->modlist+n);
   }
@@ -375,7 +374,7 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
   else fmpq_add(t, t, t2q);
 }
 
-/* Given a polynomial tpol of degree k, shrink the interval [lower, upper] to the range of constant terms
+/* Given a polynomial tpol of length k, shrink the interval [lower, upper] to the range of constant terms
    which when added to tpol give a polynomial with all real roots. Returns 0 if this range is empty (with
    lower, upper now undefined) and 1 otherwise (with lower, upper now the endpoints of the new range). */
 
@@ -385,51 +384,56 @@ int apply_rolle_condition(const fmpz *tpol, int k, int force_squarefree, const f
   fmpz *t0z = w;
   fmpz *t1z = w+1;
   fmpz *t2z = w+2;
-  fmpz *f0 = w+3; // Length k+1
-  fmpz *f1 = w+k+4; // Length k
+  fmpz *f0 = w+3; // Length k
+  fmpz *f1 = w+k+3; // Length k-1
 
-  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k+1, f0, f1, force_squarefree, modulus, x)
+  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k, f0, f1, force_squarefree, modulus, x)
   
-  if (!fmpz_cmp(lower, upper)) { /* Handle the case upper == lower directly. */
-    if (!TEST_ROOTS(lower)) return(0);
-  } else {
-    /* Find a single value where the Rolle criterion holds. */
-    fmpz_sub(t0z, upper, lower);
-    fmpz_add_ui(t0z, t0z, 1);
-    r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1))
-    s = 0;
+  /* Handle the case upper == lower directly. */
+  if (!fmpz_cmp(lower, upper)) return(TEST_ROOTS(lower));
+
+  /* Find a single value where the Rolle criterion holds. */
+  fmpz_sub(t0z, upper, lower);
+  fmpz_add_ui(t0z, t0z, 1);
+  r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1)); forced to be positive
+  s = 0;
+  do {
+    fmpz_one_2exp(t2z, r);
+    if (!r) fmpz_set(t0z, lower);
+    else {
+      fmpz_add(t0z, lower, t2z);
+      fmpz_sub_ui(t0z, t0z, 1);
+    }
     do {
-      fmpz_one_2exp(t2z, r);
-      if (!r) fmpz_set(t0z, lower);
-      else {
-        fmpz_add(t0z, lower, t2z);
-        fmpz_sub_ui(t0z, t0z, 1);
-      }
-      do {
-        if (!(s = TEST_ROOTS(t0z))) fmpz_addmul_ui(t0z, t2z, 2);
-      } while (!s && fmpz_cmp(t0z, upper) <= 0);
-      if (!s) r--;
-    } while (!s && r >= 0);
-    if (!s) return(0);
+      if (!(s = TEST_ROOTS(t0z))) fmpz_addmul_ui(t0z, t2z, 2);
+    } while (!s && fmpz_cmp(t0z, upper) <= 0);
+    if (!s) r--;
+  } while (!s && r >= 0);
+  if (!s) return(0);
 
-    /* Shorten the interval based on tested values. */
-    fmpz_sub(t1z, t0z, t2z);
-    fmpz_add_ui(lower, t1z, 1); // Does not decrease lower
-    fmpz_add(t1z, t0z, t2z);
-    if (fmpz_cmp(t1z, upper) <= 0) fmpz_sub_ui(upper, t1z, 1);
+  if (r == 0) { // In this case, enforce lower == upper and exit
+    fmpz_set(lower, t0z);
+    fmpz_set(upper, t0z);
+    return(1);
+  }
 
-    /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
-    fmpz_set(t1z, t0z);
-    while (fmpz_cmp(lower, t0z)) {
-      fmpz_fmid(t2z, lower, t0z);
-      if (TEST_ROOTS(t2z)) fmpz_set(t0z, t2z);
-      else fmpz_add_ui(lower, t2z, 1);
-    }
-    while (fmpz_cmp(t1z, upper)) {
-      fmpz_cmid(t0z, t1z, upper);
-      if (TEST_ROOTS(t0z)) fmpz_set(t1z, t0z);
-      else fmpz_sub_ui(upper, t0z, 1);
-    }
+  /* Shorten the interval based on tested values. */
+  fmpz_sub(t1z, t0z, t2z);
+  fmpz_add_ui(lower, t1z, 1); // Does not decrease lower
+  fmpz_add(t1z, t0z, t2z);
+  if (fmpz_cmp(t1z, upper) <= 0) fmpz_sub_ui(upper, t1z, 1);
+
+  /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
+  fmpz_set(t1z, t0z);
+  while (fmpz_cmp(lower, t0z)) {
+    fmpz_fmid(t2z, lower, t0z);
+    if (TEST_ROOTS(t2z)) fmpz_set(t0z, t2z);
+    else fmpz_add_ui(lower, t2z, 1);
+  }
+  while (fmpz_cmp(t1z, upper)) {
+    fmpz_cmid(t0z, t1z, upper);
+    if (TEST_ROOTS(t0z)) fmpz_set(t1z, t0z);
+    else fmpz_sub_ui(upper, t0z, 1);
   }
   return(1);
 }
@@ -525,8 +529,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   }
 
   /* Update power_sums[k] using the Girard-Newton formula. */
-
   #define POW(x) fmpq_mat_entry(power_sums, x, 0)
+
   tz = fmpq_numref(POW(0));
   fmpz_set_ui(tz, k); // Temporary change to apply Girard-Newton
   fmpq_mat_fmpz_vec_mul(t0q, pol, k, power_sums);
@@ -557,22 +561,23 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
      have the correct signs. */
   _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), pol, k+1);
-  _fmpz_vec_dot(t1z, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
+  tz = q_is_1 ? t1z : fmpq_numref(t1q);
+  _fmpz_vec_dot(tz, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
   fmpz_set(fmpq_denref(t0q), pol+k);
   fmpz_set(fmpq_denref(t1q), pol+k);
   if (q_is_1) {
-    fmpz_add(fmpq_numref(t0q), t0z, t1z);
-    fmpz_sub(fmpq_numref(t1q), t0z, t1z);
+    fmpz_add(fmpq_numref(t0q), t0z, tz);
+    fmpz_sub(fmpq_numref(t1q), t0z, tz);
     t = NULL; t1 = t0q; t2 = t1q;
   } else {
     fmpz_set(fmpq_numref(t0q), t0z);
-    fmpz_set(fmpq_numref(t1q), t1z);
+    // fmpz_set(fmpq_numref(t1q), t1z); <-- true by prior arrangement
     t = t1q; t1 = t0q; t2 = t0q;
   }
   change_by_sign(1, 1, t1, t);
   if (t != NULL) fmpz_neg(fmpq_numref(t), fmpq_numref(t));
   change_by_sign(1, 1-(k%2), t2, t);
-  if ((s = fmpz_cmp(lower, upper)) > 0) return(0);
+  if (fmpz_cmp(lower, upper) > 0) return(0);
 
   /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant. */
 
@@ -608,7 +613,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     else fmpq_set(t0q, t); // t was set in the for loop
     if (r == 1) fmpz_neg(fmpq_numref(t0q), fmpq_numref(t0q));
     change_by_sign(1, r, t0q, NULL);
-    if ((s = fmpz_cmp(lower, upper)) > 0) return(0);
+    if (fmpz_cmp(lower, upper) > 0) return(0);
   }
 
   /* Compute the divided n-th derivative of pol, answer in tpol. */
@@ -618,7 +623,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Rolle criterion: tpol has all roots real. */
     
-  s = apply_rolle_condition(tpol, k, force_squarefree, modulus, lower, upper, t0z);
+  s = apply_rolle_condition(tpol, k+1, force_squarefree, modulus, lower, upper, t0z);
   if (!s) return(0);
 
   /* Set the new upper bound. */
@@ -660,7 +665,7 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
       _fmpz_vec_set(dy_data2->upper+k, dy_data->upper+k, d+1-k);
       fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
       for (j=0; j<=1; j++) fmpq_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
-      
+
       /* Restrict the donee process to the current branch. */
       fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
       /* Remove the current branch from the donor process. */
