@@ -34,24 +34,11 @@ int num_threads() {
   Arithmetic functions
 
   As with FLINT library functions, aliasing is allowed unless specified.
-
-  Unlike for FLINT library functions, input fmpq's need not be canonicalized, and
-  output fmpq's are not guaranteed to be canonicalized.
 *****/
 
 inline int is_mpz(fmpz f) {
   return(COEFF_IS_MPZ(f));
 }
-
-/* Set res to floor(a). */
-inline void fmpq_floor(fmpz_t res, const fmpq_t a) {
-  fmpz_fdiv_q(res, fmpq_numref(a), fmpq_denref(a));
-};
-
-/* Set res to ceil(a). */
-inline void fmpq_ceil(fmpz_t res, const fmpq_t a) {
-  fmpz_cdiv_q(res, fmpq_numref(a), fmpq_denref(a));
-};
 
 /* Set res to floor((a+b)/2). */
 inline void fmpz_fmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
@@ -77,11 +64,7 @@ inline void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
 }
 
 /* Set res to floor(a + b sqrt(q)). No aliasing allowed. */
-inline void fmpq_floor_quad(fmpz_t res, const fmpq_t a, const fmpq_t b, const fmpz_t q) {
-  fmpz *anum = fmpq_numref(a);
-  fmpz *aden = fmpq_denref(a);
-  fmpz *bnum = fmpq_numref(b);
-  fmpz *bden = fmpq_denref(b);
+inline void fmpq_floor_quad(fmpz_t res, const fmpz_t anum, const fmpz_t aden, const fmpz_t bnum, const fmpz_t bden, const fmpz_t q) {
   int bden_s = fmpz_sgn(bden);
   int aden_s = fmpz_sgn(aden);
   int bnum_s = fmpz_sgn(bnum);
@@ -102,11 +85,7 @@ inline void fmpq_floor_quad(fmpz_t res, const fmpq_t a, const fmpq_t b, const fm
 }
 
 /* Set res to ceil(a + b sqrt(q)). No aliasing allowed. */
-inline void fmpq_ceil_quad(fmpz_t res, const fmpq_t a, const fmpq_t b, const fmpz_t q) {
-  fmpz *anum = fmpq_numref(a);
-  fmpz *aden = fmpq_denref(a);
-  fmpz *bnum = fmpq_numref(b);
-  fmpz *bden = fmpq_denref(b);
+inline void fmpq_ceil_quad(fmpz_t res, const fmpz_t anum, const fmpz_t aden, const fmpz_t bnum, const fmpz_t bden, const fmpz_t q) {
   int bden_s = fmpz_sgn(bden);
   int aden_s = fmpz_sgn(aden);
   int bnum_s = fmpz_sgn(bnum);
@@ -209,7 +188,6 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
                                  long node_limit, int force_squarefree) {
   int i, j, q_is_1;
   fmpz *k0, *pol;
-  fmpq *k1;
 
   ps_static_data_t *st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
 
@@ -289,10 +267,8 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpz_set_si(dy_data->hankel_dets, d);
   fmpz_set_si(dy_data->hankel_dets+1, 1);
   
-  dy_data->wlen = 3*d+7;
+  dy_data->wlen = 3*d+10;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
-  dy_data->w2len = 5;
-  dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
 
   return(dy_data);
 }
@@ -325,7 +301,6 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   fmpz_mat_clear(dy_data->hankel_mat);
   _fmpz_vec_clear(dy_data->hankel_dets, 2*d+2);
   _fmpz_vec_clear(dy_data->w, dy_data->wlen);
-  _fmpq_vec_clear(dy_data->w2, dy_data->w2len);
   free(dy_data);
 }
 
@@ -339,7 +314,6 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
   int k = st_data->d - n;
   fmpz *pol = dy_data->pol;
-  fmpq *t2q = dy_data->w2;
   fmpz *t0z = dy_data->w;
   fmpz *tz;
 
@@ -442,9 +416,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   int i, j, r, s;
   int force_squarefree = st_data->force_squarefree;
   fmpz *modulus = st_data->modlist + n;
+  int modulus_is_0 = fmpz_is_zero(modulus);
   fmpz *q = st_data->q;
   int q_is_1 = fmpz_is_one(q);
-//  fmpq *f = st_data->f + n;
 
   /* Dynamic data */
 
@@ -457,15 +431,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz *tpol = dy_data->w; // Length d+1
   fmpz *lower = tpol+d+1;
   fmpz *upper = tpol+d+2;
-  fmpz *t0z = tpol+d+3;
-  fmpz *t1z = tpol+d+4;
-  fmpz *t2z = tpol+d+5; // Affected by change_by_sign
-  fmpz *f = tpol+d+6;
-
-  fmpq *t0q = dy_data->w2;
-  fmpq *t1q = t0q+1;
-  fmpq *t2q = t0q+2; // Affected by change_by_sign
-  fmpq *t3q = t0q+3; // Affected by change_by_sign
+  fmpz *f = tpol+d+3;
+  fmpz *t0z = tpol+d+4;
+  fmpz *t1z = tpol+d+5;
+  fmpz *t3z = tpol+d+6;
+  fmpz *t2z = tpol+d+7; // Affected by change_by_sign
+  fmpz *t4z = tpol+d+8; // Affected by change_by_sign
+  fmpz *t5z = tpol+d+9; // Affected by change_by_sign
 
   /* Unallocated pointers */
 
@@ -474,9 +446,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Adjust lower and upper bounds within set_range_from_power_sums.
      This overwrites t2z, t2q, and (if val2 != NULL) also t3q.
-     The values in val1 and val2 need not be canonicalized.
+     The values in val1 and val2 are specified as numerator-denominator
+     pairs which need not be canonicalized.
      The pair (val1, val2) stands for val1 + val2*sqrt(q);
-     passing NULL for val2 is a faster variant of passing 0.
+     passing NULL for val2_num is a faster variant of passing 0.
      Given that this value is a monic linear function of the k-th power sum, then:
 
      -- passing r = 0 imposes the condition g >= 0 (or g > 0 if force_squarefree != 0);
@@ -486,18 +459,18 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   */
 
   inline void change_by_sign(int update, int r, const fmpz_t val1_num, const fmpz_t val1_den, const fmpz_t val2_num, const fmpz_t val2_den) {
-    fmpz_set(fmpq_numref(t2q), val1_num);
-    if (val1_den == NULL) fmpz_set(fmpq_denref(t2q), f);
-    else fmpz_mul(fmpq_denref(t2q), val1_den, f);
     if (val2_num == NULL) {
-      if (r ^ force_squarefree) fmpq_ceil(t2z, t2q);
-      else fmpq_floor(t2z, t2q);
+      if (val1_den == NULL) fmpz_set(t4z, f);
+      else fmpz_mul(t4z, val1_den, f);
+      if (r ^ force_squarefree) fmpz_cdiv_q(t2z, val1_num, t4z);
+      else fmpz_fdiv_q(t2z, val1_num, t4z);
     } else {
-      fmpz_set(fmpq_numref(t3q), val2_num);
-      if (val2_den == NULL) fmpz_set(fmpq_denref(t3q), f);
-      else fmpz_mul(fmpq_denref(t3q), val2_den, f);
-      if (r ^ force_squarefree) fmpq_ceil_quad(t2z, t2q, t3q, q);
-      else fmpq_floor_quad(t2z, t2q, t3q, q);
+      if (val1_den == NULL) fmpz_set(t4z, f);
+      else fmpz_mul(t4z, val1_den, f);
+      if (val2_den == NULL) fmpz_set(t5z, f);
+      else fmpz_mul(t5z, val2_den, f);
+      if (r ^ force_squarefree) fmpq_ceil_quad(t2z, val1_num, t4z, val2_num, t5z, q);
+      else fmpq_floor_quad(t2z, val1_num, t4z, val2_num, t5z, q);
     }
     if (!r) { // change_upper
       if (force_squarefree) {
@@ -514,8 +487,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   fmpz_set_ui(f, k);
   
-  i = fmpz_is_zero(modulus);
-  if (i) {
+  if (modulus_is_0) {
     fmpz_zero(lower);
     fmpz_zero(upper);
   } else fmpz_mul(f, f, modulus);
@@ -541,38 +513,33 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   }
   fmpz_mul(t0z, t0z, lead);
   fmpz_pow_ui(t1z, lead, k-1);
-  _fmpz_vec_dot(t2z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
-  fmpq_set_fmpz_frac(t0q, t2z, t1z);
-  if (q_is_1 || k%2 == 0) { // i == fmpz_is_zero(modulus)
-    fmpq_sub_fmpz(t1q, t0q, t0z);
-    fmpq_add_fmpz(t0q, t0q, t0z);
-    change_by_sign(i, 0, fmpq_numref(t0q), fmpq_denref(t0q), NULL, NULL); 
-    change_by_sign(i, 1, fmpq_numref(t1q), fmpq_denref(t1q), NULL, NULL);
+  _fmpz_vec_dot(t3z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
+  if (q_is_1 || k%2 == 0) {
+    fmpz_mul(t0z, t1z, t0z);
+    fmpz_add(t2z, t3z, t0z);
+    change_by_sign(modulus_is_0, 0, t2z, t1z, NULL, NULL); 
+    fmpz_sub(t2z, t3z, t0z);
+    change_by_sign(modulus_is_0, 1, t2z, t1z, NULL, NULL);
   } else {
-    change_by_sign(i, 0, fmpq_numref(t0q), fmpq_denref(t0q), t0z, NULL);
+    change_by_sign(modulus_is_0, 0, t3z, t1z, t0z, NULL);
     fmpz_neg(t0z, t0z);
-    change_by_sign(i, 1, fmpq_numref(t0q), fmpq_denref(t0q), t0z, NULL);
+    change_by_sign(modulus_is_0, 1, t3z, t1z, t0z, NULL);
   }
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
      have the correct signs. */
 
   _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), pol, k+1);
-  tz = q_is_1 ? t2z : fmpq_numref(t1q);
-  _fmpz_vec_dot(tz, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
-  fmpz_one(fmpq_denref(t0q));
-  fmpz_one(fmpq_denref(t1q));
+  _fmpz_vec_dot(t3z, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
   if (q_is_1) {
-    fmpz_add(fmpq_numref(t0q), t0z, tz);
-    fmpz_sub(fmpq_numref(t1q), t0z, tz);
-    change_by_sign(1, 1, fmpq_numref(t0q), fmpq_denref(t0q), NULL, NULL);
-    change_by_sign(1, 1-(k%2), fmpq_numref(t1q), fmpq_denref(t1q), NULL, NULL);
+    fmpz_add(t2z, t0z, t3z);
+    change_by_sign(1, 1, t2z, NULL, NULL, NULL);
+    fmpz_sub(t2z, t0z, t3z);
+    change_by_sign(1, 1-(k%2), t2z, NULL, NULL, NULL);
   } else {
-    fmpz_set(fmpq_numref(t0q), t0z);
-    // fmpz_set(fmpq_numref(t1q), t1z); <-- true by prior arrangement
-    change_by_sign(1, 1, fmpq_numref(t0q), NULL, fmpq_numref(t1q), NULL);
-    fmpz_neg(fmpq_numref(t1q), fmpq_numref(t1q));
-    change_by_sign(1, 1-(k%2), fmpq_numref(t0q), NULL, fmpq_numref(t1q), NULL);
+    change_by_sign(1, 1, t0z, NULL, t3z, NULL);
+    fmpz_neg(t3z, t3z);
+    change_by_sign(1, 1-(k%2), t0z, NULL, t3z, NULL);
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
@@ -611,11 +578,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     // t1z == lead^k
     if (k > 1 && fmpz_sgn(tza-4) > 0) {
       fmpz_mul(t2z, tza-4, t1z);
-      fmpq_set_fmpz_frac(t0q, tza, t2z);
+      fmpz_set(t3z, tza);
     }
-    else fmpq_set_fmpz_frac(t0q, tz, t1z); // t was set in the for loop
-    if (r == 1) fmpz_neg(fmpq_numref(t0q), fmpq_numref(t0q));
-    change_by_sign(1, r, fmpq_numref(t0q), fmpq_denref(t0q), NULL, NULL);
+    else {
+      fmpz_set(t2z, t1z);
+      fmpz_set(t3z, tz); // t was set in the for loop
+    }
+    if (r == 1) fmpz_neg(t3z, t3z);
+    change_by_sign(1, r, t3z, t2z, NULL, NULL);
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
