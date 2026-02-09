@@ -4,7 +4,6 @@
 #include <flint/fmpz_vec.h>
 #include <flint/fmpz_poly.h>
 #include <flint/fmpz_poly.h>
-#include <flint/fmpq.h>
 
 #if defined(_OPENMP)
   #include <omp.h>
