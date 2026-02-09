@@ -460,17 +460,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz *t0z = tpol+d+3;
   fmpz *t1z = tpol+d+4;
   fmpz *t2z = tpol+d+5; // Affected by change_by_sign
+  fmpz *f = tpol+d+6;
 
   fmpq *t0q = dy_data->w2;
   fmpq *t1q = t0q+1;
   fmpq *t2q = t0q+2; // Affected by change_by_sign
   fmpq *t3q = t0q+3; // Affected by change_by_sign
-  fmpq *f = t0q+4;
 
   /* Unallocated pointers */
 
   fmpz *tz, *tza;
-  fmpq *t, *t1, *t2;
   fmpz_mat_t hankel_mat;
 
   /* Adjust lower and upper bounds within set_range_from_power_sums.
@@ -486,15 +485,17 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
      -- passing update = 1 means we are updating previously set bounds.
   */
 
-  inline void change_by_sign(int update, int r, const fmpq_t val1, const fmpq_t val2) {
-    fmpz_mul(fmpq_numref(t2q), fmpq_numref(val1), fmpq_denref(f));
-    fmpz_mul(fmpq_denref(t2q), fmpq_denref(val1), fmpq_numref(f));
-    if (val2 == NULL) {
+  inline void change_by_sign(int update, int r, const fmpz_t val1_num, const fmpz_t val1_den, const fmpz_t val2_num, const fmpz_t val2_den) {
+    fmpz_set(fmpq_numref(t2q), val1_num);
+    if (val1_den == NULL) fmpz_set(fmpq_denref(t2q), f);
+    else fmpz_mul(fmpq_denref(t2q), val1_den, f);
+    if (val2_num == NULL) {
       if (r ^ force_squarefree) fmpq_ceil(t2z, t2q);
       else fmpq_floor(t2z, t2q);
     } else {
-      fmpz_mul(fmpq_numref(t3q), fmpq_numref(val2), fmpq_denref(f));
-      fmpz_mul(fmpq_denref(t3q), fmpq_denref(val2), fmpq_numref(f));
+      fmpz_set(fmpq_numref(t3q), val2_num);
+      if (val2_den == NULL) fmpz_set(fmpq_denref(t3q), f);
+      else fmpz_mul(fmpq_denref(t3q), val2_den, f);
       if (r ^ force_squarefree) fmpq_ceil_quad(t2z, t2q, t3q, q);
       else fmpq_floor_quad(t2z, t2q, t3q, q);
     }
@@ -511,13 +512,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* If modulus==0, reduce the interval to [0]. */
 
-  fmpq_set_ui(f, k, 1);
+  fmpz_set_ui(f, k);
   
   i = fmpz_is_zero(modulus);
   if (i) {
     fmpz_zero(lower);
     fmpz_zero(upper);
-  } else fmpq_mul_fmpz(f, f, modulus);
+  } else fmpz_mul(f, f, modulus);
 
   /* Update pow_num[k] using the Girard-Newton formula. 
      This is the k-th power sum times c^k where c is the leading coefficient. */
@@ -542,17 +543,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz_pow_ui(t1z, lead, k-1);
   _fmpz_vec_dot(t2z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
   fmpq_set_fmpz_frac(t0q, t2z, t1z);
-  if (q_is_1 || k%2 == 0) {
+  if (q_is_1 || k%2 == 0) { // i == fmpz_is_zero(modulus)
     fmpq_sub_fmpz(t1q, t0q, t0z);
     fmpq_add_fmpz(t0q, t0q, t0z);
-    t = NULL; t1 = t0q; t2 = t1q;
+    change_by_sign(i, 0, fmpq_numref(t0q), fmpq_denref(t0q), NULL, NULL); 
+    change_by_sign(i, 1, fmpq_numref(t1q), fmpq_denref(t1q), NULL, NULL);
   } else {
-    fmpq_set_fmpz(t1q, t0z);
-    t = t1q; t1 = t0q; t2 = t0q;
+    change_by_sign(i, 0, fmpq_numref(t0q), fmpq_denref(t0q), t0z, NULL);
+    fmpz_neg(t0z, t0z);
+    change_by_sign(i, 1, fmpq_numref(t0q), fmpq_denref(t0q), t0z, NULL);
   }
-  change_by_sign(i, 0, t1, t); // i == fmpz_is_zero(modulus)
-  if (t != NULL) fmpz_neg(fmpq_numref(t), fmpq_numref(t));
-  change_by_sign(i, 1, t2, t);
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
      have the correct signs. */
@@ -565,15 +565,15 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   if (q_is_1) {
     fmpz_add(fmpq_numref(t0q), t0z, tz);
     fmpz_sub(fmpq_numref(t1q), t0z, tz);
-    t = NULL; t1 = t0q; t2 = t1q;
+    change_by_sign(1, 1, fmpq_numref(t0q), fmpq_denref(t0q), NULL, NULL);
+    change_by_sign(1, 1-(k%2), fmpq_numref(t1q), fmpq_denref(t1q), NULL, NULL);
   } else {
     fmpz_set(fmpq_numref(t0q), t0z);
     // fmpz_set(fmpq_numref(t1q), t1z); <-- true by prior arrangement
-    t = t1q; t1 = t0q; t2 = t0q;
+    change_by_sign(1, 1, fmpq_numref(t0q), NULL, fmpq_numref(t1q), NULL);
+    fmpz_neg(fmpq_numref(t1q), fmpq_numref(t1q));
+    change_by_sign(1, 1-(k%2), fmpq_numref(t0q), NULL, fmpq_numref(t1q), NULL);
   }
-  change_by_sign(1, 1, t1, t);
-  if (t != NULL) fmpz_neg(fmpq_numref(t), fmpq_numref(t));
-  change_by_sign(1, 1-(k%2), t2, t);
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
   /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant. */
@@ -615,7 +615,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     }
     else fmpq_set_fmpz_frac(t0q, tz, t1z); // t was set in the for loop
     if (r == 1) fmpz_neg(fmpq_numref(t0q), fmpq_numref(t0q));
-    change_by_sign(1, r, t0q, NULL);
+    change_by_sign(1, r, fmpq_numref(t0q), fmpq_denref(t0q), NULL, NULL);
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
