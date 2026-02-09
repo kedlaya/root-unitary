@@ -512,7 +512,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   /* If modulus==0, reduce the interval to [0]. */
 
   fmpq_set_ui(f, k, 1);
-  fmpq_div_fmpz(f, f, lead);
   
   i = fmpz_is_zero(modulus);
   if (i) {
@@ -539,7 +538,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     fmpz_pow_ui(t1z, q, k/2);
     fmpz_mul_si(t0z, t1z, 2*d);
   }
-  fmpz_pow_ui(t1z, lead, k);
+  fmpz_mul(t0z, t0z, lead);
+  fmpz_pow_ui(t1z, lead, k-1);
   _fmpz_vec_dot(t2z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
   fmpq_set_fmpz_frac(t0q, t2z, t1z);
   if (q_is_1 || k%2 == 0) {
@@ -560,8 +560,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), pol, k+1);
   tz = q_is_1 ? t2z : fmpq_numref(t1q);
   _fmpz_vec_dot(tz, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
-  fmpz_set(fmpq_denref(t0q), lead);
-  fmpz_set(fmpq_denref(t1q), lead);
+  fmpz_one(fmpq_denref(t0q));
+  fmpz_one(fmpq_denref(t1q));
   if (q_is_1) {
     fmpz_add(fmpq_numref(t0q), t0z, tz);
     fmpz_sub(fmpq_numref(t1q), t0z, tz);
