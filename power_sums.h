@@ -3,8 +3,8 @@
 #include <flint/fmpz.h>
 #include <flint/fmpz_vec.h>
 #include <flint/fmpz_poly.h>
+#include <flint/fmpz_poly.h>
 #include <flint/fmpq.h>
-#include <flint/fmpq_mat.h>
 
 #if defined(_OPENMP)
   #include <omp.h>
@@ -14,16 +14,15 @@ typedef struct ps_static_data {
   int d, force_squarefree;
   long node_limit;
   fmpz_t q;
-  fmpz *modlist, *binom_mat, *sum_mats, *sum_mats_with_denom, *eval_pm2_mats, *f_num;
+  fmpz *modlist, *binom_mat, *sum_mats, *eval_pm2_mats, *f_num;
   fmpq *f;
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
-  fmpz_mat_t hankel_mat, hankel_dets[2]; 
-  fmpq_mat_t power_sums;
-  fmpz *pol, *sympol, *upper, *power_sums_num;
+  fmpz_mat_t hankel_mat; 
+  fmpz *pol, *sympol, *upper, *power_sums_num, *hankel_dets;
 
   /* Scratch space */
   fmpz *w;

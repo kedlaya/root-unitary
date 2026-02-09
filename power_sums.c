@@ -227,14 +227,12 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
 
   st_data->modlist = _fmpz_vec_init(d+1);
   st_data->f = _fmpq_vec_init(d+1);
-  st_data->f_num = _fmpz_vec_init(d+1);
   k0 = st_data->modlist; // Used as a temporary variable for now
 
   st_data->sum_mats = _fmpz_vec_init((d+1)*(d+1));
-  st_data->sum_mats_with_denom = _fmpz_vec_init((d+1)*(d+1));
   for (i=0; i<=d; i++) {
     /* Coefficients of 2*(i-th Chebyshev polynomial)(x/2).
-       If q != 1, the coeff of x^j is multiplied by q^{(i-j)/2}. */
+       The coefficient of x^j is multiplied by c^{i-j} q^{(i-j)/2} where c is the leading coefficient. */
     pol = st_data->sum_mats + (d+1)*i;
     _fmpz_poly_chebyshev_t(pol, i);
     _fmpz_poly_scale_2exp(pol, i+1, -1);
@@ -243,10 +241,11 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
         fmpz_pow_ui(k0, q, (i-j)/2);
         fmpz_mul(pol+j, k0, pol+j);
       }
-    for (j=i%2; j<=i; j+=2) {
-      fmpz_pow_ui(k0, lead, i-j);
-      fmpz_mul(st_data->sum_mats_with_denom+(d+1)*i+j, k0, pol+j);
-    }
+    if (!fmpz_is_one(lead))
+      for (j=i%2; j<=i; j+=2) {
+        fmpz_pow_ui(k0, lead, i-j);
+        fmpz_mul(pol+j, k0, pol+j);
+      }
   }
  
   for (i=0; i<=d; i++) {
@@ -299,13 +298,12 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   dy_data->upper = _fmpz_vec_init(d+1);
   dy_data->power_sums_num = _fmpz_vec_init(d+1);
   fmpz_set_si(dy_data->power_sums_num, d);
+  _fmpz_vec_zero(dy_data->power_sums_num+1, d);
 
-  fmpq_mat_init(dy_data->power_sums, d+1, 1);
-  fmpq_set_si(fmpq_mat_entry(dy_data->power_sums, 0, 0), d, 1);
   fmpz_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
-  for (i=0; i<=1; i++) fmpz_mat_init(dy_data->hankel_dets[i], d+1, 1);
-  fmpz_set_si(fmpz_mat_entry(dy_data->hankel_dets[0], 0, 0), d);
-  fmpz_set_si(fmpz_mat_entry(dy_data->hankel_dets[1], 0, 0), 1);
+  dy_data->hankel_dets = _fmpz_vec_init(2*d+2);
+  fmpz_set_si(dy_data->hankel_dets, d);
+  fmpz_set_si(dy_data->hankel_dets+1, 1);
   
   dy_data->wlen = 3*d+7;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
@@ -323,11 +321,9 @@ void ps_static_clear(ps_static_data_t *st_data) {
 
   fmpz_clear(st_data->q);
   _fmpq_vec_clear(st_data->f, d+1);
-  _fmpz_vec_clear(st_data->f_num, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
   _fmpz_vec_clear(st_data->binom_mat, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->sum_mats, (d+1)*(d+1));
-  _fmpz_vec_clear(st_data->sum_mats_with_denom, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->eval_pm2_mats, 2*(d+1)*(d+1));
   free(st_data);
 }
@@ -343,9 +339,8 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   _fmpz_vec_clear(dy_data->sympol, 2*d+1);
   _fmpz_vec_clear(dy_data->upper, d+1);
   _fmpz_vec_clear(dy_data->power_sums_num, d+1);
-  fmpq_mat_clear(dy_data->power_sums);
   fmpz_mat_clear(dy_data->hankel_mat);
-  for (i=0; i<=1; i++) fmpz_mat_clear(dy_data->hankel_dets[i]);
+  _fmpz_vec_clear(dy_data->hankel_dets, 2*d+2);
   _fmpz_vec_clear(dy_data->w, dy_data->wlen);
   _fmpq_vec_clear(dy_data->w2, dy_data->w2len);
   free(dy_data);
@@ -358,39 +353,27 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 /* Increment the current moving counter and update stored data to match. 
    If step is NULL it is interpreted as 1. */
 
-void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
+inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
   int k = st_data->d - n;
   fmpz *pol = dy_data->pol;
-  fmpq *f = st_data->f + n;
   fmpq *t2q = dy_data->w2;
   fmpz *t0z = dy_data->w;
-  fmpz *t1z = dy_data->w;
-  fmpq *t;
   fmpz *tz;
-  fmpz_mat_struct *hankel_dets;
 
   fmpz_pow_ui(t0z, pol+st_data->d, k-1);
-  fmpz_mul(t1z, t0z, st_data->modlist+n);
-  fmpz_mul_ui(t1z, t1z, k); 
-  if (step == NULL) {
-    fmpq_set(t2q, f);
-    fmpz_add(pol+n, pol+n, st_data->modlist+n);
-  } else {
+  fmpz_mul(t0z, t0z, st_data->modlist+n);
+  fmpz_mul_ui(t0z, t0z, k); 
+  if (step == NULL) fmpz_add(pol+n, pol+n, st_data->modlist+n);
+  else {
     fmpz_mul(t0z, t0z, step);
-    fmpq_mul_fmpz(t2q, f, step);
     fmpz_addmul(pol+n, step, st_data->modlist+n);
   }
-  t = fmpq_mat_entry(dy_data->power_sums, k, 0);
-  fmpq_sub(t, t, t2q);
   fmpz_sub(dy_data->power_sums_num+k, dy_data->power_sums_num+k, t0z);
-  hankel_dets = dy_data->hankel_dets[0];
-  tz = fmpz_mat_entry(hankel_dets, k, 0);
-  if (k > 1) fmpz_submul(tz, fmpz_mat_entry(hankel_dets, k-2, 0), t1z);
-  else fmpz_sub(tz, tz, t1z);
-  hankel_dets = dy_data->hankel_dets[1];
-  tz = fmpz_mat_entry(hankel_dets, k, 0);
-  if (k > 1) fmpz_addmul(tz, fmpz_mat_entry(hankel_dets, k-2, 0), t1z);
-  else fmpz_add(tz, tz, t1z);
+  tz = dy_data->hankel_dets+2*k;
+  if (k > 1) fmpz_submul(tz, tz-4, t0z);
+  else fmpz_sub(tz, tz, t0z);
+  if (k > 1) fmpz_addmul(tz+1, tz-3, t0z);
+  else fmpz_add(tz+1, tz+1, t0z);
 }
 
 /* Given a polynomial tpol of length k, shrink the interval [lower, upper] to the range of constant terms
@@ -484,8 +467,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   fmpz *pol = dy_data->pol + n;
   fmpz *pow_num = dy_data->power_sums_num;
-  fmpq_mat_struct *power_sums = dy_data->power_sums;
-  fmpz_mat_struct *hankel_dets;
 
   /* Pointers into persistent working memory */
 
@@ -503,7 +484,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Unallocated pointers */
 
-  fmpz *tz, *tza, *tzb;
+  fmpz *tz, *tza;
   fmpq *t, *t1, *t2;
   fmpz_mat_t hankel_mat;
 
@@ -549,35 +530,28 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     fmpz_zero(upper);
   }
 
-  /* Update power_sums[k] using the Girard-Newton formula. */
-  #define POW(x) fmpq_mat_entry(power_sums, x, 0)
+  /* Update pow_num[k] using the Girard-Newton formula. 
+     This is the k-th power sum times c^k where c is the leading coefficient. */
 
-  tz = fmpq_numref(POW(0));
-  fmpz_set_ui(tz, k); // Temporary change to apply Girard-Newton
-  fmpz_set_ui(pow_num, k);
+  fmpz_set_ui(pow_num, k); // Temporary change to apply Girard-Newton
   fmpz_zero(pow_num+k);
   for (j=0; j<k; j++) {
     fmpz_pow_ui(t0z, pol+k, k-j-1);
     fmpz_mul(t0z, t0z, pol+j);
     fmpz_submul(pow_num+k, t0z, pow_num+j);
   }
-  fmpq_mat_fmpz_vec_mul(t0q, pol, k, power_sums);
-  fmpz_neg(t0z, pol+k);
-  fmpq_div_fmpz(POW(k), t0q, t0z);
-  fmpz_set_ui(tz, d); // Change back to the correct value, needed for Chebyshev criterion
-  fmpz_set_ui(pow_num, d);
+  fmpz_set_ui(pow_num, d); // Change back to the correct value, needed for Chebyshev criterion
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
-  fmpz_pow_ui(t1z, pol+k, k);
-  _fmpz_vec_dot(t2z, st_data->sum_mats_with_denom+(d+1)*k, pow_num, k+1);
-  fmpq_set_fmpz_frac(t0q, t2z, t1z);
-//  fmpq_mat_fmpz_vec_mul(t0q, st_data->sum_mats+(d+1)*k, k+1, power_sums);
   if (q_is_1 || k == 1) fmpz_set_ui(t0z, 2*d);
   else {
     fmpz_pow_ui(t1z, q, k/2);
     fmpz_mul_si(t0z, t1z, 2*d);
   }
+  fmpz_pow_ui(t1z, pol+k, k);
+  _fmpz_vec_dot(t2z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
+  fmpq_set_fmpz_frac(t0q, t2z, t1z);
   if (q_is_1 || k%2 == 0) {
     fmpq_sub_fmpz(t1q, t0q, t0z);
     fmpq_add_fmpz(t0q, t0q, t0z);
@@ -592,8 +566,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
      have the correct signs. */
+
   _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), pol, k+1);
-  tz = q_is_1 ? t1z : fmpq_numref(t1q);
+  tz = q_is_1 ? t2z : fmpq_numref(t1q);
   _fmpz_vec_dot(tz, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
   fmpz_set(fmpq_denref(t0q), pol+k);
   fmpz_set(fmpq_denref(t1q), pol+k);
@@ -618,6 +593,11 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     s = k/2 + !(r == 1 && k%2 == 0);
     if (r == 0 || k%2 == 0)
       fmpz_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, s, s);
+    if (r == 1 && k%2 == 0) {
+      fmpz_mul(t0z, pol+k, pol+k);
+      if (!q_is_1) fmpz_mul(t0z, t0z, q);
+      fmpz_mul_ui(t0z, t0z, 4);
+    } else if (k%2 == 1) fmpz_mul_ui(t0z, pol+k, 2);
     for (i=0; i<s; i++)
       for (j=0; j<s; j++) {
         tz = fmpz_mat_entry(hankel_mat, i, j);
@@ -626,28 +606,24 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
         else if (r == 0 && k%2 == 0)
           fmpz_set(tz, pow_num+i+j);
         else if (r == 1 && k%2 == 0) {
-          fmpz_mul_ui(tz, pow_num+i+j, 4);
-  	  if (!q_is_1) fmpz_mul(tz, tz, q);
-  	  fmpz_mul(tz, tz, pol+k);
-  	  fmpz_mul(tz, tz, pol+k);  	  
+          fmpz_mul(tz, pow_num+i+j, t0z);
 	  fmpz_sub(tz, tz, pow_num+i+j+2);
 	} else {
-          fmpz_mul_ui(tz, pow_num+i+j, 2);
-  	  fmpz_mul(tz, tz, pol+k);  	  
+          fmpz_mul(tz, pow_num+i+j, t0z);
 	  if (r == 0) fmpz_add(tz, tz, pow_num+i+j+1);
 	  else fmpz_sub(tz, tz, pow_num+i+j+1);
 	}
-      } // Final value of t will be used again
-    hankel_dets = dy_data->hankel_dets[r];
-    tza = fmpz_mat_entry(hankel_dets, k, 0);
+      } // Final value of tz will be used again
+    tza = dy_data->hankel_dets + 2*k + r;
     fmpz_mat_det(tza, hankel_mat);
     if (r == 1 || k%2 == 0) // Otherwise reuse the window size
       fmpz_mat_window_clear(hankel_mat);
-    fmpz_pow_ui(t0z, pol+k, k);
-    fmpq_set_fmpz_frac(t0q, tza, t0z);
-    if (k > 1 && fmpz_sgn(tzb = fmpz_mat_entry(hankel_dets, k-2, 0)) > 0)
-      fmpq_div_fmpz(t0q, t0q, tzb);
-    else fmpq_set_fmpz_frac(t0q, tz, t0z); // t was set in the for loop
+    // t1z == (pol+k)^k
+    if (k > 1 && fmpz_sgn(tza-4) > 0) {
+      fmpz_mul(t2z, tza-4, t1z);
+      fmpq_set_fmpz_frac(t0q, tza, t2z);
+    }
+    else fmpq_set_fmpz_frac(t0q, tz, t1z); // t was set in the for loop
     if (r == 1) fmpz_neg(fmpq_numref(t0q), fmpq_numref(t0q));
     change_by_sign(1, r, t0q, NULL);
   }
@@ -664,6 +640,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   if (!s) return(0);
 
   /* Set the new upper bound. */
+
   fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n, pol, upper);
 
@@ -698,10 +675,10 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
       /* Copy the current state of the donor to the donee process. */
       dy_data2->n = n;
       dy_data2->ascend = ascend;
-      _fmpz_vec_set(dy_data2->pol+k, dy_data->pol+k, d+1-k);
-      _fmpz_vec_set(dy_data2->upper+k, dy_data->upper+k, d+1-k);
-      fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
-      for (j=0; j<=1; j++) fmpz_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
+      _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
+      _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
+      _fmpz_vec_set(dy_data2->power_sums_num, dy_data->power_sums_num, d+1);
+      _fmpz_vec_set(dy_data2->hankel_dets, dy_data->hankel_dets, 2*d+2);
 
       /* Restrict the donee process to the current branch. */
       fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
