@@ -302,10 +302,10 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
 
   fmpq_mat_init(dy_data->power_sums, d+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->power_sums, 0, 0), d, 1);
-  fmpq_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
-  for (i=0; i<=1; i++) fmpq_mat_init(dy_data->hankel_dets[i], d+1, 1);
-  fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets[0], 0, 0), d, 1);
-  fmpq_set_si(fmpq_mat_entry(dy_data->hankel_dets[1], 0, 0), 1, 1);
+  fmpz_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
+  for (i=0; i<=1; i++) fmpz_mat_init(dy_data->hankel_dets[i], d+1, 1);
+  fmpz_set_si(fmpz_mat_entry(dy_data->hankel_dets[0], 0, 0), d);
+  fmpz_set_si(fmpz_mat_entry(dy_data->hankel_dets[1], 0, 0), 1);
   
   dy_data->wlen = 3*d+7;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
@@ -344,8 +344,8 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   _fmpz_vec_clear(dy_data->upper, d+1);
   _fmpz_vec_clear(dy_data->power_sums_num, d+1);
   fmpq_mat_clear(dy_data->power_sums);
-  fmpq_mat_clear(dy_data->hankel_mat);
-  for (i=0; i<=1; i++) fmpq_mat_clear(dy_data->hankel_dets[i]);
+  fmpz_mat_clear(dy_data->hankel_mat);
+  for (i=0; i<=1; i++) fmpz_mat_clear(dy_data->hankel_dets[i]);
   _fmpz_vec_clear(dy_data->w, dy_data->wlen);
   _fmpq_vec_clear(dy_data->w2, dy_data->w2len);
   free(dy_data);
@@ -364,12 +364,14 @@ void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, 
   fmpq *f = st_data->f + n;
   fmpq *t2q = dy_data->w2;
   fmpz *t0z = dy_data->w;
+  fmpz *t1z = dy_data->w;
   fmpq *t;
-  fmpq_mat_struct *hankel_dets;
+  fmpz *tz;
+  fmpz_mat_struct *hankel_dets;
 
   fmpz_pow_ui(t0z, pol+st_data->d, k-1);
-  fmpz_mul(t0z, t0z, st_data->modlist+n);
-  fmpz_mul_ui(t0z, t0z, k); 
+  fmpz_mul(t1z, t0z, st_data->modlist+n);
+  fmpz_mul_ui(t1z, t1z, k); 
   if (step == NULL) {
     fmpq_set(t2q, f);
     fmpz_add(pol+n, pol+n, st_data->modlist+n);
@@ -382,13 +384,13 @@ void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, 
   fmpq_sub(t, t, t2q);
   fmpz_sub(dy_data->power_sums_num+k, dy_data->power_sums_num+k, t0z);
   hankel_dets = dy_data->hankel_dets[0];
-  t = fmpq_mat_entry(hankel_dets, k, 0);
-  if (k > 1) fmpq_submul(t, fmpq_mat_entry(hankel_dets, k-2, 0), t2q);
-  else fmpq_sub(t, t, t2q);
+  tz = fmpz_mat_entry(hankel_dets, k, 0);
+  if (k > 1) fmpz_submul(tz, fmpz_mat_entry(hankel_dets, k-2, 0), t1z);
+  else fmpz_sub(tz, tz, t1z);
   hankel_dets = dy_data->hankel_dets[1];
-  t = fmpq_mat_entry(hankel_dets, k, 0);
-  if (k > 1) fmpq_addmul(t, fmpq_mat_entry(hankel_dets, k-2, 0), t2q);
-  else fmpq_add(t, t, t2q);
+  tz = fmpz_mat_entry(hankel_dets, k, 0);
+  if (k > 1) fmpz_addmul(tz, fmpz_mat_entry(hankel_dets, k-2, 0), t1z);
+  else fmpz_add(tz, tz, t1z);
 }
 
 /* Given a polynomial tpol of length k, shrink the interval [lower, upper] to the range of constant terms
@@ -483,7 +485,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz *pol = dy_data->pol + n;
   fmpz *pow_num = dy_data->power_sums_num;
   fmpq_mat_struct *power_sums = dy_data->power_sums;
-  fmpq_mat_struct *hankel_dets;
+  fmpz_mat_struct *hankel_dets;
 
   /* Pointers into persistent working memory */
 
@@ -501,9 +503,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Unallocated pointers */
 
-  fmpz *tz;
+  fmpz *tz, *tza, *tzb;
   fmpq *t, *t1, *t2;
-  fmpq_mat_t hankel_mat;
+  fmpz_mat_t hankel_mat;
 
   /* Adjust lower and upper bounds within set_range_from_power_sums.
      This overwrites t2z, t2q, and (if val2 != NULL) also t3q.
@@ -615,32 +617,37 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     if (k%2 == 1 && !q_is_1) continue; // Hankel matrix is not defined over Q
     s = k/2 + !(r == 1 && k%2 == 0);
     if (r == 0 || k%2 == 0)
-      fmpq_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, s, s);
+      fmpz_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, s, s);
     for (i=0; i<s; i++)
       for (j=0; j<s; j++) {
-        t = fmpq_mat_entry(hankel_mat, i, j);
+        tz = fmpz_mat_entry(hankel_mat, i, j);
         if (i > 0 && j+1 < s) // This is a repeat of a previously computed entry
-          fmpq_set(t, fmpq_mat_entry(hankel_mat, i-1, j+1));
+          fmpz_set(tz, fmpz_mat_entry(hankel_mat, i-1, j+1));
         else if (r == 0 && k%2 == 0)
-          fmpq_set(t, POW(i+j));
+          fmpz_set(tz, pow_num+i+j);
         else if (r == 1 && k%2 == 0) {
-          fmpq_mul_ui(t, POW(i+j), 4);
-  	  if (!q_is_1) fmpq_mul_fmpz(t, t, q);
-	  fmpq_sub(t, t, POW(i+j+2));
+          fmpz_mul_ui(tz, pow_num+i+j, 4);
+  	  if (!q_is_1) fmpz_mul(tz, tz, q);
+  	  fmpz_mul(tz, tz, pol+k);
+  	  fmpz_mul(tz, tz, pol+k);  	  
+	  fmpz_sub(tz, tz, pow_num+i+j+2);
 	} else {
-          fmpq_mul_ui(t, POW(i+j), 2);
-	  if (r == 0) fmpq_add(t, t, POW(i+j+1));
-	  else fmpq_sub(t, t, POW(i+j+1));
+          fmpz_mul_ui(tz, pow_num+i+j, 2);
+  	  fmpz_mul(tz, tz, pol+k);  	  
+	  if (r == 0) fmpz_add(tz, tz, pow_num+i+j+1);
+	  else fmpz_sub(tz, tz, pow_num+i+j+1);
 	}
       } // Final value of t will be used again
     hankel_dets = dy_data->hankel_dets[r];
-    t1 = fmpq_mat_entry(hankel_dets, k, 0);
-    fmpq_mat_det(t1, hankel_mat);
+    tza = fmpz_mat_entry(hankel_dets, k, 0);
+    fmpz_mat_det(tza, hankel_mat);
     if (r == 1 || k%2 == 0) // Otherwise reuse the window size
-      fmpq_mat_window_clear(hankel_mat);
-    if (k > 1 && fmpq_sgn(t2 = fmpq_mat_entry(hankel_dets, k-2, 0)) > 0)
-      fmpq_div_raw(t0q, t1, t2);
-    else fmpq_set(t0q, t); // t was set in the for loop
+      fmpz_mat_window_clear(hankel_mat);
+    fmpz_pow_ui(t0z, pol+k, k);
+    fmpq_set_fmpz_frac(t0q, tza, t0z);
+    if (k > 1 && fmpz_sgn(tzb = fmpz_mat_entry(hankel_dets, k-2, 0)) > 0)
+      fmpq_div_fmpz(t0q, t0q, tzb);
+    else fmpq_set_fmpz_frac(t0q, tz, t0z); // t was set in the for loop
     if (r == 1) fmpz_neg(fmpq_numref(t0q), fmpq_numref(t0q));
     change_by_sign(1, r, t0q, NULL);
   }
@@ -694,7 +701,7 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
       _fmpz_vec_set(dy_data2->pol+k, dy_data->pol+k, d+1-k);
       _fmpz_vec_set(dy_data2->upper+k, dy_data->upper+k, d+1-k);
       fmpq_mat_set(dy_data2->power_sums, dy_data->power_sums);
-      for (j=0; j<=1; j++) fmpq_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
+      for (j=0; j<=1; j++) fmpz_mat_set(dy_data2->hankel_dets[j], dy_data->hankel_dets[j]);
 
       /* Restrict the donee process to the current branch. */
       fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
