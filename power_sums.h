@@ -14,7 +14,7 @@ typedef struct ps_static_data {
   int d, force_squarefree;
   long node_limit;
   fmpz_t q;
-  fmpz *modlist, *binom_mat, *sum_mats, *eval_pm2_mats;
+  fmpz *modlist, *binom_mat, *sum_mats, *sum_mats_with_denom, *eval_pm2_mats, *f_num;
   fmpq *f;
 } ps_static_data_t;
 
@@ -22,7 +22,7 @@ typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
   fmpq_mat_t power_sums, hankel_mat, hankel_dets[2];
-  fmpz *pol, *sympol, *upper;
+  fmpz *pol, *sympol, *upper, *power_sums_num;
 
   /* Scratch space */
   fmpz *w;

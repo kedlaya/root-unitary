@@ -227,9 +227,11 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
 
   st_data->modlist = _fmpz_vec_init(d+1);
   st_data->f = _fmpq_vec_init(d+1);
+  st_data->f_num = _fmpz_vec_init(d+1);
   k0 = st_data->modlist; // Used as a temporary variable for now
 
   st_data->sum_mats = _fmpz_vec_init((d+1)*(d+1));
+  st_data->sum_mats_with_denom = _fmpz_vec_init((d+1)*(d+1));
   for (i=0; i<=d; i++) {
     /* Coefficients of 2*(i-th Chebyshev polynomial)(x/2).
        If q != 1, the coeff of x^j is multiplied by q^{(i-j)/2}. */
@@ -241,6 +243,10 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
         fmpz_pow_ui(k0, q, (i-j)/2);
         fmpz_mul(pol+j, k0, pol+j);
       }
+    for (j=i%2; j<=i; j+=2) {
+      fmpz_pow_ui(k0, lead, i-j);
+      fmpz_mul(st_data->sum_mats_with_denom+(d+1)*i+j, k0, pol+j);
+    }
   }
  
   for (i=0; i<=d; i++) {
@@ -291,6 +297,8 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
     _fmpz_vec_set(dy_data->pol, coefflist, d+1);
   } else dy_data->flag = 0; // Flag this process as inactive
   dy_data->upper = _fmpz_vec_init(d+1);
+  dy_data->power_sums_num = _fmpz_vec_init(d+1);
+  fmpz_set_si(dy_data->power_sums_num, d);
 
   fmpq_mat_init(dy_data->power_sums, d+1, 1);
   fmpq_set_si(fmpq_mat_entry(dy_data->power_sums, 0, 0), d, 1);
@@ -315,9 +323,11 @@ void ps_static_clear(ps_static_data_t *st_data) {
 
   fmpz_clear(st_data->q);
   _fmpq_vec_clear(st_data->f, d+1);
+  _fmpz_vec_clear(st_data->f_num, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
   _fmpz_vec_clear(st_data->binom_mat, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->sum_mats, (d+1)*(d+1));
+  _fmpz_vec_clear(st_data->sum_mats_with_denom, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->eval_pm2_mats, 2*(d+1)*(d+1));
   free(st_data);
 }
@@ -332,6 +342,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   _fmpz_vec_clear(dy_data->pol, d+1);
   _fmpz_vec_clear(dy_data->sympol, 2*d+1);
   _fmpz_vec_clear(dy_data->upper, d+1);
+  _fmpz_vec_clear(dy_data->power_sums_num, d+1);
   fmpq_mat_clear(dy_data->power_sums);
   fmpq_mat_clear(dy_data->hankel_mat);
   for (i=0; i<=1; i++) fmpq_mat_clear(dy_data->hankel_dets[i]);
@@ -347,23 +358,29 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 /* Increment the current moving counter and update stored data to match. 
    If step is NULL it is interpreted as 1. */
 
-inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
+void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
   int k = st_data->d - n;
   fmpz *pol = dy_data->pol;
   fmpq *f = st_data->f + n;
   fmpq *t2q = dy_data->w2;
+  fmpz *t0z = dy_data->w;
   fmpq *t;
   fmpq_mat_struct *hankel_dets;
 
+  fmpz_pow_ui(t0z, pol+st_data->d, k-1);
+  fmpz_mul(t0z, t0z, st_data->modlist+n);
+  fmpz_mul_ui(t0z, t0z, k); 
   if (step == NULL) {
     fmpq_set(t2q, f);
     fmpz_add(pol+n, pol+n, st_data->modlist+n);
   } else {
+    fmpz_mul(t0z, t0z, step);
     fmpq_mul_fmpz(t2q, f, step);
     fmpz_addmul(pol+n, step, st_data->modlist+n);
   }
   t = fmpq_mat_entry(dy_data->power_sums, k, 0);
   fmpq_sub(t, t, t2q);
+  fmpz_sub(dy_data->power_sums_num+k, dy_data->power_sums_num+k, t0z);
   hankel_dets = dy_data->hankel_dets[0];
   t = fmpq_mat_entry(hankel_dets, k, 0);
   if (k > 1) fmpq_submul(t, fmpq_mat_entry(hankel_dets, k-2, 0), t2q);
@@ -445,11 +462,16 @@ int apply_rolle_condition(const fmpz *tpol, int k, int force_squarefree, const f
    The value of dy_data->pol+n is assumed to be correct modulo st_data->modlist+n.
 */
 int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
+  int d = st_data->d;
+  int k = d - n;
+
+  /* If k>d, no further coefficients to bound. */
+
+  if (k>d) return(1);
+
   /* Static data */
 
   int i, j, r, s;
-  int d = st_data->d;
-  int k = d - n;
   int force_squarefree = st_data->force_squarefree;
   fmpz *modulus = st_data->modlist + n;
   fmpz *q = st_data->q;
@@ -459,6 +481,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   /* Dynamic data */
 
   fmpz *pol = dy_data->pol + n;
+  fmpz *pow_num = dy_data->power_sums_num;
   fmpq_mat_struct *power_sums = dy_data->power_sums;
   fmpq_mat_struct *hankel_dets;
 
@@ -516,10 +539,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     }
   }
 
-  /* If k>d, no further coefficients to bound. */
-
-  if (k>d) return(1);
-
   /* If modulus==0, reduce the interval to [0]. */
 
   i = fmpz_is_zero(modulus);
@@ -533,14 +552,25 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   tz = fmpq_numref(POW(0));
   fmpz_set_ui(tz, k); // Temporary change to apply Girard-Newton
+  fmpz_set_ui(pow_num, k);
+  fmpz_zero(pow_num+k);
+  for (j=0; j<k; j++) {
+    fmpz_pow_ui(t0z, pol+k, k-j-1);
+    fmpz_mul(t0z, t0z, pol+j);
+    fmpz_submul(pow_num+k, t0z, pow_num+j);
+  }
   fmpq_mat_fmpz_vec_mul(t0q, pol, k, power_sums);
   fmpz_neg(t0z, pol+k);
   fmpq_div_fmpz(POW(k), t0q, t0z);
   fmpz_set_ui(tz, d); // Change back to the correct value, needed for Chebyshev criterion
+  fmpz_set_ui(pow_num, d);
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
-  fmpq_mat_fmpz_vec_mul(t0q, st_data->sum_mats+(d+1)*k, k+1, power_sums);
+  fmpz_pow_ui(t1z, pol+k, k);
+  _fmpz_vec_dot(t2z, st_data->sum_mats_with_denom+(d+1)*k, pow_num, k+1);
+  fmpq_set_fmpz_frac(t0q, t2z, t1z);
+//  fmpq_mat_fmpz_vec_mul(t0q, st_data->sum_mats+(d+1)*k, k+1, power_sums);
   if (q_is_1 || k == 1) fmpz_set_ui(t0z, 2*d);
   else {
     fmpz_pow_ui(t1z, q, k/2);
@@ -613,8 +643,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     else fmpq_set(t0q, t); // t was set in the for loop
     if (r == 1) fmpz_neg(fmpq_numref(t0q), fmpq_numref(t0q));
     change_by_sign(1, r, t0q, NULL);
-    if (fmpz_cmp(lower, upper) > 0) return(0);
   }
+  if (fmpz_cmp(lower, upper) > 0) return(0);
 
   /* Compute the divided n-th derivative of pol, answer in tpol. */
 
@@ -648,7 +678,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
    and the instances of dy_data2 are pairwise distinct.
 */
 void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if ((dy_data == NULL) || (dy_data2 == NULL) || (dy_data->flag <= 0) || dy_data2->flag) return;
+  if (dy_data == NULL || dy_data2 == NULL || dy_data->flag <= 0 || dy_data2->flag) return;
 
   int i, j;
   int d = dy_data->d;
@@ -722,6 +752,7 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       fmpz *q = st_data->q;
       int q_is_1 = fmpz_is_one(q);
 
+      /* Convert pol into its reciprocal transform, stored in sympol. */
       for (i=0; i<=d; i++) {
         t = sympol + d - i; 
 	fmpz_set(t, pol+i);
