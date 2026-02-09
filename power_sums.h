@@ -14,8 +14,7 @@ typedef struct ps_static_data {
   int d, force_squarefree;
   long node_limit;
   fmpz_t q;
-  fmpz *modlist, *binom_mat, *sum_mats, *eval_pm2_mats, *f_num;
-  fmpq *f;
+  fmpz *modlist, *binom_mat, *sum_mats, *eval_pm2_mats;
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
@@ -28,7 +27,7 @@ typedef struct ps_dynamic_data {
   fmpz *w;
   long wlen; /* = 3*d+7 */
   fmpq *w2;
-  long w2len; /* = 4 */
+  long w2len; /* = 5 */
 } ps_dynamic_data_t;
 
 int has_openmp();

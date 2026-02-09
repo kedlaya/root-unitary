@@ -43,12 +43,6 @@ inline int is_mpz(fmpz f) {
   return(COEFF_IS_MPZ(f));
 }
 
-/* Set res to a/b. No aliasing allowed. */
-inline void fmpq_div_raw(fmpq_t res, const fmpq_t a, const fmpq_t b) {
-  fmpz_mul(fmpq_numref(res), fmpq_numref(a), fmpq_denref(b));
-  fmpz_mul(fmpq_denref(res), fmpq_denref(a), fmpq_numref(b));
-}
-
 /* Set res to floor(a). */
 inline void fmpq_floor(fmpz_t res, const fmpq_t a) {
   fmpz_fdiv_q(res, fmpq_numref(a), fmpq_denref(a));
@@ -226,7 +220,6 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
   st_data->force_squarefree = force_squarefree;
 
   st_data->modlist = _fmpz_vec_init(d+1);
-  st_data->f = _fmpq_vec_init(d+1);
   k0 = st_data->modlist; // Used as a temporary variable for now
 
   st_data->sum_mats = _fmpz_vec_init((d+1)*(d+1));
@@ -248,16 +241,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
       }
   }
  
-  for (i=0; i<=d; i++) {
-    k0 = st_data->modlist + i;
-    k1 = st_data->f + i;
-    fmpz_set(k0, modlist+d-i);
-    fmpq_set_si(k1, d-i, 1);
-    fmpq_div_fmpz(k1, k1, lead);
-    /* In order to apply the Chebyshev and Descartes criteria
-       when the modulus is 0, we must pretend that the modulus is 1. */
-    if (!fmpz_is_zero(k0)) fmpq_mul_fmpz(k1, k1, k0);
-  }
+  for (i=0; i<=d; i++) fmpz_set(st_data->modlist + i, modlist+d-i);
 
   st_data->binom_mat = _fmpz_vec_init((d+1)*(d+1));
   for (i=0; i<=d; i++)
@@ -307,7 +291,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   
   dy_data->wlen = 3*d+7;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
-  dy_data->w2len = 4;
+  dy_data->w2len = 5;
   dy_data->w2 = _fmpq_vec_init(dy_data->w2len);
 
   return(dy_data);
@@ -320,7 +304,6 @@ void ps_static_clear(ps_static_data_t *st_data) {
   int d = st_data->d;
 
   fmpz_clear(st_data->q);
-  _fmpq_vec_clear(st_data->f, d+1);
   _fmpz_vec_clear(st_data->modlist, d+1);
   _fmpz_vec_clear(st_data->binom_mat, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->sum_mats, (d+1)*(d+1));
@@ -461,11 +444,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz *modulus = st_data->modlist + n;
   fmpz *q = st_data->q;
   int q_is_1 = fmpz_is_one(q);
-  fmpq *f = st_data->f + n;
+//  fmpq *f = st_data->f + n;
 
   /* Dynamic data */
 
   fmpz *pol = dy_data->pol + n;
+  fmpz *lead = pol + k;
   fmpz *pow_num = dy_data->power_sums_num;
 
   /* Pointers into persistent working memory */
@@ -481,6 +465,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpq *t1q = t0q+1;
   fmpq *t2q = t0q+2; // Affected by change_by_sign
   fmpq *t3q = t0q+3; // Affected by change_by_sign
+  fmpq *f = t0q+4;
 
   /* Unallocated pointers */
 
@@ -502,12 +487,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   */
 
   inline void change_by_sign(int update, int r, const fmpq_t val1, const fmpq_t val2) {
-    fmpq_div_raw(t2q, val1, f);
+    fmpz_mul(fmpq_numref(t2q), fmpq_numref(val1), fmpq_denref(f));
+    fmpz_mul(fmpq_denref(t2q), fmpq_denref(val1), fmpq_numref(f));
     if (val2 == NULL) {
       if (r ^ force_squarefree) fmpq_ceil(t2z, t2q);
       else fmpq_floor(t2z, t2q);
     } else {
-      fmpq_div_raw(t3q, val2, f);
+      fmpz_mul(fmpq_numref(t3q), fmpq_numref(val2), fmpq_denref(f));
+      fmpz_mul(fmpq_denref(t3q), fmpq_denref(val2), fmpq_numref(f));
       if (r ^ force_squarefree) fmpq_ceil_quad(t2z, t2q, t3q, q);
       else fmpq_floor_quad(t2z, t2q, t3q, q);
     }
@@ -524,11 +511,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* If modulus==0, reduce the interval to [0]. */
 
+  fmpq_set_ui(f, k, 1);
+  fmpq_div_fmpz(f, f, lead);
+  
   i = fmpz_is_zero(modulus);
   if (i) {
     fmpz_zero(lower);
     fmpz_zero(upper);
-  }
+  } else fmpq_mul_fmpz(f, f, modulus);
 
   /* Update pow_num[k] using the Girard-Newton formula. 
      This is the k-th power sum times c^k where c is the leading coefficient. */
@@ -536,7 +526,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz_set_ui(pow_num, k); // Temporary change to apply Girard-Newton
   fmpz_zero(pow_num+k);
   for (j=0; j<k; j++) {
-    fmpz_pow_ui(t0z, pol+k, k-j-1);
+    fmpz_pow_ui(t0z, lead, k-j-1);
     fmpz_mul(t0z, t0z, pol+j);
     fmpz_submul(pow_num+k, t0z, pow_num+j);
   }
@@ -549,7 +539,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     fmpz_pow_ui(t1z, q, k/2);
     fmpz_mul_si(t0z, t1z, 2*d);
   }
-  fmpz_pow_ui(t1z, pol+k, k);
+  fmpz_pow_ui(t1z, lead, k);
   _fmpz_vec_dot(t2z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
   fmpq_set_fmpz_frac(t0q, t2z, t1z);
   if (q_is_1 || k%2 == 0) {
@@ -570,8 +560,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), pol, k+1);
   tz = q_is_1 ? t2z : fmpq_numref(t1q);
   _fmpz_vec_dot(tz, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
-  fmpz_set(fmpq_denref(t0q), pol+k);
-  fmpz_set(fmpq_denref(t1q), pol+k);
+  fmpz_set(fmpq_denref(t0q), lead);
+  fmpz_set(fmpq_denref(t1q), lead);
   if (q_is_1) {
     fmpz_add(fmpq_numref(t0q), t0z, tz);
     fmpz_sub(fmpq_numref(t1q), t0z, tz);
@@ -594,10 +584,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     if (r == 0 || k%2 == 0)
       fmpz_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, s, s);
     if (r == 1 && k%2 == 0) {
-      fmpz_mul(t0z, pol+k, pol+k);
+      fmpz_mul(t0z, lead, lead);
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
       fmpz_mul_ui(t0z, t0z, 4);
-    } else if (k%2 == 1) fmpz_mul_ui(t0z, pol+k, 2);
+    } else if (k%2 == 1) fmpz_mul_ui(t0z, lead, 2);
     for (i=0; i<s; i++)
       for (j=0; j<s; j++) {
         tz = fmpz_mat_entry(hankel_mat, i, j);
@@ -618,7 +608,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     fmpz_mat_det(tza, hankel_mat);
     if (r == 1 || k%2 == 0) // Otherwise reuse the window size
       fmpz_mat_window_clear(hankel_mat);
-    // t1z == (pol+k)^k
+    // t1z == lead^k
     if (k > 1 && fmpz_sgn(tza-4) > 0) {
       fmpz_mul(t2z, tza-4, t1z);
       fmpq_set_fmpz_frac(t0q, tza, t2z);
