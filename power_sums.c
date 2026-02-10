@@ -110,13 +110,18 @@ inline void fmpq_ceil_quad(fmpz_t res, const fmpz_t anum, const fmpz_t aden, con
   We first attempt Dodgson condensation; if that fails because of a zero division,
   we construct the matrix and ask FLINT for the determinant.
 
-  This function assumes that {w, 2*n-2} is scratch space.
+  This function assumes that {w, 2*n-4} is scratch space.
 */
 
 void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
+  if (n == 1) {
+    fmpz_set(res, seq);
+    return;
+  }
+  
   int i, n1 = n-2;
-  fmpz *f0 = w;
-  fmpz *f1 = w+n-2;
+  fmpz *f0 = w; // Length n-2
+  fmpz *f1 = w+n-2; // Length n-2
   fmpz *t = seq;
 
   for (i=0; i<n-2; i++) fmpz_fmms(f1+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
@@ -304,7 +309,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpz_set_si(dy_data->hankel_dets, d);
   fmpz_set_si(dy_data->hankel_dets+1, 1);
   
-  dy_data->wlen = 3*d+11;
+  dy_data->wlen = 3*d+8;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
 
   return(dy_data);
@@ -376,7 +381,10 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
 
 /* Given a polynomial tpol of length k, shrink the interval [lower, upper] to the range of constant terms
    which when added to tpol give a polynomial with all real roots. Returns 0 if this range is empty (with
-   lower, upper now undefined) and 1 otherwise (with lower, upper now the endpoints of the new range). */
+   lower, upper now undefined) and 1 otherwise (with lower, upper now the endpoints of the new range). 
+   
+   This function assumes that {w, 2*k+2} is scratch space.
+*/
 
 int apply_rolle_condition(const fmpz *tpol, int k, int force_squarefree, const fmpz_t modulus, fmpz_t lower, fmpz_t upper, fmpz *w) {
   int r, s;
@@ -469,17 +477,22 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz *lead = pol + k;
   fmpz *pow_num = dy_data->power_sums_num;
 
-  /* Pointers into persistent working memory */
+  /* Integers allocated from working space, maintained throughout */
 
-  fmpz *tpol = dy_data->w; // Length d+1
-  fmpz *lower = tpol+d+2;
-  fmpz *upper = tpol+d+3;
-  fmpz *f = tpol+d+4;
-  fmpz *lead_pow = tpol+d+5; // to be set to lead^(k-1)
-  fmpz *t0z = tpol+d+6;
-  fmpz *t1z = tpol+d+7;
-  fmpz *t2z = tpol+d+8; // Affected by change_by_sign
-  fmpz *t3z = tpol+d+9; // Affected by change_by_sign
+  fmpz *f = dy_data->w;
+  fmpz *lead_pow = f+1; // to be set to lead^(k-1)
+  fmpz *upper = f+2;
+  fmpz *lower = f+3;
+
+  /* Temporary variables, not maintained throughout */
+
+  fmpz *tpol = f+4; // Length k+1
+  fmpz *w = tpol+k+1; // Length 2*k+2, passed to subroutines
+  
+  fmpz *t0z = w;
+  fmpz *t1z = w+1;
+  fmpz *t2z = w+2; // Affected by change_by_sign
+  fmpz *t3z = w+3; // Affected by change_by_sign
 
   /* Unallocated pointers */
 
@@ -605,9 +618,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
     /* Compute the determinant, then deduce a condition. */
     tz = dy_data->hankel_dets + 2*k + r;
-    hankel_determinant(tz, tza, 2*s-1, t3z);
+    hankel_determinant(tz, tza, 2*s-1, w);
 
-    // lead_pow == lead^k
     if (k > 1 && fmpz_sgn(tz-4) > 0) {
       fmpz_mul(t2z, tz-4, lead_pow);
       fmpz_set(t1z, tz);
@@ -628,7 +640,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Rolle criterion: tpol has all roots real. */
     
-  s = apply_rolle_condition(tpol, k+1, force_squarefree, modulus, lower, upper, t0z);
+  s = apply_rolle_condition(tpol, k+1, force_squarefree, modulus, lower, upper, w);
   if (!s) return(0);
 
   /* Set the new upper bound. */

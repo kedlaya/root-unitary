@@ -23,7 +23,7 @@ typedef struct ps_dynamic_data {
 
   /* Scratch space */
   fmpz *w;
-  long wlen; /* = 3*d+10 */
+  long wlen; /* = 3*d+8 */
 } ps_dynamic_data_t;
 
 int has_openmp();
