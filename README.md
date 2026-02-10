@@ -12,7 +12,12 @@ plus some additional improvements described in:
 
 > K.S. Kedlaya and A.V. Sutherland, A census of zeta functions of
 >    quartic K3 surfaces over F_2, LMS Journal of Computing 19
->    special issue A (2016), 1-11.
+>    special issue A (2016), 1-11
+
+and:
+
+> K.S. Kedlaya, Improved search techniques for root-unitary polynomials,
+> preprint (2026).
 
 For the version circa 2015, see the branch archive-2015. 
 For an upcoming version with further improvements, see the branch 2026.
