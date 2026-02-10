@@ -179,6 +179,15 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
   }
 }
 
+void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz_mat_t mat) {
+  int i, j, s = n/2+1;
+  
+  for (i=0; i<s; i++)
+    for (j=0; j<s; j++) 
+      fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
+  fmpz_mat_det(res, mat);
+}
+
 /*****
   Memory allocation and deallocation
 *****/
@@ -541,53 +550,41 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant. */
 
   for (r=0; r<=1; r++) {
-    /* Set up for the preparation of the Hankel matrix. */
     if (k%2 == 1 && !q_is_1) continue; // Hankel matrix is not defined over Q
+    /* Build the sequence of entries of the appropriate Hankel matrix. */
     s = k/2 + !(r == 1 && k%2 == 0);
     if (r == 1 && k%2 == 0) {
       fmpz_mul(t0z, lead, lead);
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
       fmpz_mul_ui(t0z, t0z, 4);
     } else if (k%2 == 1) fmpz_mul_ui(t0z, lead, 2);
+    if (r == 0 && k%2 == 0) _fmpz_vec_set(tpol, pow_num, 2*s-1);
+    else {
+      _fmpz_vec_scalar_mul_fmpz(tpol, pow_num, 2*s-1, t0z);
+      if (k%2 == 0) _fmpz_vec_sub(tpol, tpol, pow_num+2, 2*s-1);
+      else if (r == 0) _fmpz_vec_add(tpol, tpol, pow_num+1, 2*s-1);
+      else _fmpz_vec_sub(tpol, tpol, pow_num+1, 2*s-1);
+    }
 
-    /* Build the sequence of entries of the appropriate Hankel matrix. */
-    for (i=0; i<2*s-1; i++)
-      if (r == 0 && k%2 == 0)
-        fmpz_set(tpol+i, pow_num+i);
-      else if (r == 1 && k%2 == 0) {
-        fmpz_mul(tpol+i, pow_num+i, t0z);
-        fmpz_sub(tpol+i, tpol+i, pow_num+i+2);
-      } else {
-        fmpz_mul(tpol+i, pow_num+i, t0z);
-        if (r == 0) fmpz_add(tpol+i, tpol+i, pow_num+i+1);
-        else fmpz_sub(tpol+i, tpol+i, pow_num+i+1);
-      }
-
-    /* Populate the Hankel matrix. */
+    /* Compute the determinant, then deduce a condition. */
     if (r == 0 || k%2 == 0)
       fmpz_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, s, s);
-    for (i=0; i<s; i++)
-      for (j=0; j<s; j++) {
-        tz = fmpz_mat_entry(hankel_mat, i, j);
-        fmpz_set(tz, tpol+i+j);
-      } // Final value of tz will be used again
-      
-    /* Compute the determinant, then deduce a condition. */
     tza = dy_data->hankel_dets + 2*k + r;
-    fmpz_mat_det(tza, hankel_mat);
+    hankel_determinant(tza, tpol, 2*s-1, hankel_mat);
+    if (r == 1 || k%2 == 0) // Otherwise reuse the window size
+      fmpz_mat_window_clear(hankel_mat);
+
     // lead_pow == lead^k
     if (k > 1 && fmpz_sgn(tza-4) > 0) {
       fmpz_mul(t2z, tza-4, lead_pow);
       fmpz_set(t1z, tza);
     }
-    else { // tz was set in the for loop
+    else {
       fmpz_set(t2z, lead_pow);
-      fmpz_set(t1z, tz);
+      fmpz_set(t1z, tpol+2*(s-1));
     }
     if (r == 1) fmpz_neg(t1z, t1z);
     change_by_sign(1, r, t1z, t2z, NULL);
-    if (r == 1 || k%2 == 0) // Otherwise reuse the window size
-      fmpz_mat_window_clear(hankel_mat);
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
