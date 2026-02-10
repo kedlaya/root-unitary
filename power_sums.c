@@ -481,9 +481,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz *t2z = tpol+d+8; // Affected by change_by_sign
   fmpz *t3z = tpol+d+9; // Affected by change_by_sign
 
-  /* Unallocated pointer */
+  /* Unallocated pointers */
 
-  fmpz *tz;
+  fmpz *tz, *tza;
 
   /* Adjust lower and upper bounds within set_range_from_power_sums.
      This overwrites t2z and t3z.
@@ -594,8 +594,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
       fmpz_mul_ui(t0z, t0z, 4);
     } else if (k%2 == 1) fmpz_mul_ui(t0z, lead, 2);
-    if (r == 0 && k%2 == 0) _fmpz_vec_set(tpol, pow_num, 2*s-1);
+    if (r == 0 && k%2 == 0) tza = pow_num;
     else {
+      tza = tpol;
       _fmpz_vec_scalar_mul_fmpz(tpol, pow_num, 2*s-1, t0z);
       if (k%2 == 0) _fmpz_vec_sub(tpol, tpol, pow_num+2, 2*s-1);
       else if (r == 0) _fmpz_vec_add(tpol, tpol, pow_num+1, 2*s-1);
@@ -604,7 +605,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
     /* Compute the determinant, then deduce a condition. */
     tz = dy_data->hankel_dets + 2*k + r;
-    hankel_determinant(tz, tpol, 2*s-1, t3z);
+    hankel_determinant(tz, tza, 2*s-1, t3z);
 
     // lead_pow == lead^k
     if (k > 1 && fmpz_sgn(tz-4) > 0) {
@@ -613,7 +614,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     }
     else { // If the determinant vanishes, argue that the corner entry is nonnegative
       fmpz_set(t2z, lead_pow);
-      fmpz_set(t1z, tpol+2*(s-1));
+      fmpz_set(t1z, tza+2*s-2);
     }
     if (r == 1) fmpz_neg(t1z, t1z);
     change_by_sign(1, r, t1z, t2z, NULL);
