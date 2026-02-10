@@ -106,6 +106,45 @@ inline void fmpq_ceil_quad(fmpz_t res, const fmpz_t anum, const fmpz_t aden, con
 }
 
 /*
+  Compute the Hankel determinant associated to the sequence seq of odd length n.
+  We first attempt Dodgson condensation; if that fails because of a zero division,
+  we construct the matrix and ask FLINT for the determinant.
+
+  This function assumes that {w, 2*n-2} is scratch space.
+*/
+
+void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
+  int i, n1=n-2;
+  fmpz *f0 = w;
+  fmpz *f1 = w+n-2;
+  fmpz *t = seq;
+
+  for (i=0; i<n-2; i++) fmpz_fmms(f1+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
+  while (n1 > 1) {
+    for (i=0; i<n1-2; i++) {
+      if (fmpz_is_zero(t+i+2)) break; // Initially t = seq, subsequently t = f0
+      fmpz_fmms(f0+i, f1+i, f1+i+2, f1+i+1, f1+i+1);
+      fmpz_divexact(f0+i, f0+i, t+i+2);
+    }
+    n1 -= 2;
+    if (i < n1) break;
+    t = f1; f1 = f0; f0 = t;
+  }
+  if (n1 == 1) fmpz_set(res, f1);
+  else { // Fall back on FLINT built-in
+    fmpz_mat_t mat;
+    int j;
+    n1 = n/2+1;
+    fmpz_mat_init(mat, n1, n1);
+    for (i=0; i<n1; i++)
+      for (j=0; j<n1; j++)
+        fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
+    fmpz_mat_det(res, mat);
+    fmpz_mat_clear(mat);
+  }
+}
+
+/*
     Use a subresultant (Sturm-Habicht) sequence to test whether a given
     polynomial has all real roots. Note that this test has an early abort
     mechanism: having all real roots means that the sign sequence has
@@ -150,8 +189,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
         fmpz_mul(f0, a, b);
         fmpz_add(f0, f0, poly);
         fmpz_mul(f0, f0, f1+n-1);
-      }
-      else fmpz_mul(f0, poly, f1+n-1);
+      } else fmpz_mul(f0, poly, f1+n-1);
 
     n--; // At this point deg(f0) = deg(f1) = n.
     _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n);
@@ -176,44 +214,6 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
 
     /* Swap f0 with f1 at the pointer level. */
     t = f0; f0 = f1; f1 = t;
-  }
-}
-
-/*
-  Compute the Hankel determinant associated to the sequence seq of odd length n.
-  We first attempt Dodgson condensation; if that fails because of a zero division,
-  we construct the matrix and ask FLINT for the determinant.
- 
-  This function assumes that {w, 2*n-2} is scratch space.
-*/
-
-void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
-  int i, j, n1=n-2;
-  fmpz *f0 = w;
-  fmpz *f1 = w+n-2;
-  fmpz *t = seq;
-  
-  for (i=0; i<n-2; i++) fmpz_fmms(f1+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
-  while (n1 > 1) {
-    for (i=0; i<n1-2; i++) {
-      if (fmpz_is_zero(t+i+2)) break;
-      fmpz_fmms(f0+i, f1+i, f1+i+2, f1+i+1, f1+i+1);
-      fmpz_divexact(f0+i, f0+i, t+i+2);
-    }
-    if (i < n1-2) break;
-    t = f1; f1 = f0; f0 = t;
-    n1 -= 2;
-  }
-  if (n1 == 1) fmpz_set(res, f1);
-  else { // Fall back on the usual method
-    n1 = n/2+1;
-    fmpz_mat_t mat;
-    fmpz_mat_init(mat, n1, n1);
-    for (i=0; i<n1; i++)
-      for (j=0; j<n1; j++) 
-        fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
-    fmpz_mat_det(res, mat);
-    fmpz_mat_clear(mat);
   }
 }
 
@@ -400,10 +400,12 @@ int apply_rolle_condition(const fmpz *tpol, int k, int force_squarefree, const f
       fmpz_sub_ui(t0z, t0z, 1);
     }
     do {
-      if (!(s = TEST_ROOTS(t0z))) fmpz_addmul_ui(t0z, t2z, 2);
-    } while (!s && fmpz_cmp(t0z, upper) <= 0);
-    if (!s) r--;
-  } while (!s && r >= 0);
+      if (s = TEST_ROOTS(t0z)) break;
+      else fmpz_addmul_ui(t0z, t2z, 2);
+    } while (fmpz_cmp(t0z, upper) <= 0);
+    if (s) break;
+    else r--;
+  } while (r >= 0);
   if (!s) return(0);
 
   if (r == 0) { // In this case, enforce lower == upper and exit
@@ -578,8 +580,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   for (r=0; r<=1; r++) {
     if (k%2 == 1 && !q_is_1) continue; // Hankel matrix is not defined over Q
     /* Build the sequence of entries of the appropriate Hankel matrix. */
-    s = k/2 + !(r == 1 && k%2 == 0);
+    s = k/2 + 1;
     if (r == 1 && k%2 == 0) {
+      s -= 1;
       fmpz_mul(t0z, lead, lead);
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
       fmpz_mul_ui(t0z, t0z, 4);
@@ -601,7 +604,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
       fmpz_mul(t2z, tz-4, lead_pow);
       fmpz_set(t1z, tz);
     }
-    else {
+    else { // If the determinant vanishes, argue that the corner entry is nonnegative
       fmpz_set(t2z, lead_pow);
       fmpz_set(t1z, tpol+2*(s-1));
     }
@@ -702,12 +705,14 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   int flag = 1;
   int count_steps = 0;
 
-  while (flag == 1 && count_steps <= max_steps) {
+  while (count_steps <= max_steps) {
     count_steps += 1;
     if (ascend) { // Ascend the tree and step forward as needed.
       n += ascend;
-      if (n > d) flag = 0; // This process is exhausted.
-      else {
+      if (n > d) {
+        flag = 0; // This process is exhausted.
+        break;
+      } else {
 	ascend = (fmpz_cmp(pol+n, upper+n) >= 0);
 	if (!ascend) step_forward(st_data, dy_data, n, NULL);
       }
@@ -731,12 +736,16 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
       }
       ascend = 1;
       flag = 2;
+      break;
     } else { // Compute children of the current node.
       n -= 1;
       ascend = !set_range_from_power_sums(st_data, dy_data, n);
       if (ascend) { // Found a terminal node
 	node_count += 1;
-	if (node_limit != -1 && node_count >= node_limit) flag = -1;
+	if (node_limit != -1 && node_count >= node_limit) {
+	  flag = -1;
+	  break;
+	}
       }
     }
   }

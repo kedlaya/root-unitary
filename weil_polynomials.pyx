@@ -223,9 +223,9 @@ cdef class dfs_manager:
                 with nogil:
                     for i in prange(np, schedule='dynamic'):  # Step each process forward
                         next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
-                        if self.dy_data_buf[i].flag: t += 1
+                        if self.dy_data_buf[i].flag > 0: t += 1
                         elif self.dy_data_buf[i].flag == -1: u += 1
-                    for i in prange(np, schedule='dynamic'):  # Redistribute work to idle processes
+                    for i in prange(np, schedule='dynamic'): # Redistribute work to idle processes
                         j = (i-k+np) % np
                         ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
             for i in range(np):
