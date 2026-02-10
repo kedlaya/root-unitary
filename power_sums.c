@@ -114,7 +114,7 @@ inline void fmpq_ceil_quad(fmpz_t res, const fmpz_t anum, const fmpz_t aden, con
 */
 
 void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
-  int i, n1=n-2;
+  int i, n1 = n-2;
   fmpz *f0 = w;
   fmpz *f1 = w+n-2;
   fmpz *t = seq;
@@ -164,7 +164,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
   if (n <= 2) return(1);  // Constant or linear polynomial
 
   fmpz *t;
-  int i;
+  int i = 1;
 
   /* Set f1 := deriv(poly). */
   _fmpz_poly_derivative(f1, poly, n);
@@ -172,6 +172,12 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
 
   int n0 = n; // Initial degree
   int sgn0_l = fmpz_sgn(poly+n); // Sign of initial leading coefficient
+  
+  if (a != NULL && b != NULL) { // Update constant coefficient
+    fmpz_mul(f0, a, b);
+    fmpz_add(f0, f0, poly);
+    fmpz_mul(f0, f0, f1+n-1);
+  } else fmpz_mul(f0, poly, f1+n-1);
 
   while (1) { // At this point deg(f0) = n, deg(f1) = n-1.
     /* 
@@ -180,16 +186,9 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
        f0 --> f1[n-1]*f0 - f0[n-1]*f1
     */
     
-    i = (n == n0);
     t = i ? poly : f0; // if n == n0, f0 is not yet initialized
     _fmpz_vec_scalar_mul_fmpz(f0+i, t+i, n-i, f1+n-1);
     _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n-1, t+n);
-    if (i) // Fill in constant term of f0 using a and b
-      if (a != NULL && b != NULL) {
-        fmpz_mul(f0, a, b);
-        fmpz_add(f0, f0, poly);
-        fmpz_mul(f0, f0, f1+n-1);
-      } else fmpz_mul(f0, poly, f1+n-1);
 
     n--; // At this point deg(f0) = deg(f1) = n.
     _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n);
@@ -205,6 +204,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
 
     /* If f0 is a scalar, it is nonzero and we win. */
     if (n == 1) return(1);
+    i = 0;
 
     /* Extract content from f0.
        This seems to do better in practice than an explicit subresultant computation.
@@ -348,25 +348,30 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
    If step is NULL it is interpreted as 1. */
 
 inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
-  int k = st_data->d - n;
+  int d = st_data->d;
+  int k = d - n;
   fmpz *pol = dy_data->pol;
+  fmpz *modulus = st_data->modlist + n;
+  fmpz *pow_num = dy_data->power_sums_num+k;
+  fmpz *det = dy_data->hankel_dets + 2*k;
   fmpz *t0z = dy_data->w;
-  fmpz *tz;
 
-  fmpz_pow_ui(t0z, pol+st_data->d, k-1);
-  fmpz_mul(t0z, t0z, st_data->modlist+n);
-  fmpz_mul_ui(t0z, t0z, k); 
-  if (step == NULL) fmpz_add(pol+n, pol+n, st_data->modlist+n);
+  fmpz_pow_ui(t0z, pol+d, k-1);
+  fmpz_mul(t0z, t0z, modulus);
+  fmpz_mul_ui(t0z, t0z, k);
+  if (step == NULL) fmpz_add(pol+n, pol+n, modulus);
   else {
     fmpz_mul(t0z, t0z, step);
-    fmpz_addmul(pol+n, step, st_data->modlist+n);
+    fmpz_addmul(pol+n, step, modulus);
   }
-  fmpz_sub(dy_data->power_sums_num+k, dy_data->power_sums_num+k, t0z);
-  tz = dy_data->hankel_dets+2*k;
-  if (k > 1) fmpz_submul(tz, tz-4, t0z);
-  else fmpz_sub(tz, tz, t0z);
-  if (k > 1) fmpz_addmul(tz+1, tz-3, t0z);
-  else fmpz_add(tz+1, tz+1, t0z);
+  fmpz_sub(pow_num, pow_num, t0z);
+  if (k > 1) {
+    fmpz_submul(det, det-4, t0z);
+    fmpz_addmul(det+1, det-3, t0z);
+  } else {
+    fmpz_sub(det, det, t0z);
+    fmpz_add(det+1, det+1, t0z);
+  }
 }
 
 /* Given a polynomial tpol of length k, shrink the interval [lower, upper] to the range of constant terms
@@ -495,17 +500,19 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   */
 
   inline void change_by_sign(int update, int r, const fmpz_t val1_num, const fmpz_t val1_den, const fmpz_t val2_num) {
-    if (val2_num == NULL) {
-      if (val1_den == NULL) fmpz_set(t3z, f);
-      else fmpz_mul(t3z, val1_den, f);
-      if (r ^ force_squarefree) fmpz_cdiv_q(t2z, val1_num, t3z);
-      else fmpz_fdiv_q(t2z, val1_num, t3z);
-    } else {
-      if (val1_den == NULL) fmpz_set(t3z, f);
-      else fmpz_mul(t3z, val1_den, f);
-      if (r ^ force_squarefree) fmpq_ceil_quad(t2z, val1_num, t3z, val2_num, f, q);
-      else fmpq_floor_quad(t2z, val1_num, t3z, val2_num, f, q);
+    fmpz *k;
+    
+    if (val1_den == NULL) k = f;
+    else {
+      k = t3z;
+      fmpz_mul(t3z, val1_den, f);
     }
+    if (val2_num == NULL)
+      if (r ^ force_squarefree) fmpz_cdiv_q(t2z, val1_num, k);
+      else fmpz_fdiv_q(t2z, val1_num, k);
+    else
+      if (r ^ force_squarefree) fmpq_ceil_quad(t2z, val1_num, k, val2_num, f, q);
+      else fmpq_floor_quad(t2z, val1_num, k, val2_num, f, q);
     if (!r) { // change_upper
       if (force_squarefree) {
         if (!update || fmpz_cmp(t2z, upper) <= 0) fmpz_sub_ui(upper, t2z, 1);
