@@ -179,13 +179,42 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
   }
 }
 
-void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz_mat_t mat) {
-  int i, j, s = n/2+1;
+/*
+  Compute the Hankel determinant associated to the sequence seq of odd length n.
+  We first attempt Dodgson condensation; if that fails because of a zero division,
+  we construct the matrix and ask FLINT for the determinant.
+ 
+  This function assumes that {w, 2*n-2} is scratch space.
+*/
+
+void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
+  int i, j, n1=n-2;
+  fmpz *f0 = w;
+  fmpz *f1 = w+n-2;
+  fmpz *t = seq;
   
-  for (i=0; i<s; i++)
-    for (j=0; j<s; j++) 
-      fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
-  fmpz_mat_det(res, mat);
+  for (i=0; i<n-2; i++) fmpz_fmms(f1+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
+  while (n1 > 1) {
+    for (i=0; i<n1-2; i++) {
+      if (fmpz_is_zero(t+i+2)) break;
+      fmpz_fmms(f0+i, f1+i, f1+i+2, f1+i+1, f1+i+1);
+      fmpz_divexact(f0+i, f0+i, t+i+2);
+    }
+    if (i < n1-2) break;
+    t = f1; f1 = f0; f0 = t;
+    n1 -= 2;
+  }
+  if (n1 == 1) fmpz_set(res, f1);
+  else { // Fall back on the usual method
+    n1 = n/2+1;
+    fmpz_mat_t mat;
+    fmpz_mat_init(mat, n1, n1);
+    for (i=0; i<n1; i++)
+      for (j=0; j<n1; j++) 
+        fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
+    fmpz_mat_det(res, mat);
+    fmpz_mat_clear(mat);
+  }
 }
 
 /*****
@@ -271,7 +300,6 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpz_set_si(dy_data->power_sums_num, d);
   _fmpz_vec_zero(dy_data->power_sums_num+1, d);
 
-  fmpz_mat_init(dy_data->hankel_mat, d/2+1, d/2+1);
   dy_data->hankel_dets = _fmpz_vec_init(2*d+2);
   fmpz_set_si(dy_data->hankel_dets, d);
   fmpz_set_si(dy_data->hankel_dets+1, 1);
@@ -307,7 +335,6 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   _fmpz_vec_clear(dy_data->sympol, 2*d+1);
   _fmpz_vec_clear(dy_data->upper, d+1);
   _fmpz_vec_clear(dy_data->power_sums_num, d+1);
-  fmpz_mat_clear(dy_data->hankel_mat);
   _fmpz_vec_clear(dy_data->hankel_dets, 2*d+2);
   _fmpz_vec_clear(dy_data->w, dy_data->wlen);
   free(dy_data);
@@ -447,10 +474,9 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz *t2z = tpol+d+8; // Affected by change_by_sign
   fmpz *t3z = tpol+d+9; // Affected by change_by_sign
 
-  /* Unallocated pointers */
+  /* Unallocated pointer */
 
-  fmpz *tz, *tza;
-  fmpz_mat_t hankel_mat;
+  fmpz *tz;
 
   /* Adjust lower and upper bounds within set_range_from_power_sums.
      This overwrites t2z and t3z.
@@ -567,17 +593,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     }
 
     /* Compute the determinant, then deduce a condition. */
-    if (r == 0 || k%2 == 0)
-      fmpz_mat_window_init(hankel_mat, dy_data->hankel_mat, 0, 0, s, s);
-    tza = dy_data->hankel_dets + 2*k + r;
-    hankel_determinant(tza, tpol, 2*s-1, hankel_mat);
-    if (r == 1 || k%2 == 0) // Otherwise reuse the window size
-      fmpz_mat_window_clear(hankel_mat);
+    tz = dy_data->hankel_dets + 2*k + r;
+    hankel_determinant(tz, tpol, 2*s-1, t3z);
 
     // lead_pow == lead^k
-    if (k > 1 && fmpz_sgn(tza-4) > 0) {
-      fmpz_mul(t2z, tza-4, lead_pow);
-      fmpz_set(t1z, tza);
+    if (k > 1 && fmpz_sgn(tz-4) > 0) {
+      fmpz_mul(t2z, tz-4, lead_pow);
+      fmpz_set(t1z, tz);
     }
     else {
       fmpz_set(t2z, lead_pow);

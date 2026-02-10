@@ -2,7 +2,7 @@
 #include <flint/flint.h>
 #include <flint/fmpz.h>
 #include <flint/fmpz_vec.h>
-#include <flint/fmpz_poly.h>
+#include <flint/fmpz_mat.h>
 #include <flint/fmpz_poly.h>
 
 #if defined(_OPENMP)
@@ -19,7 +19,6 @@ typedef struct ps_static_data {
 typedef struct ps_dynamic_data {
   int d, n, ascend, flag;
   long node_count;
-  fmpz_mat_t hankel_mat; 
   fmpz *pol, *sympol, *upper, *power_sums_num, *hankel_dets;
 
   /* Scratch space */
