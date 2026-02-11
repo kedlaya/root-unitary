@@ -167,16 +167,15 @@ void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
-
-  fmpz *t;
-  int i = 1;
-
+  
   /* Set f1 := deriv(poly). */
   _fmpz_poly_derivative(f1, poly, n);
   n--; // now n = deg(poly)
 
-  int n0 = n; // Initial degree
+  int i = 1; // Distinguish the first pass through the while loop
+  int j = 1; // Record parity
   int sgn0_l = fmpz_sgn(poly+n); // Sign of initial leading coefficient
+  fmpz *t; // Auxiliary pointer
   
   if (a != NULL && b != NULL) { // Update constant coefficient
     fmpz_mul(f0, a, b);
@@ -192,7 +191,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     */
     
     t = i ? poly : f0; // if n == n0, f0 is not yet initialized
-    _fmpz_vec_scalar_mul_fmpz(f0+i, t+i, n-i, f1+n-1);
+    _fmpz_vec_scalar_mul_fmpz(f0+i, t+i, n-i, f1+n-1); // no need to touch the leading coefficient
     _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n-1, t+n);
 
     n--; // At this point deg(f0) = deg(f1) = n.
@@ -203,22 +202,25 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
        If f0 = 0, we win unless we are insisting on squarefree. */
     if (!force_squarefree && _fmpz_vec_is_zero(f0, n)) return(1);
 
-    /* If we miss any one sign change, we cannot have enough. */
-    if ((n0-n) % 2 == 1) sgn0_l = -sgn0_l;
+    /* If we miss any one sign change, we cannot have enough. 
+       Note that we are not computing signed pseudoremainders, so we have to flip signs correctly. */
+    if (j) sgn0_l = -sgn0_l;
     if (fmpz_sgn(f0+n-1) != sgn0_l) return(0);
 
     /* If f0 is a scalar, it is nonzero and we win. */
     if (n == 1) return(1);
-    i = 0;
-
-    /* Extract content from f0.
-       This seems to do better in practice than an explicit subresultant computation.
-       Note that f0+n is now allocated but unused, so available for a temporary value. */
-    _fmpz_vec_content(f0+n, f0, n);
-    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, f0+n);
+    
+    /* Reduce f0 to the subresultant by dividing off the square of the old leading coefficient. */
+    if (!i) {
+      fmpz_mul(f0+n, t+n+1, t+n+1);
+      _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, f0+n);
+    }
 
     /* Swap f0 with f1 at the pointer level. */
     t = f0; f0 = f1; f1 = t;
+    
+    // Update counters.
+    i = 0; j = 1-j;
   }
 }
 
@@ -309,7 +311,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   fmpz_set_si(dy_data->hankel_dets, d);
   fmpz_set_si(dy_data->hankel_dets+1, 1);
   
-  dy_data->wlen = 3*d+8;
+  dy_data->wlen = 3*d+10;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
 
   return(dy_data);
