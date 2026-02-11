@@ -1,5 +1,5 @@
 #distutils: libraries = gomp
-#distutils: extra_compile_args = -fopenmp
+#distutils: extra_compile_args = -fopenmp -O3
 ## Remove second # from the previous two lines to enable OpenMP support.
 
 r"""
@@ -29,13 +29,15 @@ AUTHOR:
   -- (2019-02-02): update for Python3
                    improve parallel mode
   -- (2019-12-19): final packaging for Sage (with help from David Roe)
-  -- (2026-0,-01): extensive low-level optimization and reorganization
+  -- (2026-02-10): extensive low-level optimization and reorganization
                    move some input sanitization out of C layer
                    improved algorithm for computing ranges
                      (using truncated Hausdorff moment condition)
                    more efficient application of Rolle condition (binary search)
                    choose number of processes based on available cores
                    import fmpz's directly as longs when possible
+                   compute Hankel determinants via Dodgson condensation when possible
+                   compute subresultants without explicitly computing contents
 """
 
 #*****************************************************************************
@@ -221,13 +223,13 @@ cdef class dfs_manager:
                 t = 0
                 k = (k<<1) % np # Note that 2 is a primitive root mod np.
                 with nogil:
-                    for i in prange(np, schedule='dynamic'):  # Step each process forward
+                    for i in prange(np):  # Step each process forward
                         next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
                         if self.dy_data_buf[i].flag > 0: t += 1
                         elif self.dy_data_buf[i].flag == -1: u += 1
-                    for i in prange(np, schedule='dynamic'): # Redistribute work to idle processes
-                        j = (i-k+np) % np
-                        ps_dynamic_split(self.dy_data_buf[j], self.dy_data_buf[i])
+                    for i in prange(np): # Redistribute work to idle processes
+                        j = (i+k) % np
+                        ps_dynamic_split(self.dy_data_buf[i], self.dy_data_buf[j])
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     l = []

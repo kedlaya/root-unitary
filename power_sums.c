@@ -158,7 +158,7 @@ void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
     This function assumes that:
         - {poly, n} is a normalized vector with n >= 2 and nonzero leading coefficient
         - {f0, n} and {f1, n-1} are scratch space.
-    If a and b are not NULL, we add a*b to the constant term before testing.
+    If a is not NULL, we add a (if b is NULL) or a*b (otherwise) to the constant term before testing.
 
     Based on code by Sebastian Pancratz from the FLINT repository.
 */
@@ -174,11 +174,14 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
   /* Set f1 := deriv(poly). */
   _fmpz_poly_derivative(f1, poly, n);
   n--;
-  int sgn0_l = -fmpz_sgn(poly+n); // Sign of initial leading coefficient
+  int sgn0_l = -fmpz_sgn(poly+n); // Opposite of sign of leading coefficient
 
-  if (a != NULL && b != NULL) { // Update constant coefficient
-    fmpz_mul(f0, a, b);
-    fmpz_add(f0, f0, poly);
+  if (a != NULL) { // Update constant coefficient
+    if (b == NULL) fmpz_add(f0, a, poly); // Treat b as 1
+    else {
+      fmpz_mul(f0, a, b);
+      fmpz_add(f0, f0, poly);
+    }
     fmpz_mul(f0, f0, f1+n-1);
   } else fmpz_mul(f0, poly, f1+n-1);
 
@@ -358,18 +361,23 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
   int d = st_data->d;
   int k = d - n;
   fmpz *pol = dy_data->pol;
+  fmpz *poln = pol+n;
   fmpz *modulus = st_data->modlist + n;
+  int modulus_is_1 = fmpz_is_one(modulus);
   fmpz *pow_num = dy_data->power_sums_num+k;
   fmpz *det = dy_data->hankel_dets + 2*k;
   fmpz *t0z = dy_data->w;
 
   fmpz_pow_ui(t0z, pol+d, k-1);
-  fmpz_mul(t0z, t0z, modulus);
+  if (!modulus_is_1) fmpz_mul(t0z, t0z, modulus);
   fmpz_mul_ui(t0z, t0z, k);
-  if (step == NULL) fmpz_add(pol+n, pol+n, modulus);
+  if (step == NULL) 
+    if (modulus_is_1) fmpz_add_ui(poln, poln, 1);
+    else fmpz_add(poln, poln, modulus);
   else {
     fmpz_mul(t0z, t0z, step);
-    fmpz_addmul(pol+n, step, modulus);
+    if (modulus_is_1) fmpz_add(poln, poln, step);
+    else fmpz_addmul(poln, step, modulus);
   }
   fmpz_sub(pow_num, pow_num, t0z);
   if (k > 1) {
@@ -397,7 +405,7 @@ int apply_rolle_condition(const fmpz *tpol, int k, int force_squarefree, const f
   fmpz *f0 = w+3; // Length k
   fmpz *f1 = w+k+3; // Length k-1
 
-  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k, f0, f1, force_squarefree, modulus, x)
+  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k, f0, f1, force_squarefree, x, modulus)
   
   /* Handle the case upper == lower directly. */
   if (!fmpz_cmp(lower, upper)) return(TEST_ROOTS(lower));
@@ -470,6 +478,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   int force_squarefree = st_data->force_squarefree;
   fmpz *modulus = st_data->modlist + n;
   int modulus_is_0 = fmpz_is_zero(modulus);
+  int modulus_is_1 = fmpz_is_one(modulus);
   fmpz *q = st_data->q;
   int q_is_1 = fmpz_is_one(q);
 
@@ -482,7 +491,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   /* Integers allocated from working space, maintained throughout */
 
   fmpz *f = dy_data->w;
-  fmpz *lead_pow = f+1; // to be set to lead^(k-1)
+  fmpz *lead_pow = f+1;
+  fmpz_pow_ui(lead_pow, lead, k-1);
   fmpz *upper = f+2;
   fmpz *lower = f+3;
 
@@ -545,23 +555,23 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   if (modulus_is_0) {
     fmpz_zero(lower);
     fmpz_zero(upper);
-  } else fmpz_mul(f, f, modulus);
+  } else if (!modulus_is_1) fmpz_mul(f, f, modulus);
 
   /* Update pow_num[k] using the Girard-Newton formula. 
      This is the k-th power sum times c^k where c is the leading coefficient. */
 
   fmpz_set_ui(pow_num, k); // Temporary change to apply Girard-Newton
   fmpz_zero(pow_num+k);
+  fmpz_one(t1z);
   for (j=0; j<k; j++) {
-    fmpz_pow_ui(t0z, lead, k-j-1);
-    fmpz_mul(t0z, t0z, pol+j);
-    fmpz_submul(pow_num+k, t0z, pow_num+j);
+    fmpz_mul(t0z, t1z, pol+k-1-j);
+    fmpz_submul(pow_num+k, t0z, pow_num+k-1-j);
+    if (j<k-1) fmpz_mul(t1z, t1z, lead);
   }
   fmpz_set_ui(pow_num, d); // Change back to the correct value, needed for Chebyshev criterion
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
-  fmpz_pow_ui(lead_pow, lead, k-1);
   fmpz_mul_ui(t0z, lead, 2*d);
   if (!q_is_1 && k > 1) {
     fmpz_pow_ui(t1z, q, k/2);
@@ -602,13 +612,15 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   for (r=0; r<=1; r++) {
     if (k%2 == 1 && !q_is_1) continue; // Hankel matrix is not defined over Q
     /* Build the sequence of entries of the appropriate Hankel matrix. */
-    s = k/2 + 1;
     if (r == 1 && k%2 == 0) {
-      s -= 1;
+      s = k/2;
       fmpz_mul(t0z, lead, lead);
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
       fmpz_mul_ui(t0z, t0z, 4);
-    } else if (k%2 == 1) fmpz_mul_ui(t0z, lead, 2);
+    } else {
+      s = k/2 + 1;
+      if (k%2 == 1) fmpz_mul_ui(t0z, lead, 2);
+    }
     if (r == 0 && k%2 == 0) tza = pow_num;
     else {
       tza = tpol;
@@ -622,7 +634,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     tz = dy_data->hankel_dets + 2*k + r;
     hankel_determinant(tz, tza, 2*s-1, w);
 
-    if (k > 1 && fmpz_sgn(tz-4) > 0) {
+    if (k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0)) {
       fmpz_mul(t2z, tz-4, lead_pow);
       fmpz_set(t1z, tz);
     }
@@ -641,13 +653,14 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   for (i=0; i<=k; i++) fmpz_mul(tpol+i, tz+i, pol+i);
 
   /* Rolle criterion: tpol has all roots real. */
-    
-  s = apply_rolle_condition(tpol, k+1, force_squarefree, modulus, lower, upper, w);
+
+  tz = modulus_is_1 ? NULL : modulus;
+  s = apply_rolle_condition(tpol, k+1, force_squarefree, tz, lower, upper, w);
   if (!s) return(0);
 
   /* Set the new upper bound. */
 
-  fmpz_mul(upper, upper, modulus);
+  if (!modulus_is_1) fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n, pol, upper);
 
   /* Set the new polynomial value, then correct the k-th power sum and related quantities. */

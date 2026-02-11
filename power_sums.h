@@ -2,8 +2,8 @@
 #include <flint/flint.h>
 #include <flint/fmpz.h>
 #include <flint/fmpz_vec.h>
-#include <flint/fmpz_mat.h>
 #include <flint/fmpz_poly.h>
+#include <flint/fmpz_mat.h>
 
 #if defined(_OPENMP)
   #include <omp.h>
@@ -23,7 +23,7 @@ typedef struct ps_dynamic_data {
 
   /* Scratch space */
   fmpz *w;
-  long wlen; /* = 3*d+8 */
+  long wlen; /* = 3*d+10 */
 } ps_dynamic_data_t;
 
 int has_openmp();
