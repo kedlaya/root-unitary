@@ -474,7 +474,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Static data */
 
-  int i, j, r, s;
+  int i, s;
   int force_squarefree = st_data->force_squarefree;
   fmpz *modulus = st_data->modlist + n;
   int modulus_is_0 = fmpz_is_zero(modulus);
@@ -563,10 +563,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz_set_ui(pow_num, k); // Temporary change to apply Girard-Newton
   fmpz_zero(pow_num+k);
   fmpz_one(t1z);
-  for (j=0; j<k; j++) {
-    fmpz_mul(t0z, t1z, pol+k-1-j);
-    fmpz_submul(pow_num+k, t0z, pow_num+k-1-j);
-    if (j<k-1) fmpz_mul(t1z, t1z, lead);
+  for (i=0; i<k; i++) {
+    fmpz_mul(t0z, t1z, pol+k-1-i);
+    fmpz_submul(pow_num+k, t0z, pow_num+k-1-i);
+    if (i<k-1) fmpz_mul(t1z, t1z, lead);
   }
   fmpz_set_ui(pow_num, d); // Change back to the correct value, needed for Chebyshev criterion
 
@@ -609,30 +609,30 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant. */
 
-  for (r=0; r<=1; r++) {
-    if (k%2 == 1 && !q_is_1) continue; // Hankel matrix is not defined over Q
+  for (i=0; i<=1; i++) {
+    if (!q_is_1 && k%2 == 1) continue; // Hankel matrix is not defined over Q
     /* Build the sequence of entries of the appropriate Hankel matrix. */
-    if (r == 1 && k%2 == 0) {
-      s = k/2;
+    if (i == 1 && k%2 == 0) {
+      s = 2*(k/2)-1;
       fmpz_mul(t0z, lead, lead);
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
       fmpz_mul_ui(t0z, t0z, 4);
     } else {
-      s = k/2 + 1;
+      s = 2*(k/2) + 1;
       if (k%2 == 1) fmpz_mul_ui(t0z, lead, 2);
     }
-    if (r == 0 && k%2 == 0) tza = pow_num;
+    if (i == 0 && k%2 == 0) tza = pow_num;
     else {
       tza = tpol;
-      _fmpz_vec_scalar_mul_fmpz(tpol, pow_num, 2*s-1, t0z);
-      if (k%2 == 0) _fmpz_vec_sub(tpol, tpol, pow_num+2, 2*s-1);
-      else if (r == 0) _fmpz_vec_add(tpol, tpol, pow_num+1, 2*s-1);
-      else _fmpz_vec_sub(tpol, tpol, pow_num+1, 2*s-1);
+      _fmpz_vec_scalar_mul_fmpz(tpol, pow_num, s, t0z);
+      if (k%2 == 0) _fmpz_vec_sub(tpol, tpol, pow_num+2, s);
+      else if (i == 0) _fmpz_vec_add(tpol, tpol, pow_num+1, s);
+      else _fmpz_vec_sub(tpol, tpol, pow_num+1, s);
     }
 
     /* Compute the determinant, then deduce a condition. */
-    tz = dy_data->hankel_dets + 2*k + r;
-    hankel_determinant(tz, tza, 2*s-1, w);
+    tz = dy_data->hankel_dets + 2*k + i;
+    hankel_determinant(tz, tza, s, w);
 
     if (k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0)) {
       fmpz_mul(t2z, tz-4, lead_pow);
@@ -640,10 +640,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     }
     else { // If the determinant vanishes, argue that the corner entry is nonnegative
       fmpz_set(t2z, lead_pow);
-      fmpz_set(t1z, tza+2*s-2);
+      fmpz_set(t1z, tza+s-1);
     }
-    if (r == 1) fmpz_neg(t1z, t1z);
-    change_by_sign(1, r, t1z, t2z, NULL);
+    if (i == 1) fmpz_neg(t1z, t1z);
+    change_by_sign(1, i, t1z, t2z, NULL);
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
@@ -655,8 +655,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   /* Rolle criterion: tpol has all roots real. */
 
   tz = modulus_is_1 ? NULL : modulus;
-  s = apply_rolle_condition(tpol, k+1, force_squarefree, tz, lower, upper, w);
-  if (!s) return(0);
+  if (!apply_rolle_condition(tpol, k+1, force_squarefree, tz, lower, upper, w)) return(0);
 
   /* Set the new upper bound. */
 
@@ -719,7 +718,7 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
 /* Top-level flow control: allow one process to run for up to max_steps iterations,
    or until it finds a polynomial to be returned, whichever comes first.
 
-   Return value sent back in dy_data->flag:
+   Return value also sent back in dy_data->flag:
    1: in process
    2: found a solution (returned in dy_data->sympol)
    0: tree exhausted
@@ -728,13 +727,13 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
    It is *not* threadsafe to run next_pol and dynamic_split simultaneously on the same dy_data.
 */
 
-void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
-  if (dy_data==NULL || !dy_data->flag) return; // No work assigned to this process
+int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
+  if (dy_data==NULL || !dy_data->flag) return(0); // No work assigned to this process
   dy_data->flag = 0; // Prevent work-stealing while this process is running
 
   int d = st_data->d;
   int n = dy_data->n;
-  if (n>d) return; // This process is exhausted.
+  if (n>d) return(0); // This process is exhausted.
 
   int ascend = dy_data->ascend;
   long node_limit = st_data->node_limit;
@@ -794,4 +793,5 @@ void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_ste
   dy_data->n = n;
   dy_data->node_count = node_count;
   dy_data->flag = flag;
+  return(flag);
 }

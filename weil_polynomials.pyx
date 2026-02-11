@@ -88,7 +88,7 @@ cdef extern from "power_sums.c":
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
 
     void ps_dynamic_split(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
-    void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
+    int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
 
 cdef class dfs_manager:
     """
@@ -100,7 +100,7 @@ cdef class dfs_manager:
     cdef int d
     cdef int num_processes
     cdef long node_limit
-    cdef ps_static_data_t *ps_st_data
+    cdef ps_static_data_t *st_data
     cdef ps_dynamic_data_t **dy_data_buf
 
     def __cinit__(self, int d, q, coefflist, modlist,
@@ -144,7 +144,7 @@ cdef class dfs_manager:
         temp_array = _fmpz_vec_init(d+1)
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(modlist[i]).value)
-        self.ps_st_data = ps_static_init(d, temp_q, temp_lead,
+        self.st_data = ps_static_init(d, temp_q, temp_lead,
                                          temp_array, node_limit, force_squarefree)
 
         # Initialize processes, but assign work to only one process.
@@ -164,8 +164,8 @@ cdef class dfs_manager:
         Deallocate memory.
 
         """
-        ps_static_clear(self.ps_st_data)
-        self.ps_st_data = NULL
+        ps_static_clear(self.st_data)
+        self.st_data = NULL
         if self.dy_data_buf != NULL:
             for i in range(self.num_processes):
                 ps_dynamic_clear(self.dy_data_buf[i])
@@ -207,45 +207,47 @@ cdef class dfs_manager:
             sage: it.process.advance_exhaust()[0]
             [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3, 0, 0]
         """
-        cdef int i, j, k = 1, d = self.d, t = 1, u = 0, np = self.num_processes, max_steps = 1000
+        cdef int i, j, k = 1, d = self.d
+        cdef int t = 1, flag, u = 0, np = self.num_processes, max_steps = 1000
         cdef long val
-        cdef list l
         cdef long ans_count = 0, ans_max = 10000
         cdef mpz_ptr z
         cdef Integer temp
-        ans = []
+        cdef list l
+        cdef list ans = []
 
         while (t and not u and ans_count < ans_max):
             sig_check() # Check for interrupts
             if np == 1: # Serial mode
-                next_pol(self.ps_st_data, self.dy_data_buf[0], max_steps)
-                t = self.dy_data_buf[0].flag
+                t = next_pol(self.st_data, self.dy_data_buf[0], max_steps)
+                self.dy_data_buf[0].flag = t
             else: # Parallel mode
                 t = 0
+                # Step each process forward in parallel
+                for i in prange(np, schedule='static', nogil=True):
+                    flag = next_pol(self.st_data, self.dy_data_buf[i], max_steps)
+                    if flag > 0: t += 1
+                    elif flag == -1: u += 1
+                # Redistribute work to idle processes
                 k = (k<<1) % np # Note that 2 is a primitive root mod np.
-                with nogil:
-                    for i in prange(np, schedule='static'):  # Step each process forward
-                        next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
-                        if self.dy_data_buf[i].flag > 0: t += 1
-                        elif self.dy_data_buf[i].flag == -1: u += 1
-                for i in range(np): # Redistribute work to idle processes
-                    j = (i+k) % np
-                    ps_dynamic_split(self.ps_st_data, self.dy_data_buf[i], self.dy_data_buf[j])
+                for i in range(np):
+                    j = i+k
+                    if j >= np: j -= np
+                    ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[j])
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     l = []
                     # Convert a vector of fmpz's into mpz's, then Integers.
                     for j in range(2*d+1):
-                        if is_mpz(self.dy_data_buf[i].sympol[j]):
+                        if True or is_mpz(self.dy_data_buf[i].sympol[j]):
                             z = _fmpz_promote_val(&self.dy_data_buf[i].sympol[j])
                             temp = Integer()
                             mpz_set(temp.value, z)
-                            l.append(temp)
                             _fmpz_demote_val(&self.dy_data_buf[i].sympol[j])
                         else: # Returned value fits into a long
                             val = <long>(self.dy_data_buf[i].sympol[j])
                             temp = Integer(val)
-                            l.append(temp)
+                        l.append(temp)
                     ans.append(l)
                     ans_count += 1
         if u:
