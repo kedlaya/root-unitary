@@ -127,26 +127,25 @@ void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
   for (i=0; i<n-2; i++) fmpz_fmms(f1+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
   while (n1 > 1) {
     for (i=0; i<n1-2; i++) {
-      if (fmpz_is_zero(t+i+2)) break; // Initially t = seq, subsequently t = f0
+      if (fmpz_is_zero(t+i+2)) { // Fall back on FLINT built-in
+        fmpz_mat_t mat;
+        int j;
+        n1 = n/2+1;
+        fmpz_mat_init(mat, n1, n1);
+        for (i=0; i<n1; i++)
+          for (j=0; j<n1; j++)
+            fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
+        fmpz_mat_det(res, mat);
+        fmpz_mat_clear(mat);
+        return;
+      }
       fmpz_fmms(f0+i, f1+i, f1+i+2, f1+i+1, f1+i+1);
       fmpz_divexact(f0+i, f0+i, t+i+2);
     }
     n1 -= 2;
-    if (i < n1) break;
     t = f1; f1 = f0; f0 = t;
   }
-  if (n1 == 1) fmpz_set(res, f1);
-  else { // Fall back on FLINT built-in
-    fmpz_mat_t mat;
-    int j;
-    n1 = n/2+1;
-    fmpz_mat_init(mat, n1, n1);
-    for (i=0; i<n1; i++)
-      for (j=0; j<n1; j++)
-        fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
-    fmpz_mat_det(res, mat);
-    fmpz_mat_clear(mat);
-  }
+  fmpz_set(res, f1);
 }
 
 /*
@@ -167,31 +166,31 @@ void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
-  
-  /* Set f1 := deriv(poly). */
-  _fmpz_poly_derivative(f1, poly, n);
-  n--; // now n = deg(poly)
 
   int i = 1; // Distinguish the first pass through the while loop
   int j = 1; // Record parity
-  int sgn0_l = fmpz_sgn(poly+n); // Sign of initial leading coefficient
   fmpz *t; // Auxiliary pointer
-  
+
+  /* Set f1 := deriv(poly). */
+  _fmpz_poly_derivative(f1, poly, n);
+  n--;
+  int sgn0_l = -fmpz_sgn(poly+n); // Sign of initial leading coefficient
+
   if (a != NULL && b != NULL) { // Update constant coefficient
     fmpz_mul(f0, a, b);
     fmpz_add(f0, f0, poly);
     fmpz_mul(f0, f0, f1+n-1);
   } else fmpz_mul(f0, poly, f1+n-1);
 
-  while (1) { // At this point deg(f0) = n, deg(f1) = n-1.
-    /* 
+  while (1) {
+    /* At this point deg(f0) = n, deg(f1) = n-1.
        We compute the pseudoremainder of f0 modulo f1 in two steps:
        f0 --> f1[n-1]*f0 - f0[n]*x*f1
        f0 --> f1[n-1]*f0 - f0[n-1]*f1
     */
     
     t = i ? poly : f0; // if n == n0, f0 is not yet initialized
-    _fmpz_vec_scalar_mul_fmpz(f0+i, t+i, n-i, f1+n-1); // no need to touch the leading coefficient
+    _fmpz_vec_scalar_mul_fmpz(f0+i, t+i, n-i, f1+n-1); // does not touch f0+n
     _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n-1, t+n);
 
     n--; // At this point deg(f0) = deg(f1) = n.
@@ -204,15 +203,15 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
 
     /* If we miss any one sign change, we cannot have enough. 
        Note that we are not computing signed pseudoremainders, so we have to flip signs correctly. */
-    if (j) sgn0_l = -sgn0_l;
     if (fmpz_sgn(f0+n-1) != sgn0_l) return(0);
 
     /* If f0 is a scalar, it is nonzero and we win. */
     if (n == 1) return(1);
     
-    /* Reduce f0 to the subresultant by dividing off the square of the old leading coefficient. */
+    /* Reduce f0 by dividing off the square of the old leading coefficient. 
+       Since f0+n no longer holds a relevant value, we can use it as a temporary variable. */
     if (!i) {
-      fmpz_mul(f0+n, t+n+1, t+n+1);
+      fmpz_mul(f0+n, f0+n+1, f0+n+1);
       _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, f0+n);
     }
 
@@ -221,6 +220,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     
     // Update counters.
     i = 0; j = 1-j;
+    if (j) sgn0_l = -sgn0_l;
   }
 }
 
