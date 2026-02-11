@@ -1,5 +1,5 @@
 #distutils: libraries = gomp
-#distutils: extra_compile_args = -fopenmp -O3
+#distutils: extra_compile_args = -fopenmp
 ## Remove second # from the previous two lines to enable OpenMP support.
 
 r"""
@@ -38,6 +38,7 @@ AUTHOR:
                    import fmpz's directly as longs when possible
                    compute Hankel determinants via Dodgson condensation when possible
                    compute subresultants without explicitly computing contents
+                   more balanced work-splitting
 """
 
 #*****************************************************************************
@@ -86,7 +87,7 @@ cdef extern from "power_sums.c":
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
 
-    void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
+    void ps_dynamic_split(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
     void next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
 
 cdef class dfs_manager:
@@ -223,13 +224,13 @@ cdef class dfs_manager:
                 t = 0
                 k = (k<<1) % np # Note that 2 is a primitive root mod np.
                 with nogil:
-                    for i in prange(np):  # Step each process forward
+                    for i in prange(np, schedule='static'):  # Step each process forward
                         next_pol(self.ps_st_data, self.dy_data_buf[i], max_steps)
                         if self.dy_data_buf[i].flag > 0: t += 1
                         elif self.dy_data_buf[i].flag == -1: u += 1
-                    for i in prange(np): # Redistribute work to idle processes
-                        j = (i+k) % np
-                        ps_dynamic_split(self.dy_data_buf[i], self.dy_data_buf[j])
+                for i in range(np): # Redistribute work to idle processes
+                    j = (i+k) % np
+                    ps_dynamic_split(self.ps_st_data, self.dy_data_buf[i], self.dy_data_buf[j])
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     l = []

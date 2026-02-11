@@ -680,7 +680,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
    It is safe to run this in parallel as long as the instances of dy_data are pairwise distinct
    and the instances of dy_data2 are pairwise distinct.
 */
-void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
+void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
   if (dy_data == NULL || dy_data2 == NULL || dy_data->flag <= 0 || dy_data2->flag) return;
 
   int i, j;
@@ -692,19 +692,25 @@ void ps_dynamic_split(ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
   for (i=d; i>k; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
       /* Copy the current state of the donor to the donee process. */
-      dy_data2->n = n;
-      dy_data2->ascend = ascend;
       _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
       _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
       _fmpz_vec_set(dy_data2->power_sums_num, dy_data->power_sums_num, d+1);
       _fmpz_vec_set(dy_data2->hankel_dets, dy_data->hankel_dets, 2*d+2);
 
-      /* Restrict the donee process to the current branch. */
-      fmpz_set(dy_data2->upper+i, dy_data2->pol+i);
-      /* Remove the current branch from the donor process. */
-      dy_data->ascend = i - n;
-      /* Make the donee process available for further splitting. */
+      fmpz *t0z = dy_data->w;
+      fmpz *lower = dy_data->pol+i;
+      fmpz *upper = dy_data->upper+i;
+
+      /* Restrict the donee process to the right half of the interval. */
+      fmpz_sub(t0z, upper, lower);
+      fmpz_cdiv_q_ui(t0z, t0z, 2);
+      step_forward(st_data, dy_data2, i, t0z);
+      dy_data2->ascend = 0;
+      dy_data2->n = i;
       dy_data2->flag = 1;
+      /* Restrict the donor process to the left half of the interval. */
+      fmpz_sub_ui(t0z, t0z, 1);
+      fmpz_add(upper, lower, t0z);
       break;
     }
 }
