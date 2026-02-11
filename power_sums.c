@@ -224,7 +224,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
 /* Static memory allocation and initialization. */
 ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist, 
                                  long node_limit, int force_squarefree) {
-  int i, j, q_is_1;
+  int i, j, q_is_1, q_is_square;
   fmpz *k0, *pol;
 
   ps_static_data_t *st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
@@ -232,6 +232,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
   st_data->d = d;
   fmpz_init_set(st_data->q, q);
   q_is_1 = fmpz_is_one(q);
+  q_is_square = fmpz_is_square(q);
   st_data->node_limit = node_limit;
   st_data->force_squarefree = force_squarefree;
 
@@ -269,7 +270,10 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
     for (j=0; j<=i; j++) {
       k0 = st_data->eval_pm2_mats + (d+1)*(2*i+j%2) + j;
       if (q_is_1) fmpz_one(k0);
-      else fmpz_pow_ui(k0, st_data->q, j/2);
+      else if (q_is_square) {
+        fmpz_sqrt(k0, q);
+        fmpz_pow_ui(k0, k0, j);
+      } else fmpz_pow_ui(k0, q, j/2);
       fmpz_mul_2exp(k0, k0, j);
       fmpz_mul_si(k0, k0, -i);
       fmpz_mul(k0, k0, st_data->binom_mat + (d+2)*(d-i) + j);
@@ -469,6 +473,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   int modulus_is_1 = fmpz_is_one(modulus);
   fmpz *q = st_data->q;
   int q_is_1 = fmpz_is_one(q);
+  int q_is_square = q_is_1 ? 1 : fmpz_is_square(q);
 
   /* Dynamic data */
 
@@ -564,8 +569,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     fmpz_pow_ui(t0z, q, k/2);
     fmpz_mul(t1z, t1z, t0z);
   }
+  if (!q_is_1 && q_is_square && k%2 == 1) {
+    fmpz_sqrt(t0z, q);
+    fmpz_mul(t1z, t1z, t0z);
+  }
   _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
-  if (q_is_1 || k%2 == 0) {
+  if (q_is_square || k%2 == 0) {
     fmpz_mul(t1z, lead_pow, t1z);
     fmpz_add(t2z, t0z, t1z);
     change_by_sign(modulus_is_0, 0, t2z, lead_pow, NULL);
@@ -582,7 +591,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), pol, k+1);
   _fmpz_vec_dot(t1z, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
-  if (q_is_1) {
+  if (q_is_square) {
     fmpz_add(t2z, t0z, t1z);
     change_by_sign(1, 1, t2z, NULL, NULL);
     fmpz_sub(t2z, t0z, t1z);
@@ -594,10 +603,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
-  /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant. */
+  /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant. 
+     In order to restrict to integer arithmetic, we skip this condition when
+     k is odd and q is not a perfect square. */
 
   for (i=0; i<=1; i++) {
-    if (!q_is_1 && k%2 == 1) continue; // Hankel matrix is not defined over Q
+    if (!q_is_square && k%2 == 1) continue; // Hankel matrix is not defined over Q
 
     /* Build the sequence of entries of the appropriate Hankel matrix. */
     if (i == 1 && k%2 == 0) {
@@ -607,7 +618,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
       fmpz_mul_ui(t0z, t0z, 4);
     } else {
       s = 2*(k/2) + 1;
-      if (k%2 == 1) fmpz_mul_ui(t0z, lead, 2);
+      if (k%2 == 1)
+        if (q_is_1) fmpz_mul_ui(t0z, lead, 2);
+        else {
+          fmpz_sqrt(t0z, q);
+          fmpz_mul(t0z, t0z, lead);
+          fmpz_mul_ui(t0z, t0z, 2);
+        }
     }
     if (i == 0 && k%2 == 0) tza = pow_num;
     else {
