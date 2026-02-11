@@ -63,46 +63,36 @@ inline void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
   if (!s) fmpz_add_ui(res, res, 1);
 }
 
-/* Set res to floor(a + b sqrt(q)). No aliasing allowed. */
-inline void fmpq_floor_quad(fmpz_t res, const fmpz_t anum, const fmpz_t aden, const fmpz_t bnum, const fmpz_t bden, const fmpz_t q) {
-  int bden_s = fmpz_sgn(bden);
-  int aden_s = fmpz_sgn(aden);
-  int bnum_s = fmpz_sgn(bnum);
-
-  fmpz_mul(res, aden, bnum);
-  fmpz_mul(res, res, res);
+/* Set res to floor((a/b + c sqrt(q))/d). No aliasing allowed. b and d must be positive. 
+   If b is NULL we interpret it as 1. */
+inline void fmpq_floor_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
+  fmpz_mul(res, c, c);
   fmpz_mul(res, res, q);
-  if (bnum_s*bden_s >= 0) fmpz_sqrt_f(res, res);
+  if (fmpz_sgn(c) >= 0) fmpz_sqrt_f(res, res);
   else {
     fmpz_sqrt_c(res, res);
     fmpz_neg(res, res);
   }
-  fmpz_mul_si(res, res, aden_s*bden_s);
-  fmpz_addmul(res, anum, bden);
-  if (bden_s > 0) fmpz_fdiv_q(res, res, aden);
-  else fmpz_cdiv_q(res, res, aden);
-  fmpz_fdiv_q(res, res, bden);
+  if (b != NULL) fmpz_mul(res, res, b);
+  fmpz_add(res, res, a);
+  if (b != NULL) fmpz_fdiv_q(res, res, b);
+  fmpz_fdiv_q(res, res, d);
 }
 
-/* Set res to ceil(a + b sqrt(q)). No aliasing allowed. */
-inline void fmpq_ceil_quad(fmpz_t res, const fmpz_t anum, const fmpz_t aden, const fmpz_t bnum, const fmpz_t bden, const fmpz_t q) {
-  int bden_s = fmpz_sgn(bden);
-  int aden_s = fmpz_sgn(aden);
-  int bnum_s = fmpz_sgn(bnum);
-    
-  fmpz_mul(res, aden, bnum);
-  fmpz_mul(res, res, res);
+/* Set res to ceil((a/b + c sqrt(q))/d). No aliasing allowed. b and d must be positive.
+   If b is NULL we interpret it as 1. */
+inline void fmpq_ceil_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
+  fmpz_mul(res, c, c);
   fmpz_mul(res, res, q);
-  if (bnum_s*bden_s >= 0) fmpz_sqrt_c(res, res);
+  if (fmpz_sgn(c) >= 0) fmpz_sqrt_c(res, res);
   else {
     fmpz_sqrt_f(res, res);
     fmpz_neg(res, res);
   }
-  fmpz_mul_si(res, res, aden_s*bden_s);
-  fmpz_addmul(res, anum, bden);
-  if (bden_s > 0) fmpz_cdiv_q(res, res, aden);
-  else fmpz_fdiv_q(res, res, aden);
-  fmpz_cdiv_q(res, res, bden);
+  if (b != NULL) fmpz_mul(res, res, b);
+  fmpz_add(res, res, a);
+  if (b != NULL) fmpz_cdiv_q(res, res, b);
+  fmpz_cdiv_q(res, res, d);
 }
 
 /*
@@ -465,8 +455,7 @@ int apply_rolle_condition(const fmpz *tpol, int k, int force_squarefree, const f
    The value of dy_data->pol+n is assumed to be correct modulo st_data->modlist+n.
 */
 int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
-  int d = st_data->d;
-  int k = d - n;
+  int i, s, d = st_data->d, k = d - n;
 
   /* If k>d, no further coefficients to bound. */
 
@@ -474,7 +463,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Static data */
 
-  int i, s;
   int force_squarefree = st_data->force_squarefree;
   fmpz *modulus = st_data->modlist + n;
   int modulus_is_0 = fmpz_is_zero(modulus);
@@ -504,19 +492,19 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz *t0z = w;
   fmpz *t1z = w+1;
   fmpz *t2z = w+2; // Affected by change_by_sign
-  fmpz *t3z = w+3; // Affected by change_by_sign
 
   /* Unallocated pointers */
 
   fmpz *tz, *tza;
 
-  /* Adjust lower and upper bounds within set_range_from_power_sums.
-     This overwrites t2z and t3z.
+  /* Adjust lower and upper bounds within set_range_from_power_sums (affects lower, upper, t2z).
+     The pair (val1, val2) stands for g = val1 + val2*sqrt(q).
      The value in val1 is specified as a numerator-denominator
      pair which need not be canonicalized (a denominator of NULL is interpreted as 1).
      A value of NULL for val2_num is interpreted as 0.
-     The pair (val1, val2) stands for val1 + val2*sqrt(q).
-     Given that this value is a monic linear function of the k-th power sum, then:
+     No aliasing allowed unless val2_num = NULL, in which case allowed between t2z and val1_num.
+
+     Given that g is a monic linear function of the k-th power sum, then:
 
      -- passing r = 0 imposes the condition g >= 0 (or g > 0 if force_squarefree != 0);
      -- passing r = 1 imposes the condition g <= 0 (or g < 0 if force_squarefree != 0);
@@ -527,17 +515,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   inline void change_by_sign(int update, int r, const fmpz_t val1_num, const fmpz_t val1_den, const fmpz_t val2_num) {
     fmpz *k;
     
-    if (val1_den == NULL) k = f;
-    else {
-      k = t3z;
-      fmpz_mul(t3z, val1_den, f);
-    }
-    if (val2_num == NULL)
-      if (r ^ force_squarefree) fmpz_cdiv_q(t2z, val1_num, k);
-      else fmpz_fdiv_q(t2z, val1_num, k);
-    else
-      if (r ^ force_squarefree) fmpq_ceil_quad(t2z, val1_num, k, val2_num, f, q);
-      else fmpq_floor_quad(t2z, val1_num, k, val2_num, f, q);
+    if (val2_num == NULL) {
+      if (r ^ force_squarefree) {
+        fmpz_cdiv_q(t2z, val1_num, f);
+        if (val1_den != NULL) fmpz_cdiv_q(t2z, t2z, val1_den);
+      } else {
+        fmpz_fdiv_q(t2z, val1_num, f);
+        if (val1_den != NULL) fmpz_fdiv_q(t2z, t2z, val1_den);
+      }
+    } else if (r ^ force_squarefree) fmpq_ceil_quad(t2z, val1_num, val1_den, val2_num, f, q);
+    else fmpq_floor_quad(t2z, val1_num, val1_den, val2_num, f, q);
     if (!r) { // change_upper
       if (force_squarefree) {
         if (!update || fmpz_cmp(t2z, upper) <= 0) fmpz_sub_ui(upper, t2z, 1);
@@ -572,22 +559,22 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
-  fmpz_mul_ui(t0z, lead, 2*d);
+  fmpz_mul_ui(t1z, lead, 2*d);
   if (!q_is_1 && k > 1) {
-    fmpz_pow_ui(t1z, q, k/2);
-    fmpz_mul(t0z, t0z, t1z);
+    fmpz_pow_ui(t0z, q, k/2);
+    fmpz_mul(t1z, t1z, t0z);
   }
-  _fmpz_vec_dot(t1z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
+  _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
   if (q_is_1 || k%2 == 0) {
-    fmpz_mul(t0z, lead_pow, t0z);
-    fmpz_add(t2z, t1z, t0z);
+    fmpz_mul(t1z, lead_pow, t1z);
+    fmpz_add(t2z, t0z, t1z);
     change_by_sign(modulus_is_0, 0, t2z, lead_pow, NULL);
-    fmpz_sub(t2z, t1z, t0z);
+    fmpz_sub(t2z, t0z, t1z);
     change_by_sign(modulus_is_0, 1, t2z, lead_pow, NULL);
   } else {
-    change_by_sign(modulus_is_0, 0, t1z, lead_pow, t0z);
-    fmpz_neg(t0z, t0z);
-    change_by_sign(modulus_is_0, 1, t1z, lead_pow, t0z);
+    change_by_sign(modulus_is_0, 0, t0z, lead_pow, t1z);
+    fmpz_neg(t1z, t1z);
+    change_by_sign(modulus_is_0, 1, t0z, lead_pow, t1z);
   }
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
@@ -611,9 +598,10 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   for (i=0; i<=1; i++) {
     if (!q_is_1 && k%2 == 1) continue; // Hankel matrix is not defined over Q
+
     /* Build the sequence of entries of the appropriate Hankel matrix. */
     if (i == 1 && k%2 == 0) {
-      s = 2*(k/2)-1;
+      s = k - 1;
       fmpz_mul(t0z, lead, lead);
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
       fmpz_mul_ui(t0z, t0z, 4);
@@ -635,25 +623,22 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     hankel_determinant(tz, tza, s, w);
 
     if (k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0)) {
-      fmpz_mul(t2z, tz-4, lead_pow);
-      fmpz_set(t1z, tz);
+      fmpz_set(t0z, tz);
+      fmpz_mul(t1z, tz-4, lead_pow);
     }
     else { // If the determinant vanishes, argue that the corner entry is nonnegative
-      fmpz_set(t2z, lead_pow);
-      fmpz_set(t1z, tza+s-1);
+      fmpz_set(t0z, tza+s-1);
+      fmpz_set(t1z, lead_pow);
     }
-    if (i == 1) fmpz_neg(t1z, t1z);
-    change_by_sign(1, i, t1z, t2z, NULL);
+    if (i == 1) fmpz_neg(t0z, t0z);
+    change_by_sign(1, i, t0z, t1z, NULL);
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
-  /* Compute the divided n-th derivative of pol, answer in tpol. */
+  /* Rolle criterion: the divided n-th derivative of pol has all roots real. */
 
-  tz = st_data->binom_mat + (d+2)*n;
-  for (i=0; i<=k; i++) fmpz_mul(tpol+i, tz+i, pol+i);
-
-  /* Rolle criterion: tpol has all roots real. */
-
+  tza = st_data->binom_mat + (d+2)*n;
+  for (i=0; i<=k; i++) fmpz_mul(tpol+i, tza+i, pol+i);
   tz = modulus_is_1 ? NULL : modulus;
   if (!apply_rolle_condition(tpol, k+1, force_squarefree, tz, lower, upper, w)) return(0);
 
