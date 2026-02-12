@@ -54,7 +54,7 @@ AUTHOR:
 cimport cython
 from cython.parallel cimport prange
 from libc.stdlib cimport malloc, free
-from cysignals.signals cimport sig_check
+from cysignals.signals cimport sig_check, sig_on, sig_off
 
 from sage.arith.misc import next_prime, primitive_root
 from sage.rings.rational_field import QQ
@@ -219,20 +219,23 @@ cdef class dfs_manager:
         while (t and not u and ans_count < ans_max):
             sig_check() # Check for interrupts
             if np == 1: # Serial mode
+                sig_on()
                 t = next_pol(self.st_data, self.dy_data_buf[0], max_steps)
+                sig_off()
                 self.dy_data_buf[0].flag = t
             else: # Parallel mode
                 t = 0
                 # Step each process forward in parallel
+                sig_on()
                 for i in prange(np, schedule='static', nogil=True):
                     flag = next_pol(self.st_data, self.dy_data_buf[i], max_steps)
                     if flag > 0: t += 1
                     elif flag == -1: u += 1
+                sig_off()
                 # Redistribute work to idle processes
                 k = (k<<1) % np # Note that 2 is a primitive root mod np.
                 for i in range(np):
-                    j = i+k
-                    if j >= np: j -= np
+                    j = (i+k) % np
                     ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[j])
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution

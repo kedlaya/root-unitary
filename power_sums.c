@@ -52,12 +52,7 @@ inline void fmpz_cmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
   fmpz_cdiv_q_ui(res, res, 2);
 }
 
-/* Set res to floor(sqrt(a)). */
-inline void fmpz_sqrt_f(fmpz_t res, const fmpz_t a) {
-  fmpz_sqrt(res, a);
-}
-
-/* Set res to ceil(sqrt(a)). */
+/* Set res to ceil(sqrt(a)). For the floor, use FLINT's built-in fmpz_sqrt instead. */
 inline void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
   int s = fmpz_root(res, a, 2);
   if (!s) fmpz_add_ui(res, res, 1);
@@ -68,7 +63,7 @@ inline void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
 inline void fmpq_floor_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
   fmpz_mul(res, c, c);
   fmpz_mul(res, res, q);
-  if (fmpz_sgn(c) >= 0) fmpz_sqrt_f(res, res);
+  if (fmpz_sgn(c) >= 0) fmpz_sqrt(res, res);
   else {
     fmpz_sqrt_c(res, res);
     fmpz_neg(res, res);
@@ -86,7 +81,7 @@ inline void fmpq_ceil_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmp
   fmpz_mul(res, res, q);
   if (fmpz_sgn(c) >= 0) fmpz_sqrt_c(res, res);
   else {
-    fmpz_sqrt_f(res, res);
+    fmpz_sqrt(res, res);
     fmpz_neg(res, res);
   }
   if (b != NULL) fmpz_mul(res, res, b);
@@ -709,6 +704,7 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
       dy_data2->ascend = 0;
       dy_data2->n = i;
       dy_data2->flag = 1;
+
       /* Restrict the donor process to the left half of the interval. */
       fmpz_sub_ui(t0z, t0z, 1);
       fmpz_add(upper, lower, t0z);
