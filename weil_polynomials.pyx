@@ -39,6 +39,9 @@ AUTHOR:
                    compute Hankel determinants via Dodgson condensation when possible
                    compute subresultants without explicitly computing contents
                    more balanced work-splitting
+
+A standalone version of this code can be found at
+   https://github.com/kedlaya/root-unitary
 """
 
 #*****************************************************************************
@@ -94,7 +97,7 @@ cdef class dfs_manager:
     """
     Data structure to manage depth-first search.
 
-    Such a structure is created and managed by an instance of `WeilPolynomials_iter`. 
+    Such a structure is created and managed by an instance of ``WeilPolynomials_iter``.
     There is generally no need for a user to manipulate it directly.
     """
     cdef int d
@@ -114,7 +117,8 @@ cdef class dfs_manager:
 
         For some reason, Sage requires a dummy doctest to meet coverage requirements::
 
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+            sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: it.process is not None # Verify object creation
             True
@@ -172,20 +176,21 @@ cdef class dfs_manager:
             free(self.dy_data_buf)
             self.dy_data_buf = NULL
 
-    cpdef long node_count(self):
+    cpdef long node_count(self) noexcept:
         """
         Count nodes.
 
-        This method should not be called directly. Instead, use the `node_count` method
-        of an instance of `WeilPolynomials` or `WeilPolynomials_iter`.
+        This method should not be called directly. Instead, use the ``node_count`` method
+        of an instance of ``WeilPolynomials`` or ``WeilPolynomials_iter``.
 
         TESTS::
 
-            sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
+            sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: _ = next(it)
             sage: it.process.node_count()
-            158
+            118
         """
         cdef long count = 0
         cdef int i
@@ -198,14 +203,15 @@ cdef class dfs_manager:
         Advance the tree exhaustion.
 
         This method should not be called directly. Instead, use the iterator
-        `WeilPolynomials_iter` or the iterable `WeilPolynomials`.
+        ``WeilPolynomials_iter`` or the iterable ``WeilPolynomials``.
 
         TESTS::
 
+            sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = iter(w)
             sage: it.process.advance_exhaust()[0]
-            [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3, 0, 0]
+            [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3]
         """
         cdef int i, j, k = 1, d = self.d
         cdef int t = 1, flag, u = 0, np = self.num_processes, max_steps = 1000
@@ -263,6 +269,7 @@ class WeilPolynomials_iter():
 
     EXAMPLES::
 
+        sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
         sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
         sage: it = iter(w)
         sage: next(it)
@@ -278,6 +285,7 @@ class WeilPolynomials_iter():
 
         EXAMPLES::
 
+            sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
             sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: next(it)
@@ -364,10 +372,11 @@ class WeilPolynomials_iter():
 
     def __iter__(self):
         r"""
-        Return the iterator (i.e. `self`).
+        Return the iterator (i.e. ``self``).
 
         EXAMPLES::
 
+            sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
             sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: it.__iter__() is it
@@ -381,6 +390,7 @@ class WeilPolynomials_iter():
 
         EXAMPLES::
 
+            sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
             sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: next(it)
@@ -419,6 +429,7 @@ class WeilPolynomials_iter():
 
         EXAMPLES::
 
+            sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
             sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = iter(w)
             sage: l = list(it)
@@ -453,38 +464,40 @@ class WeilPolynomials():
 
     INPUT:
 
-    - ``d`` -- integer, the degree of the polynomials
+    - ``d`` -- integer; the degree of the polynomials
 
-    - ``q`` -- integer, the square of the complex absolute value of the roots
+    - ``q`` -- integer; the square of the complex absolute value of the roots
 
-    - ``sign`` -- integer (default `1`), the sign `s` of the functional equation
+    - ``sign`` -- integer (default: `1`); the sign `s` of the functional equation
 
-    - ``lead`` -- integer, list of integers or pairs of integers (default `1`)
+    - ``lead`` -- integer (default: `1`); list of integers or pairs of integers
 
         These are constraints on the leading coefficients of the generated polynomials.
         If pairs `(a, b)` of integers are given, they are treated as a constraint
         of the form `\equiv a \pmod{b}`; the moduli must be in decreasing order by
         divisibility, and the modulus of the leading coefficient must be 0.
 
-    - ``node_limit`` -- integer (default ``None``)
+    - ``node_limit`` -- integer (default: ``None``)
 
-        If set, imposes an upper bound on the number of terminal nodes during the search 
-        (will raise a ``RuntimeError`` if exceeded).
+        If set, imposes an upper bound on the number of terminal nodes during the search
+        (will raise a :exc:`RuntimeError` if exceeded).
 
-    - ``parallel`` -- boolean (default ``False``), whether to use multiple processes
+    - ``parallel`` -- boolean (default: ``False``); whether to use multiple processes
 
-        If set, will raise an exception unless this file was compiled with OpenMP support.
+        If set, will raise an error unless this file was compiled with OpenMP support
+        (see instructions at the top of :mod:`sage.rings.polynomial.weil.weil_polynomials`).
 
-    - ``squarefree`` -- boolean (default ``False``), 
+    - ``squarefree`` -- boolean (default: ``False``)
 
         If set, only squarefree polynomials will be returned.
 
-    - ``polring`` -- optional, a polynomial ring in which to construct the results
+    - ``polring`` -- (optional) a polynomial ring in which to construct the results
 
     EXAMPLES:
 
     Some simple cases::
 
+        sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
         sage: list(WeilPolynomials(2, 2))
         [x^2 + 2*x + 2, x^2 + x + 2, x^2 + 2, x^2 - x + 2, x^2 - 2*x + 2]
         sage: l = list(WeilPolynomials(4, 2))
@@ -522,7 +535,7 @@ class WeilPolynomials():
         sage: it = iter(w)
         sage: next(it)
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
-        sage: list(WeilPolynomials(10, 2, lead=[1, -3, 5, -5, 5, -5])
+        sage: list(WeilPolynomials(10, 2, lead=[1, -3, 5, -5, 5, -5]))
         [x^10 - 3*x^9 + 5*x^8 - 5*x^7 + 5*x^6 - 5*x^5 + 10*x^4 - 20*x^3 + 40*x^2 - 48*x + 32]
 
     TESTS:
@@ -557,7 +570,7 @@ class WeilPolynomials():
         True
         True
 
-    Test that :trac:`29475` is resolved::
+    Test that :issue:`29475` is resolved::
 
         sage: P.<x> = QQ[]
         sage: u = x^6 + x^5 + 6*x^4 - 2*x^3 + 66*x^2 + 121*x + 1331
@@ -568,21 +581,21 @@ class WeilPolynomials():
         sage: u in WeilPolynomials(6, 11, 1, [(1,0),(1,11),(6,11)])
         True
 
-    Test that :trac:`31809` is resolved::
+    Test that :issue:`31809` is resolved::
 
-        sage: foo = list(WeilPolynomials(12, 3, lead=(1,0,9,2,46), squarefree=False)) 
+        sage: foo = list(WeilPolynomials(12, 3, lead=(1,0,9,2,46), squarefree=False))
         sage: bar = list(WeilPolynomials(12, 3, lead=(1,0,9,2,46), squarefree=True))
-        sage: bar == [f for f in foo if f.is_squarefree()]                              
+        sage: bar == [f for f in foo if f.is_squarefree()]
         True
 
-    Test that :trac:`32348` is resolved::
+    Test that :issue:`32348` is resolved::
 
         sage: list(WeilPolynomials(10, 2, lead=(1,-3,5,-5,5,-5)))
         [x^10 - 3*x^9 + 5*x^8 - 5*x^7 + 5*x^6 - 5*x^5 + 10*x^4 - 20*x^3 + 40*x^2 - 48*x + 32]
 
     Test that :issue:`37860` is resolved::
 
-        sage: list(WeilPolynomials(0, 1, sign=-1)
+        sage: list(WeilPolynomials(0, 1, sign=-1))
         []
     """
     def __init__(self, d, q, sign=1, lead=1, node_limit=None, parallel=False, squarefree=False, polring=None):
@@ -591,6 +604,7 @@ class WeilPolynomials():
 
         EXAMPLES::
 
+            sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
             sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: w.__init__(10, 1, sign=1, lead=[3,1,-1]) # Change parameters before iterating
             sage: it = iter(w)
@@ -607,6 +621,7 @@ class WeilPolynomials():
 
         EXAMPLES::
 
+            sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
             sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: it = w.__iter__()
             sage: next(it)
@@ -622,6 +637,7 @@ class WeilPolynomials():
 
         EXAMPLES::
 
+            sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
             sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
             sage: l = list(w)
             sage: w.node_count()

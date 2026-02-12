@@ -26,8 +26,10 @@ int has_openmp() {
 }
 
 int num_threads() {
-  if (has_openmp()) return omp_get_max_threads(); 
-  else return(1);
+  #if defined(_OPENMP)
+  return omp_get_max_threads();
+  #endif
+  return(1);
 }
 
 /*****
@@ -58,7 +60,7 @@ inline void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
   if (!s) fmpz_add_ui(res, res, 1);
 }
 
-/* Set res to floor((a/b + c sqrt(q))/d). No aliasing allowed. b and d must be positive. 
+/* Set res to floor((a/b + c sqrt(q))/d). No aliasing allowed. b and d must be positive.
    If b is NULL we interpret it as 1. */
 inline void fmpq_floor_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
   fmpz_mul(res, c, c);
@@ -103,7 +105,7 @@ void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
     fmpz_set(res, seq);
     return;
   }
-  
+
   int i, n1 = n-2;
   fmpz *f0 = w; // Length n-2
   fmpz *f1 = w+n-2; // Length n-2
@@ -176,7 +178,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
        f0 --> f1[n-1]*f0 - f0[n]*x*f1
        f0 --> f1[n-1]*f0 - f0[n-1]*f1
     */
-    
+
     t = i ? poly : f0; // if n == n0, f0 is not yet initialized
     _fmpz_vec_scalar_mul_fmpz(f0+i, t+i, n-i, f1+n-1); // does not touch f0+n
     _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n-1, t+n);
@@ -195,8 +197,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
 
     /* If f0 is a scalar, it is nonzero and we win. */
     if (n == 1) return(1);
-    
-    /* Reduce f0 by dividing off the square of the old leading coefficient. 
+
+    /* Reduce f0 by dividing off the square of the old leading coefficient.
        Since f0+n no longer holds a relevant value, we can use it as a temporary variable. */
     if (!i) {
       fmpz_mul(f0+n, f0+n+1, f0+n+1);
@@ -205,7 +207,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
 
     /* Swap f0 with f1 at the pointer level. */
     t = f0; f0 = f1; f1 = t;
-    
+
     // Update counters.
     i = 0; j = 1-j;
     if (j) sgn0_l = -sgn0_l;
@@ -252,7 +254,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
         fmpz_mul(pol+j, k0, pol+j);
       }
   }
- 
+
   for (i=0; i<=d; i++) fmpz_set(st_data->modlist + i, modlist+d-i);
 
   st_data->binom_mat = _fmpz_vec_init((d+1)*(d+1));
@@ -280,8 +282,6 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
 /* Dynamic memory allocation and initialization.
    Call with coefflist == NULL to prepare an inactive process. */
 ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
-  int i;
-
   ps_dynamic_data_t *dy_data = (ps_dynamic_data_t *)malloc(sizeof(ps_dynamic_data_t));
 
   dy_data->d = d;
@@ -302,7 +302,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
   dy_data->hankel_dets = _fmpz_vec_init(2*d+2);
   fmpz_set_si(dy_data->hankel_dets, d);
   fmpz_set_si(dy_data->hankel_dets+1, 1);
-  
+
   dy_data->wlen = 3*d+10;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
 
@@ -326,8 +326,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
 /* Dynamic memory deallocation. */
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   if (dy_data == NULL) return;
-  
-  int i;
+
   int d = dy_data->d;
 
   _fmpz_vec_clear(dy_data->pol, d+1);
@@ -360,7 +359,7 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
   fmpz_pow_ui(t0z, pol+d, k-1);
   if (!modulus_is_1) fmpz_mul(t0z, t0z, modulus);
   fmpz_mul_ui(t0z, t0z, k);
-  if (step == NULL) 
+  if (step == NULL)
     if (modulus_is_1) fmpz_add_ui(poln, poln, 1);
     else fmpz_add(poln, poln, modulus);
   else {
@@ -380,14 +379,14 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
 
 /* Given a polynomial tpol of length k, shrink the interval [lower, upper] to the range of constant terms
    which when added to tpol give a polynomial with all real roots. Returns 0 if this range is empty (with
-   lower, upper now undefined) and 1 otherwise (with lower, upper now the endpoints of the new range). 
-   
+   lower, upper now undefined) and 1 otherwise (with lower, upper now the endpoints of the new range).
+
    This function assumes that {w, 2*k+2} is scratch space.
 */
 
 int apply_rolle_condition(const fmpz *tpol, int k, int force_squarefree, const fmpz_t modulus, fmpz_t lower, fmpz_t upper, fmpz *w) {
   int r, s;
-  
+
   fmpz *t0z = w;
   fmpz *t1z = w+1;
   fmpz *t2z = w+2;
@@ -395,7 +394,7 @@ int apply_rolle_condition(const fmpz *tpol, int k, int force_squarefree, const f
   fmpz *f1 = w+k+3; // Length k-1
 
   #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(tpol, k, f0, f1, force_squarefree, x, modulus)
-  
+
   /* Handle the case upper == lower directly. */
   if (!fmpz_cmp(lower, upper)) return(TEST_ROOTS(lower));
 
@@ -488,7 +487,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   fmpz *tpol = f+4; // Length k+1
   fmpz *w = tpol+k+1; // Length 2*k+2, passed to subroutines
-  
+
   fmpz *t0z = w;
   fmpz *t1z = w+1;
   fmpz *t2z = w+2; // Affected by change_by_sign
@@ -514,7 +513,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   inline void change_by_sign(int update, int r, const fmpz_t val1_num, const fmpz_t val1_den, const fmpz_t val2_num) {
     fmpz *k;
-    
+
     if (val2_num == NULL) {
       if (r ^ force_squarefree) {
         fmpz_cdiv_q(t2z, val1_num, f);
@@ -544,7 +543,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     fmpz_zero(upper);
   } else if (!modulus_is_1) fmpz_mul(f, f, modulus);
 
-  /* Update pow_num[k] using the Girard-Newton formula. 
+  /* Update pow_num[k] using the Girard-Newton formula.
      This is the k-th power sum times c^k where c is the leading coefficient. */
 
   fmpz_set_ui(pow_num, k); // Temporary change to apply Girard-Newton
@@ -598,7 +597,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
-  /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant. 
+  /* Hausdorff criterion: the relevant Hankel matrices have nonnegative determinant.
      In order to restrict to integer arithmetic, we skip this condition when
      k is odd and q is not a perfect square. */
 
@@ -679,7 +678,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
   if (dy_data == NULL || dy_data2 == NULL || dy_data->flag <= 0 || dy_data2->flag) return;
 
-  int i, j;
+  int i;
   int d = dy_data->d;
   int n = dy_data->n;
   int ascend = dy_data->ascend;
@@ -762,8 +761,8 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
 
       /* Convert pol into its reciprocal transform, stored in sympol. */
       for (i=0; i<=d; i++) {
-        t = sympol + d - i; 
-	fmpz_set(t, pol+i);
+        t = sympol + d - i;
+        fmpz_set(t, pol+i);
 	for (j=i; j>0; j--) {
 	  if (j==i) fmpz_set(t+2*i, t);
 	  else fmpz_add(t+2*j, t+2*j, t);
