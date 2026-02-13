@@ -695,9 +695,12 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
       fmpz *t0z = dy_data->w;
       fmpz *lower = dy_data->pol+i;
       fmpz *upper = dy_data->upper+i;
+      fmpz *modulus = st_data->modlist + i;
+      int modulus_is_1 = fmpz_is_one(modulus);
 
       /* Restrict the donee process to the right half of the interval. */
       fmpz_sub(t0z, upper, lower);
+      if (!modulus_is_1) fmpz_divexact(t0z, t0z, modulus);
       fmpz_cdiv_q_ui(t0z, t0z, 2);
       step_forward(st_data, dy_data2, i, t0z);
       dy_data2->ascend = 0;
@@ -706,6 +709,7 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
 
       /* Restrict the donor process to the left half of the interval. */
       fmpz_sub_ui(t0z, t0z, 1);
+      if (!modulus_is_1) fmpz_mul(t0z, t0z, modulus);
       fmpz_add(upper, lower, t0z);
       break;
     }
