@@ -3,7 +3,7 @@
 
 def roots_on_unit_circle(P0, modulus=1, n=1,
                          answer_count=None, node_limit=None, filter=None,
-                         num_threads=1, return_nodes=False):
+                         parallel=False, return_nodes=False):
     """
     Find polynomials with roots on the unit circle under extra restrictions.
 
@@ -51,10 +51,9 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
     coefflist.reverse()
     modlist = [0 for _ in range(n)] + [modulus for _ in range(d+1-n)]
     lead = [(coefflist[i], modlist[i]) for i in range(d+1)]
-    print(modlist)
 
     temp = WeilPolynomials(P0.degree(), q, cofactor.constant_coefficient().sign(),
-                           lead, node_limit, num_threads)
+                           lead, node_limit, parallel)
     ans = []
     anslen = 0
     for i in temp:
