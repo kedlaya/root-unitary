@@ -687,10 +687,11 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
   for (i=d; i>k; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
       /* Copy the current state of the donor to the donee process. */
-      _fmpz_vec_set(dy_data2->pol, dy_data->pol, d+1);
-      _fmpz_vec_set(dy_data2->upper, dy_data->upper, d+1);
-      _fmpz_vec_set(dy_data2->power_sums_num, dy_data->power_sums_num, d+1);
-      _fmpz_vec_set(dy_data2->hankel_dets, dy_data->hankel_dets, 2*d+2);
+      int j = d - i + 1;
+      _fmpz_vec_set(dy_data2->pol+i, dy_data->pol+i, j);
+      _fmpz_vec_set(dy_data2->upper+i, dy_data->upper+i, j);
+      _fmpz_vec_set(dy_data2->power_sums_num, dy_data->power_sums_num, j);
+      _fmpz_vec_set(dy_data2->hankel_dets, dy_data->hankel_dets, 2*j);
 
       fmpz *t0z = dy_data->w;
       fmpz *lower = dy_data->pol+i;
