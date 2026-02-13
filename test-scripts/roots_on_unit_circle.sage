@@ -10,7 +10,7 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
     INPUT:
         P0 -- polynomial with rational coefficients, which must be
            self-inversive
-        m -- positive integer or list of positive integers
+        modulus -- positive integer or list of positive integers
         n -- positive integer
         answer_count -- positive integer or None
         node_limit -- positive integer or None; if not None, an exception will
@@ -39,19 +39,19 @@ def roots_on_unit_circle(P0, modulus=1, n=1,
 
         sage: pol.<x> = PolynomialRing(Rationals())
         sage: roots_on_unit_circle(x^5 - 1, 2, 1, return_nodes=True)
-        ([x^5 - 1, x^5 - 2*x^4 + 2*x^3 - 2*x^2 + 2*x - 1], 4)
+        ([x^5 - 1, x^5 - 2*x^4 + 2*x^3 - 2*x^2 + 2*x - 1], 2)
         sage: roots_on_unit_circle(x^5 - 1, 4, 1)
         [x^5 - 1]
         
     """
     pol = P0.parent()
-    x = pol.gen()
     Q0, cofactor, q = P0.trace_polynomial()
     d = Q0.degree()
-    coefflist = list(Q0)
+    coefflist = list(P0)
     coefflist.reverse()
     modlist = [0 for _ in range(n)] + [modulus for _ in range(d+1-n)]
     lead = [(coefflist[i], modlist[i]) for i in range(d+1)]
+    print(modlist)
 
     temp = WeilPolynomials(P0.degree(), q, cofactor.constant_coefficient().sign(),
                            lead, node_limit, num_threads)
