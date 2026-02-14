@@ -152,6 +152,8 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
+  int sgn;
+
   if (n == 3) { // Quadratic polynomial, check discriminant
     fmpz_set(f0, poly);
     if (a != NULL)
@@ -159,8 +161,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
       else fmpz_add(f0, f0, a);
     fmpz_mul_ui(f0, f0, 4);
     fmpz_fmms(f0, poly+1, poly+1, f0, poly+2);
-    int i = fmpz_sgn(f0);
-    return(i > 0 || (!force_squarefree && i == 0));
+    sgn = fmpz_sgn(f0);
+    return(sgn > 0 || (!force_squarefree && sgn == 0));
   }
 
   /* Set f0 := deriv(poly). */
@@ -193,45 +195,46 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
   /* If we miss any one sign change, we cannot have enough. */
   if (fmpz_sgn(f1+n-1) != -1) return(0);
   
-  int sgn;
-
   while (1) {
     n--; // Now deg(f0) == n+1, deg(f1) == n
+    
+    /* We compute the pseudoremainder of f0 modulo f1 following a recipe of Ducos,
+       leaving f0[n] and f0[n+1] intact. */
 
-    /* We compute the (unsigned) pseudoremainder of f0 modulo f1 following a recipe of Ducos,
-       leaving f0[n] and f0[n+1] intact.
-
-       First, take the remainder of f1[n]*(f0 (mod x^n)) modulo f1, then divide by f0[n+1]. */
-    t = f0+n+1;
+    /* Take the remainder of f1[n]*(f0 (mod x^n)) modulo f1. */
     _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n);
     _fmpz_vec_scalar_submul_fmpz(f0, f1, n, f0+n);
-    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, t);
 
-    /* Next, subtract x*(f1 mod x^{n-1}) from f0, then multiply f0 by f1[n]. */
-    _fmpz_vec_sub(f0+1, f0+1, f1, n-1);
-    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n);
-
-    /* Finally, add f1[n-1]*(f1 mod x^n) to f0 and divide by f0[n+1].
-       We defer part of this computation to promote early aborts. */
-    fmpz_addmul(f0+n-1, f1+n-1, f1+n-1);
-
-    /* Now deg(f0) = n-1, deg(f1) = n.
-       Check for the requisite sign change. */
-    sgn = fmpz_sgn(f0+n-1);
+    /* Compute the next leading coefficient times f0[n+1] and test the sign change. */
+    t = f0+n-1;
+    fmpz_divexact(t, t, f0+n+1);
+    if (n>1) fmpz_sub(t, t, f1+n-2);
+    fmpz_mul(t, t, f1+n);
+    fmpz_addmul(t, f1+n-1, f1+n-1);
+    sgn = fmpz_sgn(t);
     if (sgn == 1 || (force_squarefree && sgn == 0)) return(0);
 
     /* If f0 is a scalar, it is nonzero and we win. */
     if (n == 1) return(1);
+    
+    /* In the following steps, we skip the coefficient of x^{n-1} as
+       it has already been computed in the correct place. */
 
-    _fmpz_vec_scalar_addmul_fmpz(f0, f1, n-1, f1+n-1); // Deferred step
+    /* Divide f0 by f0[n+1]. */
+    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n-1, f0+n+1);
 
-    if (!force_squarefree) 
-      /* If we are not forcing squarefree, then we win if f0 = 0
-         and lose if f0 != 0 but sgn == 0. */
-      if (_fmpz_vec_is_zero(f0, n)) return(1);
-      else if (sgn == 0) return 0;
+    /* Subtract x*(f1 mod x^{n-1}) from f0, then multiply f0 by f1[n]. */
+    _fmpz_vec_sub(f0+1, f0+1, f1, n-2);
+    _fmpz_vec_scalar_mul_fmpz(f0, f0, n-1, f1+n);
 
-    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, t); // Deferred step
+    /* Add f1[n-1]*(f1 mod x^n) to f0. */
+    _fmpz_vec_scalar_addmul_fmpz(f0, f1, n-1, f1+n-1);
+
+    /* If not forcing squarefree but sgn == 0, we win iff f0 = 0 */
+    if (!force_squarefree && !sgn) return (_fmpz_vec_is_zero(f0, n-1));
+
+    /* Divide f0 by f0[n+1]. */
+    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, f0+n+1);
 
     /* Swap f0 with f1 at the pointer level. */
     t = f0; f0 = f1; f1 = t;
@@ -427,7 +430,7 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
   /* Handle the case upper == lower directly. */
   if (!fmpz_cmp(lower, upper)) return(TEST_ROOTS(lower));
 
-  /* Find a single value where the Rolle criterion holds. */
+  /* Look for a single value where the Rolle criterion holds. */
   fmpz_sub(t0z, upper, lower);
   fmpz_add_ui(t0z, t0z, 1);
   r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1)); forced to be positive
@@ -600,13 +603,13 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     fmpz_mul(t1z, t1z, t0z);
   }
   _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
-  if (q_is_square || k%2 == 0) {
+  if (q_is_square || k%2 == 0) { // q^{k/2} is rational
     if (!lead_is_1) fmpz_mul(t1z, lead_pow, t1z);
     fmpz_add(t2z, t0z, t1z);
     change_by_sign(modulus_is_0, 0, t2z, lead_pow, NULL);
     fmpz_sub(t2z, t0z, t1z);
     change_by_sign(modulus_is_0, 1, t2z, lead_pow, NULL);
-  } else {
+  } else { // q^{k/2} is irrational
     change_by_sign(modulus_is_0, 0, t0z, lead_pow, t1z);
     fmpz_neg(t1z, t1z);
     change_by_sign(modulus_is_0, 1, t0z, lead_pow, t1z);
