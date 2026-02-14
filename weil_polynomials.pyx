@@ -55,8 +55,8 @@ A standalone version of this code can be found at
 #*****************************************************************************
 
 from cython.parallel cimport prange
-from libc.stdlib cimport malloc, free
 from cysignals.signals cimport sig_check
+from cpython.mem cimport PyMem_Malloc, PyMem_Free
 
 from sage.arith.misc import next_prime, primitive_root
 from sage.rings.rational_field import QQ
@@ -132,7 +132,9 @@ cdef class dfs_manager:
         else:
             np = Integer(1)
         self.num_processes = np
-        self.dy_data_buf = <ps_dynamic_data_t **>malloc(np * sizeof(ps_dynamic_data_t *))
+        self.dy_data_buf = <ps_dynamic_data_t **>PyMem_Malloc(np * sizeof(ps_dynamic_data_t *))
+        if not self.dy_data_buf:
+            raise MemoryError()
         self.node_limit = node_limit
         fmpz_init(temp_lead)
         fmpz_set_mpz(temp_lead, Integer(coefflist[-1]).value)
@@ -166,7 +168,7 @@ cdef class dfs_manager:
         if self.dy_data_buf != NULL:
             for i in range(self.num_processes):
                 ps_dynamic_clear(self.dy_data_buf[i])
-            free(self.dy_data_buf)
+            PyMem_Free(self.dy_data_buf)
             self.dy_data_buf = NULL
 
     cpdef long node_count(self) noexcept:
