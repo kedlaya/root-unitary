@@ -233,7 +233,7 @@ cdef class dfs_manager:
                 t = 0
                 # Step each process forward in parallel
                 sig_on()
-                for i in prange(np, schedule='static', nogil=True):
+                for i in prange(np, nogil=True):
                     flag = next_pol(self.st_data, self.dy_data_buf[i], max_steps)
                     if flag > 0: t += 1
                     elif flag == -1: u += 1

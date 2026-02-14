@@ -143,73 +143,98 @@ void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
 
     This function assumes that:
         - {poly, n} is a normalized vector with n >= 2 and nonzero leading coefficient
-        - {f0, n} and {f1, n-1} are scratch space.
+        - {f0, n-2} and {f1, n-1} are scratch space.
     If a is not NULL, we add a (if b is NULL) or a*b (otherwise) to the constant term before testing.
 
-    Based on code by Sebastian Pancratz from the FLINT repository.
+    Based on code by Sebastian Pancratz from the FLINT repository (plus the Ducos variation).
 */
 
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
+  if (n == 3) { // Quadratic polynomial, check discriminant
+    fmpz_set(f0, poly);
+    if (a != NULL)
+      if (b != NULL) fmpz_addmul(f0, a, b);
+      else fmpz_add(f0, f0, a);
+    fmpz_mul_ui(f0, f0, 4);
+    fmpz_fmms(f0, poly+1, poly+1, f0, poly+2);
+    int i = fmpz_sgn(f0);
+    return(i > 0 || (!force_squarefree && i == 0));
+  }
 
-  int i = 1; // Distinguish the first pass through the while loop
-  int j = 1; // Record parity
-  fmpz *t; // Auxiliary pointer
+  /* Set f0 := deriv(poly). */
+  _fmpz_poly_derivative(f0, poly, n);
+  n -= 2;
 
-  /* Set f1 := deriv(poly). */
-  _fmpz_poly_derivative(f1, poly, n);
-  n--;
-  int sgn0_l = -fmpz_sgn(poly+n); // Opposite of sign of leading coefficient
-
+  /* At this point deg(poly) = n+1, deg(f0) = n.
+     We compute the pseudoremainder of poly modulo f0 in two steps:
+       f1 --> f0[n]*(poly+c) - poly[n+1]*x*f0
+       f1 --> f0[n]*f1 - f1[n]*f0
+     where c is a or a*b (if specified).
+  */
+  fmpz *t = f0+n;
   if (a != NULL) { // Update constant coefficient
-    if (b == NULL) fmpz_add(f0, a, poly); // Treat b as 1
+    if (b == NULL) fmpz_add(f1, a, poly); // Treat b as 1
     else {
-      fmpz_mul(f0, a, b);
-      fmpz_add(f0, f0, poly);
+      fmpz_mul(f1, a, b);
+      fmpz_add(f1, f1, poly);
     }
-    fmpz_mul(f0, f0, f1+n-1);
-  } else fmpz_mul(f0, poly, f1+n-1);
+    fmpz_mul(f1, f1, t);
+    _fmpz_vec_scalar_mul_fmpz(f1+1, poly+1, n, t);
+  } else _fmpz_vec_scalar_mul_fmpz(f1, poly, n+1, t);
+  _fmpz_vec_scalar_submul_fmpz(f1+1, f0, n, poly+n+1);
+  _fmpz_vec_scalar_mul_fmpz(f1, f1, n, t);
+  _fmpz_vec_scalar_submul_fmpz(f1, f0, n, f1+n);
+
+  /* If f1 = 0, we win unless we are insisting on squarefree. */
+  if (!force_squarefree && _fmpz_vec_is_zero(f1, n)) return(1);
+
+  /* If we miss any one sign change, we cannot have enough. */
+  if (fmpz_sgn(f1+n-1) != -1) return(0);
+  
+  int sgn;
 
   while (1) {
-    /* At this point deg(f0) = n, deg(f1) = n-1.
-       We compute the pseudoremainder of f0 modulo f1 in two steps:
-       f0 --> f1[n-1]*f0 - f0[n]*x*f1
-       f0 --> f1[n-1]*f0 - f0[n-1]*f1
-    */
+    n--; // Now deg(f0) == n+1, deg(f1) == n
 
-    t = i ? poly : f0; // if n == n0, f0 is not yet initialized
-    _fmpz_vec_scalar_mul_fmpz(f0+i, t+i, n-i, f1+n-1); // does not touch f0+n
-    _fmpz_vec_scalar_submul_fmpz(f0+1, f1, n-1, t+n);
+    /* We compute the (unsigned) pseudoremainder of f0 modulo f1 following a recipe of Ducos,
+       leaving f0[n] and f0[n+1] intact.
 
-    n--; // At this point deg(f0) = deg(f1) = n.
+       First, take the remainder of f1[n]*(f0 (mod x^n)) modulo f1, then divide by f0[n+1]. */
+    t = f0+n+1;
     _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n);
     _fmpz_vec_scalar_submul_fmpz(f0, f1, n, f0+n);
+    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, t);
 
-    /* At this point deg(f0) = n-1, deg(f1) = n.
-       If f0 = 0, we win unless we are insisting on squarefree. */
-    if (!force_squarefree && _fmpz_vec_is_zero(f0, n)) return(1);
+    /* Next, subtract x*(f1 mod x^{n-1}) from f0, then multiply f0 by f1[n].*/
+    _fmpz_vec_sub(f0+1, f0+1, f1, n-1);
+    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n);
 
-    /* If we miss any one sign change, we cannot have enough. 
-       Note that we are not computing signed pseudoremainders, so we have to flip signs correctly. */
-    if (fmpz_sgn(f0+n-1) != sgn0_l) return(0);
+    /* Finally, add f1[n-1]*(f1 mod x^n) to f0 and divide by f0[n+1].
+       We defer part of this computation to promote early aborts. */
+    fmpz_addmul(f0+n-1, f1+n-1, f1+n-1);
+
+    /* Now deg(f0) = n-1, deg(f1) = n.
+       Check for the requisite sign change. */
+    sgn = fmpz_sgn(f0+n-1);
+    if (sgn == 1 || (force_squarefree && sgn == 0)) return(0);
 
     /* If f0 is a scalar, it is nonzero and we win. */
     if (n == 1) return(1);
 
-    /* Reduce f0 by dividing off the square of the old leading coefficient.
-       Since f0+n no longer holds a relevant value, we can use it as a temporary variable. */
-    if (!i) {
-      fmpz_mul(f0+n, f0+n+1, f0+n+1);
-      _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, f0+n);
-    }
+    _fmpz_vec_scalar_addmul_fmpz(f0, f1, n-1, f1+n-1); // Deferred step
+    if (!force_squarefree) 
+      /* If we are not forcing squarefree, then we win if f0 = 0
+         and lose if f0 != 0 but sgn == 0. */
+      if (_fmpz_vec_is_zero(f0, n)) return(1);
+      else if (sgn == 0) return 0;
+
+    _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, t); // Deferred step
 
     /* Swap f0 with f1 at the pointer level. */
     t = f0; f0 = f1; f1 = t;
 
-    // Update counters.
-    i = 0; j = 1-j;
-    if (j) sgn0_l = -sgn0_l;
   }
 }
 
