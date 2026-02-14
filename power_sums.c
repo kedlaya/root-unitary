@@ -85,17 +85,35 @@ inline void fmpq_ceil_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmp
 }
 
 /*
-  Compute the Hankel determinant associated to the sequence seq of odd length n.
-  We first attempt Dodgson condensation; if that fails because of a zero division,
-  we construct the matrix and ask FLINT for the determinant.
+  Compute the Hankel determinant associated to the sequence seq of odd length n
+  by a direct application of FLINT's determinant function.
+*/
+
+void hankel_determinant_direct(fmpz_t res, const fmpz *seq, int n) {
+  fmpz_mat_t mat;
+  int i, j, s;
+
+  s = n/2 + 1;
+  fmpz_mat_init(mat, s, s);
+  for (i=0; i<s; i++)
+    for (j=0; j<s; j++)
+      fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
+  fmpz_mat_det(res, mat);
+  fmpz_mat_clear(mat);
+  return;
+}
+
+/*
+  Attempt to compute the Hankel determinant associated to the sequence seq of odd length n
+  using Dodgson condensation. Returns 1 for success, 0 for failure.
 
   This function assumes that {w, 2*n-4} is scratch space.
 */
 
-void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
+int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
   if (n == 1) {
     fmpz_set(res, seq);
-    return;
+    return(1);
   }
 
   int i, n1 = n-2;
@@ -106,18 +124,7 @@ void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
   for (i=0; i<n-2; i++) fmpz_fmms(f1+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
   while (n1 > 1) {
     for (i=0; i<n1-2; i++) {
-      if (fmpz_is_zero(t+i+2)) { // Fall back on FLINT built-in
-        fmpz_mat_t mat;
-        int j;
-        n1 = n/2+1;
-        fmpz_mat_init(mat, n1, n1);
-        for (i=0; i<n1; i++)
-          for (j=0; j<n1; j++)
-            fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
-        fmpz_mat_det(res, mat);
-        fmpz_mat_clear(mat);
-        return;
-      }
+      if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
       fmpz_fmms(f0+i, f1+i, f1+i+2, f1+i+1, f1+i+1);
       fmpz_divexact(f0+i, f0+i, t+i+2);
     }
@@ -217,6 +224,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     if (n == 1) return(1);
 
     _fmpz_vec_scalar_addmul_fmpz(f0, f1, n-1, f1+n-1); // Deferred step
+
     if (!force_squarefree) 
       /* If we are not forcing squarefree, then we win if f0 = 0
          and lose if f0 != 0 but sgn == 0. */
@@ -656,7 +664,8 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
     /* Compute the determinant, then deduce a condition. */
     tz = dy_data->hankel_dets + 2*k + i;
-    hankel_determinant(tz, tza, s, w+k+1);
+    if (!hankel_determinant_condensation(tz, tza, s, w+k+1)) 
+      hankel_determinant_direct(tz, tza, s);
 
     if (k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0)) {
       fmpz_set(t0z, tz);
