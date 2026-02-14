@@ -26,7 +26,6 @@ typedef struct ps_dynamic_data {
   long wlen; /* = 3*d+10 */
 } ps_dynamic_data_t;
 
-int has_openmp();
 int num_threads();
 int is_mpz(fmpz f);
 

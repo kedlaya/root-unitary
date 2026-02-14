@@ -17,13 +17,6 @@
 #include "power_sums.h"
 
 /* Check for OpenMP at runtime. */
-int has_openmp() {
-  #if defined(_OPENMP)
-  return(1);
-  #endif
-  return(0);
-}
-
 int num_threads() {
   #if defined(_OPENMP)
   return omp_get_max_threads();
@@ -142,8 +135,8 @@ void hankel_determinant(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
     as a sign change is missed.
 
     This function assumes that:
-        - {poly, n} is a normalized vector with n >= 2 and nonzero leading coefficient
-        - {f0, n-2} and {f1, n-1} are scratch space.
+        - {poly, n} is a normalized vector with n >= 2 and positive leading coefficient;
+        - {f0, n-1} and {f1, n-2} are scratch space.
     If a is not NULL, we add a (if b is NULL) or a*b (otherwise) to the constant term before testing.
 
     Based on code by Sebastian Pancratz from the FLINT repository (plus the Ducos variation).
@@ -207,7 +200,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     _fmpz_vec_scalar_submul_fmpz(f0, f1, n, f0+n);
     _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, t);
 
-    /* Next, subtract x*(f1 mod x^{n-1}) from f0, then multiply f0 by f1[n].*/
+    /* Next, subtract x*(f1 mod x^{n-1}) from f0, then multiply f0 by f1[n]. */
     _fmpz_vec_sub(f0+1, f0+1, f1, n-1);
     _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n);
 

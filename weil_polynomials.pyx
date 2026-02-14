@@ -37,7 +37,7 @@ AUTHOR:
                    choose number of processes based on available cores
                    import fmpz's directly as longs when possible
                    compute Hankel determinants via Dodgson condensation when possible
-                   compute subresultants without explicitly computing contents
+                   compute subresultants via Ducos method
                    more balanced work-splitting
 
 A standalone version of this code can be found at
@@ -54,38 +54,33 @@ A standalone version of this code can be found at
 #                  http://www.gnu.org/licenses/
 #*****************************************************************************
 
-cimport cython
 from cython.parallel cimport prange
 from libc.stdlib cimport malloc, free
-from cysignals.signals cimport sig_check, sig_on, sig_off
+from cysignals.signals cimport sig_check
 
 from sage.arith.misc import next_prime, primitive_root
 from sage.rings.rational_field import QQ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.functions.generalized import sgn
 
-from sage.rings.integer cimport Integer
 from sage.libs.gmp.mpz cimport mpz_set
 from sage.libs.flint.fmpz cimport *
 from sage.libs.flint.fmpz_vec cimport *
+from sage.rings.integer cimport Integer
 
 cdef extern from "power_sums.c":
     ctypedef struct ps_static_data_t:
         pass
 
     ctypedef struct ps_dynamic_data_t:
-        int flag        # State of the iterator (0 = inactive, 1 = running,
-                        #                        2 = found a solution,
-                        #                        -1 = too many nodes)
+        int flag        # State of the iterator (0 = inactive, 1 = running, 2 = found a solution, -1 = too many nodes)
         long node_count # Number of terminal nodes encountered
         fmpz *sympol    # Return value (a polynomial)
 
-    int has_openmp()
     int num_threads()
     int is_mpz(fmpz f)
 
-    ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
-                                     long node_limit, int force_squarefree)
+    ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist, long node_limit, int force_squarefree)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
@@ -131,15 +126,13 @@ cdef class dfs_manager:
 
         self.d = d
         if parallel:
-            np = Integer(num_threads())**2
-            while True:
+            np = (Integer(num_threads())**2).next_prime()
+            while primitive_root(np) != 2:
                 np = np.next_prime()
-                if primitive_root(np) == 2:
-                    break
         else:
             np = Integer(1)
         self.num_processes = np
-        self.dy_data_buf = <ps_dynamic_data_t **>malloc(np * cython.sizeof(cython.pointer(ps_dynamic_data_t)))
+        self.dy_data_buf = <ps_dynamic_data_t **>malloc(np * sizeof(ps_dynamic_data_t *))
         self.node_limit = node_limit
         fmpz_init(temp_lead)
         fmpz_set_mpz(temp_lead, Integer(coefflist[-1]).value)
@@ -225,19 +218,15 @@ cdef class dfs_manager:
         while (t and not u and ans_count < ans_max):
             sig_check() # Check for interrupts
             if np == 1: # Serial mode
-                sig_on()
                 t = next_pol(self.st_data, self.dy_data_buf[0], max_steps)
-                sig_off()
                 self.dy_data_buf[0].flag = t
             else: # Parallel mode
                 t = 0
                 # Step each process forward in parallel
-                sig_on()
                 for i in prange(np, nogil=True):
                     flag = next_pol(self.st_data, self.dy_data_buf[i], max_steps)
                     if flag > 0: t += 1
                     elif flag == -1: u += 1
-                sig_off()
                 # Redistribute work to idle processes
                 k = (k<<1) % np # Note that 2 is a primitive root mod np.
                 for i in range(np):
@@ -611,7 +600,7 @@ class WeilPolynomials():
             sage: next(it) # Results reflect the changed parameters
             3*x^10 + x^9 - x^8 + 7*x^7 + 5*x^6 - 2*x^5 + 5*x^4 + 7*x^3 - x^2 + x + 3
         """
-        if parallel and not has_openmp():
+        if parallel and num_threads() == 1:
             raise RuntimeError("Parallel execution not supported")
         self.data = (d, q, sign, lead, node_limit, parallel, squarefree, polring)
 
