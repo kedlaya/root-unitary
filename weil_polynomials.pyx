@@ -209,7 +209,7 @@ cdef class dfs_manager:
             [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3]
         """
         cdef int i, j, k = 1, d = self.d
-        cdef int t = 1, flag, u = 0, np = self.num_processes, max_steps = 1000
+        cdef int t = 1, u = 0, np = self.num_processes, max_steps = 1000
         cdef long val
         cdef long ans_count = 0, ans_max = 10000
         cdef mpz_ptr z
@@ -224,16 +224,16 @@ cdef class dfs_manager:
                 self.dy_data_buf[0].flag = t
             else: # Parallel mode
                 t = 0
-                # Step each process forward in parallel
-                for i in prange(np, nogil=True):
-                    flag = next_pol(self.st_data, self.dy_data_buf[i], max_steps)
-                    if flag > 0: t += 1
-                    elif flag == -1: u += 1
-                # Redistribute work to idle processes
                 k = (k<<1) % np # Note that 2 is a primitive root mod np.
-                for i in range(np):
-                    j = (i+k) % np
-                    ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[j])
+                # Step each process forward in parallel
+                with nogil:
+                    for i in prange(np):
+                        next_pol(self.st_data, self.dy_data_buf[i], max_steps)
+                        if self.dy_data_buf[i].flag > 0: t += 1
+                        elif self.dy_data_buf[i].flag == -1: u += 1
+                    # Redistribute work to idle processes
+                    for i in prange(np):
+                        ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np])
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     l = []
