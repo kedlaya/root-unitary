@@ -155,7 +155,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
   if (n <= 2) return(1);  // Constant or linear polynomial
   int sgn, i;
 
-  if (n == 3) { // Quadratic polynomial, check discriminant
+/*  if (n == 3) { // Quadratic polynomial, check discriminant
     fmpz_set(f0, poly);
     if (a != NULL)
       if (b != NULL) fmpz_addmul(f0, a, b);
@@ -164,7 +164,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     fmpz_fmms(f0, poly+1, poly+1, f0, poly+2);
     sgn = fmpz_sgn(f0);
     return(sgn > 0 || (!force_squarefree && sgn == 0));
-  }
+  } */
 
   /* Set f0 := deriv(poly). */
   _fmpz_poly_derivative(f0, poly, n);
@@ -174,7 +174,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
      We compute the pseudoremainder of poly modulo f0 in two steps:
        f1 --> f0[n]*(poly+c) - poly[n+1]*x*f0
        f1 --> f0[n]*f1 - f1[n]*f0
-     where c is a or a*b (if specified).
+     where c is a or a*b (if specified). Note that the Ducos variation
+     is not available at this step; moreover, we have not initialized f1.
   */
   fmpz *t = f0+n;
   if (a != NULL) { // Update constant coefficient
@@ -194,6 +195,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
   /* If we miss any one sign change, we cannot have enough. */
   if (fmpz_sgn(f1+n-1) != -1) return(0);
   
+  if (n == 1) return(1);
+
   while (1) {
     n--; // Now deg(f0) == n+1, deg(f1) == n
     
@@ -204,6 +207,8 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     if (n>1) fmpz_sub(t, t, f1+n-2);
     fmpz_fmma(t, t, f1+n, f1+n-1, f1+n-1);
     sgn = fmpz_sgn(t);
+
+    /* If we miss any one sign change, we cannot have enough. */
     if (sgn == 1 || (force_squarefree && sgn == 0)) return(0);
 
     /* If f0 is a scalar, it is nonzero and we win. */
@@ -423,13 +428,12 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
   #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(pol, k, f0, f1, force_squarefree, x, modulus)
 
   /* Handle the case upper == lower directly. */
-  if (!fmpz_cmp(lower, upper)) return(TEST_ROOTS(lower));
+  fmpz_sub(t0z, upper, lower);
+  if (fmpz_is_zero(t0z)) return(TEST_ROOTS(lower));
 
   /* Look for a single value where the Rolle criterion holds. */
-  fmpz_sub(t0z, upper, lower);
   fmpz_add_ui(t0z, t0z, 1);
   r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1)); forced to be positive
-  s = 0;
   do {
     fmpz_one_2exp(t2z, r);
     if (!r) fmpz_set(t0z, lower);
@@ -750,7 +754,6 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
     }
 }
 
-
 /* Top-level flow control: allow one process to run for up to max_steps iterations,
    or until it finds a polynomial to be returned, whichever comes first.
 
@@ -813,7 +816,7 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
       break;
     } else { // Compute children of the current node.
       n -= 1;
-      if (!(ascend = !set_range_from_power_sums(st_data, dy_data, n))) { // Found a terminal node
+      if (ascend = !set_range_from_power_sums(st_data, dy_data, n)) { // Found a terminal node
 	node_count += 1;
 	if (node_limit != -1 && node_count >= node_limit) {
 	  flag = -1;
