@@ -132,6 +132,7 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
     t = f1; f1 = f0; f0 = t;
   }
   fmpz_set(res, f1);
+  return(1);
 }
 
 /*
