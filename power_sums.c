@@ -152,7 +152,7 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
-  int sgn;
+  int sgn, i;
 
   if (n == 3) { // Quadratic polynomial, check discriminant
     fmpz_set(f0, poly);
@@ -183,11 +183,9 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
       fmpz_add(f1, f1, poly);
     }
     fmpz_mul(f1, f1, t);
-    _fmpz_vec_scalar_mul_fmpz(f1+1, poly+1, n, t);
-  } else _fmpz_vec_scalar_mul_fmpz(f1, poly, n+1, t);
-  _fmpz_vec_scalar_submul_fmpz(f1+1, f0, n, poly+n+1);
-  _fmpz_vec_scalar_mul_fmpz(f1, f1, n, t);
-  _fmpz_vec_scalar_submul_fmpz(f1, f0, n, f1+n);
+  } else fmpz_mul(f1, poly, t);
+  for (i=0; i<n; i++) fmpz_fmms(f1+i+1, poly+i+1, t, f0+i, poly+n+1);
+  for (i=0; i<n; i++) fmpz_fmms(f1+i, f1+i, t, f0+i, f1+n);
 
   /* If f1 = 0, we win unless we are insisting on squarefree. */
   if (!force_squarefree && _fmpz_vec_is_zero(f1, n)) return(1);
@@ -198,39 +196,35 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
   while (1) {
     n--; // Now deg(f0) == n+1, deg(f1) == n
     
-    /* We compute the pseudoremainder of f0 modulo f1 following a recipe of Ducos,
-       leaving f0[n] and f0[n+1] intact. */
-
-    /* Take the remainder of f1[n]*(f0 (mod x^n)) modulo f1. */
-    _fmpz_vec_scalar_mul_fmpz(f0, f0, n, f1+n);
-    _fmpz_vec_scalar_submul_fmpz(f0, f1, n, f0+n);
-
     /* Compute the next leading coefficient times f0[n+1] and test the sign change. */
     t = f0+n-1;
+    fmpz_fmms(t, t, f1+n, f1+n-1, f0+n);
     fmpz_divexact(t, t, f0+n+1);
     if (n>1) fmpz_sub(t, t, f1+n-2);
-    fmpz_mul(t, t, f1+n);
-    fmpz_addmul(t, f1+n-1, f1+n-1);
+    fmpz_fmma(t, t, f1+n, f1+n-1, f1+n-1);
     sgn = fmpz_sgn(t);
     if (sgn == 1 || (force_squarefree && sgn == 0)) return(0);
 
     /* If f0 is a scalar, it is nonzero and we win. */
     if (n == 1) return(1);
-    
-    /* In the following steps, we skip the coefficient of x^{n-1} as
-       it has already been computed in the correct place. */
 
-    /* Divide f0 by f0[n+1]. */
+    /* We compute the pseudoremainder of f0 modulo f1 following a recipe of Ducos,
+       leaving f0[n] and f0[n+1] intact.
+       We also leave f0[n-1] intact as it has already been updated. */
+
+    /* Take the remainder of f1[n]*(f0 (mod x^n)) modulo f1. */
+    for (i=0; i<n-1; i++) fmpz_fmms(f0+i, f0+i, f1+n, f1+i, f0+n);
+
+    /* Divide (f0 mod x^{n-1}) by f0[n+1]. */
     _fmpz_vec_scalar_divexact_fmpz(f0, f0, n-1, f0+n+1);
 
-    /* Subtract x*(f1 mod x^{n-1}) from f0, then multiply f0 by f1[n]. */
+    /* Subtract x*(f1 mod x^{n-2}) from f0. */
     _fmpz_vec_sub(f0+1, f0+1, f1, n-2);
-    _fmpz_vec_scalar_mul_fmpz(f0, f0, n-1, f1+n);
 
-    /* Add f1[n-1]*(f1 mod x^n) to f0. */
-    _fmpz_vec_scalar_addmul_fmpz(f0, f1, n-1, f1+n-1);
+    /* Multiply f0 by f1[n] and add f1[n-1]*(f1 mod x^{n-1}). */
+    for (i=0; i<n-1; i++) fmpz_fmma(f0+i, f0+i, f1+n, f1+i, f1+n-1);
 
-    /* If not forcing squarefree but sgn == 0, we win iff f0 = 0 */
+    /* If not forcing squarefree but sgn == 0, we win iff f0 = 0. */
     if (!force_squarefree && !sgn) return (_fmpz_vec_is_zero(f0, n-1));
 
     /* Divide f0 by f0[n+1]. */
