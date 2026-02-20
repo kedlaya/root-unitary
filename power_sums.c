@@ -119,13 +119,14 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
   int i, n1 = n-2;
   fmpz *f0 = w; // Length n-2
   fmpz *f1 = w+n-2; // Length n-2
-  fmpz *t = seq;
+  fmpz *t = seq, *t1;
 
   for (i=0; i<n-2; i++) fmpz_fmms(f1+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
   while (n1 > 1) {
     for (i=0; i<n1-2; i++) {
       if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
-      fmpz_fmms(f0+i, f1+i, f1+i+2, f1+i+1, f1+i+1);
+      t1 = f1+i+1;
+      fmpz_fmms(f0+i, t1-1, t1+1, t1, t1);
       fmpz_divexact(f0+i, f0+i, t+i+2);
     }
     n1 -= 2;
@@ -157,8 +158,19 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
   n -= 2;
 
   int sgn, i;
-  fmpz *t, *t1; // Scratch pointers
+  fmpz *t, *t1, *t2; // Scratch pointers
   fmpz *content = NULL; // No content to remove in the first iteration
+
+  /* Set f1 := deriv(poly). */
+  _fmpz_poly_derivative(f1, poly, n+2);
+
+  /* Put the updated constant term of poly in f0. */
+  if (b == NULL) fmpz_add(f0, a, poly); // Treat b as 1
+  else {
+    fmpz_mul(f0, a, b);
+    fmpz_add(f0, f0, poly);
+  }
+  fmpz_mul(f0, f0, f1+n);
 
   while (1) {
     /* At this point deg(f0 or poly) = n+1, deg(f1) = n.
@@ -166,27 +178,17 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
 
     t = f0+n-1;
     if (content != NULL) { // Ducos variation
-      fmpz_fmms(t, t, f1+n, f1+n-1, f0+n);
+      t1 = f1+n-1;
+      fmpz_fmms(t, t, t1+1, t1, f0+n);
       fmpz_divexact(t, t, content);
       if (n>1) fmpz_sub(t, t, f1+n-2);
-      fmpz_fmma(t, t, f1+n, f1+n-1, f1+n-1);
+      fmpz_fmma(t, t, t1+1, t1, t1);
     } else { // Initialize + no Ducos variation
-      /* Set f1 := deriv(poly). */
-      _fmpz_poly_derivative(f1, poly, n+2);
-
-      /* Put the updated constant term of poly in f0. */
-      if (b == NULL) fmpz_add(f0, a, poly); // Treat b as 1
-      else {
-        fmpz_mul(f0, a, b);
-        fmpz_add(f0, f0, poly);
-      }
-      fmpz_mul(f0, f0, f1+n);
-
-      /* Now compute the next leading coefficient. */
       t1 = poly+n+1;
-      fmpz_fmms(f0+n, poly+n, f1+n, f1+n-1, t1);
-      if (n>1) fmpz_fmms(t, poly+n-1, f1+n, f1+n-2, t1);
-      fmpz_fmms(t, t, f1+n, f1+n-1, f0+n);
+      t2 = f1+n;
+      fmpz_fmms(f0+n, poly+n, t2, t2-1, t1);
+      if (n>1) fmpz_fmms(t, poly+n-1, t2, t2-2, t1);
+      fmpz_fmms(t, t, t2, t2-1, f0+n);
     }
 
     /* If we miss any one sign change, we cannot have enough. */
@@ -199,10 +201,10 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     /* Set f0 to the pseudoremainder of poly (in the first iteration) or f0 (otherwise)
        modulo f1, leaving f0[n], f0[n+1] intact as well as f0[n-1] (except to remove content). */
 
+    t = f1+n;
+    t1 = f0+n;
     if (content != NULL) { // Ducos variation
       /* Take the remainder of f1[n]*(f0 (mod x^n)) modulo f1. */
-      t = f1+n;
-      t1 = f0+n;
       for (i=0; i<n-1; i++) fmpz_fmms(f0+i, f0+i, t, f1+i, t1);
 
       /* Divide (f0 mod x^{n-1}) by content. */
@@ -215,8 +217,9 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
       t1 = f1+n-1;
       for (i=0; i<n-1; i++) fmpz_fmma(f0+i, f0+i, t, f1+i, t1);
     } else { // No Ducos variation, direct Euclidean division
-      for (i=0; i<n-2; i++) fmpz_fmms(f0+i+1, poly+i+1, f1+n, f1+i, t1);
-      for (i=0; i<n-1; i++) fmpz_fmms(f0+i, f0+i, f1+n, f1+i, f0+n);
+      t2 = poly+n+1;
+      for (i=0; i<n-2; i++) fmpz_fmms(f0+i+1, poly+i+1, t, f1+i, t2);
+      for (i=0; i<n-1; i++) fmpz_fmms(f0+i, f0+i, t, f1+i, t1);
     }
   
     /* If not forcing squarefree but sgn == 0, we win iff f0 = 0. */
@@ -747,6 +750,31 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
     }
 }
 
+/* Compute the reciprocal transform of pol and store it in sympol. */
+
+void reciprocal_transform(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
+  int d = st_data->d;
+  fmpz *pol = dy_data->pol;
+  fmpz *sympol = dy_data->sympol;
+  fmpz *t;
+  fmpz *q = st_data->q;
+  int q_is_1 = fmpz_is_one(q);
+  int i, j;
+
+  /* Convert pol into its reciprocal transform, stored in sympol. */
+  for (i=0; i<=d; i++) {
+    t = sympol + d - i;
+    fmpz_set(t, pol+i);
+    for (j=i; j>0; j--) {
+      if (j==i) fmpz_set(t+2*i, t);
+      else fmpz_add(t+2*j, t+2*j, t);
+      if (!q_is_1) fmpz_mul(t, t, q);
+      fmpz_mul_ui(t, t, j);
+      fmpz_divexact_ui(t, t, i-j+1);
+    }
+  }
+}
+
 /* Top-level flow control: allow one process to run for up to max_steps iterations,
    or until it finds a polynomial to be returned, whichever comes first.
 
@@ -773,7 +801,6 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
   fmpz *pol = dy_data->pol;
   fmpz *upper = dy_data->upper;
 
-  int i, j;
   int flag = 1;
   int count_steps = 0;
 
@@ -787,23 +814,6 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
       } else if (!(ascend = (fmpz_cmp(pol+n, upper+n) >= 0)))
 	step_forward(st_data, dy_data, n, NULL);
     } else if (n < 0) { // Return a solution.
-      fmpz *sympol = dy_data->sympol;
-      fmpz *t;
-      fmpz *q = st_data->q;
-      int q_is_1 = fmpz_is_one(q);
-
-      /* Convert pol into its reciprocal transform, stored in sympol. */
-      for (i=0; i<=d; i++) {
-        t = sympol + d - i;
-        fmpz_set(t, pol+i);
-	for (j=i; j>0; j--) {
-	  if (j==i) fmpz_set(t+2*i, t);
-	  else fmpz_add(t+2*j, t+2*j, t);
-          if (!q_is_1) fmpz_mul(t, t, q);
-	  fmpz_mul_ui(t, t, j);
-	  fmpz_divexact_ui(t, t, i-j+1);
-	}
-      }
       ascend = 1;
       flag = 2;
       break;

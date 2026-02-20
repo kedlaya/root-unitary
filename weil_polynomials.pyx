@@ -1,7 +1,6 @@
+## To enable OpenMP support, move the next two lines to the top.
 #distutils: libraries = gomp
 #distutils: extra_compile_args = -fopenmp
-## Remove second # from the previous two lines to enable OpenMP support.
-
 r"""
 Iterator for Weil polynomials.
 
@@ -86,6 +85,7 @@ cdef extern from "power_sums.c":
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
 
     void ps_dynamic_split(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
+    int reciprocal_transform(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) nogil
     int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
 
 cdef class dfs_manager:
@@ -193,7 +193,31 @@ cdef class dfs_manager:
             count += self.dy_data_buf[i].node_count
         return count
 
-    cpdef object advance_exhaust(self):
+    cdef list extract_poly(self, int i):
+        """
+        Extract a polynomial computed by process i, returned in a list l (assumed to be empty).
+        """
+        cdef int j, d = self.d
+        cdef Integer temp
+        cdef long val
+        cdef mpz_ptr z
+        cdef list l = []
+
+        reciprocal_transform(self.st_data, self.dy_data_buf[i])
+        # Convert a vector of fmpz's into mpz's, then Integers.
+        for j in range(2*d+1):
+            if is_mpz(self.dy_data_buf[i].sympol[j]):
+                z = _fmpz_promote_val(&self.dy_data_buf[i].sympol[j])
+                temp = Integer()
+                mpz_set(temp.value, z)
+                _fmpz_demote_val(&self.dy_data_buf[i].sympol[j])
+            else: # Returned value fits into a long
+                val = <long>(self.dy_data_buf[i].sympol[j])
+                temp = Integer(val)
+            l.append(temp)
+        return l
+
+    cpdef object advance_exhaust(self, list ans):
         """
         Advance the tree exhaustion.
 
@@ -208,14 +232,10 @@ cdef class dfs_manager:
             sage: it.process.advance_exhaust()[0]
             [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3]
         """
-        cdef int i, j, k = 1, d = self.d
+        cdef int i, k = 1
         cdef int t = 1, u = 0, np = self.num_processes, max_steps = 1000
-        cdef long val
         cdef long ans_count = 0, ans_max = 10000
-        cdef mpz_ptr z
-        cdef Integer temp
         cdef list l
-        cdef list ans = []
 
         while (t and not u and ans_count < ans_max):
             sig_check() # Check for interrupts
@@ -236,18 +256,7 @@ cdef class dfs_manager:
                         ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np])
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
-                    l = []
-                    # Convert a vector of fmpz's into mpz's, then Integers.
-                    for j in range(2*d+1):
-                        if True or is_mpz(self.dy_data_buf[i].sympol[j]):
-                            z = _fmpz_promote_val(&self.dy_data_buf[i].sympol[j])
-                            temp = Integer()
-                            mpz_set(temp.value, z)
-                            _fmpz_demote_val(&self.dy_data_buf[i].sympol[j])
-                        else: # Returned value fits into a long
-                            val = <long>(self.dy_data_buf[i].sympol[j])
-                            temp = Integer(val)
-                        l.append(temp)
+                    l = self.extract_poly(i)
                     ans.append(l)
                     ans_count += 1
         if u:
@@ -390,12 +399,13 @@ class WeilPolynomials_iter():
         if self.process is None:
             raise StopIteration
         if len(self.ans) == 0:
-            self.ans = self.process.advance_exhaust()
-            if len(self.ans) == 0:
+            self.process.advance_exhaust(self.ans)
+            if len(self.ans) == 0: # Iterator exhausted
                 self.count = self.process.node_count()
                 self.process = None
                 raise StopIteration
-        return self.pol(self.ans.pop()) * self.cofactor
+        cdef list t = self.ans.pop()
+        return self.pol(t) * self.cofactor
 
     def next(self): # For Python2 backward compatibility
         r"""
