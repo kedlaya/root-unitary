@@ -145,7 +145,7 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
 
     This function assumes that:
         - {poly, n} is a normalized vector with n >= 2 and positive leading coefficient;
-        - {f0, n-2} and {f1, n-1} are scratch space.
+        - {f0, n-1} and {f1, n-1} are scratch space.
 
     We add a (if b is NULL) or a*b (otherwise) to the constant term before testing.
 
@@ -161,41 +161,43 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
   fmpz *t, *t1, *t2; // Scratch pointers
   fmpz *content = NULL; // No content to remove in the first iteration
 
-  /* Set f1 := deriv(poly). */
-  _fmpz_poly_derivative(f1, poly, n+2);
-
   /* Put the updated constant term of poly in f0. */
   if (b == NULL) fmpz_add(f0, a, poly); // Treat b as 1
   else {
     fmpz_mul(f0, a, b);
     fmpz_add(f0, f0, poly);
   }
-  fmpz_mul(f0, f0, f1+n);
 
   while (1) {
     /* At this point deg(f0 or poly) = n+1, deg(f1) = n.
-       Compute the next leading coefficient (up to a positive factor) and take its sign. */
+       Compute the next leading coefficient (up to a positive factor). */
 
     t = f0+n-1;
     if (content != NULL) { // Ducos variation
       t1 = f1+n-1;
-      fmpz_fmms(t, t, t1+1, t1, f0+n);
+      fmpz_fmms(t, t, t1+1, t1, t+1);
       fmpz_divexact(t, t, content);
-      if (n>1) fmpz_sub(t, t, f1+n-2);
+      if (n>1) fmpz_sub(t, t, t1-1);
       fmpz_fmma(t, t, t1+1, t1, t1);
-    } else { // Initialize + no Ducos variation
-      t1 = poly+n+1;
-      t2 = f1+n;
-      fmpz_fmms(f0+n, poly+n, t2, t2-1, t1);
-      if (n>1) fmpz_fmms(t, poly+n-1, t2, t2-2, t1);
-      fmpz_fmms(t, t, t2, t2-1, f0+n);
+    } else if (n > 1) { // Initialize + no Ducos variation
+      /* Set f1 := deriv(poly). */
+      _fmpz_poly_derivative(f1, poly, n+2);
+
+      t1 = f1+n;
+      t2 = poly+n+1;
+      fmpz_fmms(t+1, t2-1, t1, t1-1, t2);
+      fmpz_fmms(t, t2-2, t1, t1-2, t2);
+      fmpz_fmms(t, t, t1, t1-1, t+1);
+    } else { // Quadratic case, compute discriminant
+      fmpz_mul_ui(t, t, 4);
+      fmpz_fmms(t, t, poly+2, poly+1, poly+1);
     }
 
     /* If we miss any one sign change, we cannot have enough. */
     sgn = fmpz_sgn(t);
     if (sgn == 1 || (force_squarefree && sgn == 0)) return(0);
 
-    /* If f0 is a scalar, it is nonzero and we win. */
+    /* If the pseudoremainder is a scalar, it is nonzero and we win. */
     if (n == 1) return(1);
 
     /* Set f0 to the pseudoremainder of poly (in the first iteration) or f0 (otherwise)
@@ -217,8 +219,9 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
       t1 = f1+n-1;
       for (i=0; i<n-1; i++) fmpz_fmma(f0+i, f0+i, t, f1+i, t1);
     } else { // No Ducos variation, direct Euclidean division
+      fmpz_mul(f0, f0, f1+n);
       t2 = poly+n+1;
-      for (i=0; i<n-2; i++) fmpz_fmms(f0+i+1, poly+i+1, t, f1+i, t2);
+      for (i=1; i<n-1; i++) fmpz_fmms(f0+i, poly+i, t, f1+i-1, t2);
       for (i=0; i<n-1; i++) fmpz_fmms(f0+i, f0+i, t, f1+i, t1);
     }
   
@@ -805,22 +808,21 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
   int count_steps = 0;
 
   while (count_steps <= max_steps) {
-    count_steps += 1;
     if (ascend) { // Ascend the tree and step forward as needed.
-      n += ascend;
-      if (n > d) {
-        flag = 0; // This process is exhausted.
+      do {n++; } while (n <= d && (ascend = (fmpz_cmp(pol+n, upper+n) >= 0)));
+      if (n > d) { // This process is exhausted.
+        flag = 0;
         break;
-      } else if (!(ascend = (fmpz_cmp(pol+n, upper+n) >= 0)))
-	step_forward(st_data, dy_data, n, NULL);
+      } else step_forward(st_data, dy_data, n, NULL);
+      count_steps += 1;
     } else if (n < 0) { // Return a solution.
       ascend = 1;
       flag = 2;
       break;
     } else { // Compute children of the current node.
-      n -= 1;
+      n--;
       if (ascend = !set_range_from_power_sums(st_data, dy_data, n)) { // Found a terminal node
-	node_count += 1;
+	node_count++;
 	if (node_limit != -1 && node_count >= node_limit) {
 	  flag = -1;
 	  break;

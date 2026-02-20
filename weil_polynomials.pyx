@@ -203,7 +203,6 @@ cdef class dfs_manager:
         cdef mpz_ptr z
         cdef list l = []
 
-        reciprocal_transform(self.st_data, self.dy_data_buf[i])
         # Convert a vector of fmpz's into mpz's, then Integers.
         for j in range(2*d+1):
             if is_mpz(self.dy_data_buf[i].sympol[j]):
@@ -242,6 +241,8 @@ cdef class dfs_manager:
             if np == 1: # Serial mode
                 t = next_pol(self.st_data, self.dy_data_buf[0], max_steps)
                 self.dy_data_buf[0].flag = t
+                if t == -1: u = 1
+                elif t == 2: reciprocal_transform(self.st_data, self.dy_data_buf[0])
             else: # Parallel mode
                 t = 0
                 k = (k<<1) % np # Note that 2 is a primitive root mod np.
@@ -251,6 +252,7 @@ cdef class dfs_manager:
                         next_pol(self.st_data, self.dy_data_buf[i], max_steps)
                         if self.dy_data_buf[i].flag > 0: t += 1
                         elif self.dy_data_buf[i].flag == -1: u += 1
+                        elif self.dy_data_buf[i].flag == 2: reciprocal_transform(self.st_data, self.dy_data_buf[i])
                     # Redistribute work to idle processes
                     for i in prange(np):
                         ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np])
