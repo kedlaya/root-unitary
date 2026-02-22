@@ -119,15 +119,16 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
   int i, n1 = n-2;
   fmpz *f0 = w; // Length n-2
   fmpz *f1 = w+n-2; // Length n-2
-  fmpz *t = seq, *t1;
+  fmpz *t = seq, *t1, *t2;
 
   for (i=0; i<n-2; i++) fmpz_fmms(f1+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
   while (n1 > 1) {
     for (i=0; i<n1-2; i++) {
       if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
       t1 = f1+i+1;
-      fmpz_fmms(f0+i, t1-1, t1+1, t1, t1);
-      fmpz_divexact(f0+i, f0+i, t+i+2);
+      t2 = f0+i;
+      fmpz_fmms(t2, t1-1, t1+1, t1, t1);
+      fmpz_divexact(t2, t2, t+i+2);
     }
     n1 -= 2;
     t = f1; f1 = f0; f0 = t;
@@ -155,10 +156,9 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
 int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
-  n -= 2;
 
   int sgn, i;
-  fmpz *t, *t1, *t2; // Scratch pointers
+  fmpz *t, *t1, *lead1, *lead2, *sub1, *sub2; // Scratch pointers
   fmpz *content = NULL; // No content to remove in the first iteration
 
   /* Put the updated constant term of poly in f0. */
@@ -167,27 +167,26 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     fmpz_mul(f0, a, b);
     fmpz_add(f0, f0, poly);
   }
+  /* Set f1 := deriv(poly). */
+  _fmpz_poly_derivative(f1, poly, n);
+  n -= 2;
 
   while (1) {
     /* At this point deg(f0 or poly) = n+1, deg(f1) = n.
        Compute the next leading coefficient (up to a positive factor). */
 
     t = f0+n-1;
+    lead1 = f1+n;
     if (content != NULL) { // Ducos variation
-      t1 = f1+n-1;
-      fmpz_fmms(t, t, t1+1, t1, t+1);
+      fmpz_fmms(t, t, lead1, lead1-1, t+1);
       fmpz_divexact(t, t, content);
-      if (n>1) fmpz_sub(t, t, t1-1);
-      fmpz_fmma(t, t, t1+1, t1, t1);
-    } else if (n > 1) { // Initialize + no Ducos variation
-      /* Set f1 := deriv(poly). */
-      _fmpz_poly_derivative(f1, poly, n+2);
-
-      t1 = f1+n;
-      t2 = poly+n+1;
-      fmpz_fmms(t+1, t2-1, t1, t1-1, t2);
-      fmpz_fmms(t, t2-2, t1, t1-2, t2);
-      fmpz_fmms(t, t, t1, t1-1, t+1);
+      if (n>1) fmpz_sub(t, t, lead1-2);
+      fmpz_fmma(t, t, lead1, lead1-1, lead1-1);
+    } else if (n > 1) { // No Ducos variation
+      lead2 = poly+n+1;
+      fmpz_fmms(t+1, lead2-1, lead1, lead1-1, lead2);
+      fmpz_fmms(t, lead2-2, lead1, lead1-2, lead2);
+      fmpz_fmms(t, t, lead1, lead1-1, t+1);
     } else { // Quadratic case, compute discriminant
       fmpz_mul_ui(t, t, 4);
       fmpz_fmms(t, t, poly+2, poly+1, poly+1);
@@ -203,28 +202,26 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     /* Set f0 to the pseudoremainder of poly (in the first iteration) or f0 (otherwise)
        modulo f1, leaving f0[n], f0[n+1] intact as well as f0[n-1] (except to remove content). */
 
-    t = f1+n;
-    t1 = f0+n;
+    sub2 = f0+n;
     if (content != NULL) { // Ducos variation
-      /* Take the remainder of f1[n]*(f0 (mod x^n)) modulo f1. */
-      for (i=0; i<n-1; i++) fmpz_fmms(f0+i, f0+i, t, f1+i, t1);
-
-      /* Divide (f0 mod x^{n-1}) by content. */
-      _fmpz_vec_scalar_divexact_fmpz(f0, f0, n-1, content);
-
-      /* Subtract x*(f1 mod x^{n-2}) from f0. */
-      _fmpz_vec_sub(f0+1, f0+1, f1, n-2);
-
-      /* Multiply f0 by f1[n] and add f1[n-1]*(f1 mod x^{n-1}). */
-      t1 = f1+n-1;
-      for (i=0; i<n-1; i++) fmpz_fmma(f0+i, f0+i, t, f1+i, t1);
+      sub1 = f1+n-1;
+      for (i=0; i<n-1; i++) {
+        t = f0+i;
+        t1 = f1+i;
+        fmpz_fmms(t, t, lead1, t1, sub2);
+        fmpz_divexact(t, t, content);
+        if (i>0) fmpz_sub(t, t, t1-1);
+        fmpz_fmma(t, t, lead1, t1, sub1);
+      }
     } else { // No Ducos variation, direct Euclidean division
-      fmpz_mul(f0, f0, f1+n);
-      t2 = poly+n+1;
-      for (i=1; i<n-1; i++) fmpz_fmms(f0+i, poly+i, t, f1+i-1, t2);
-      for (i=0; i<n-1; i++) fmpz_fmms(f0+i, f0+i, t, f1+i, t1);
+      fmpz_mul(f0, f0, lead1);
+      for (i=0; i<n-1; i++) {
+        t = f0+i;
+        if (i>0) fmpz_fmms(t, poly+i, lead1, f1+i-1, lead2);
+        fmpz_fmms(t, t, lead1, f1+i, sub2);
+      }
     }
-  
+
     /* If not forcing squarefree but sgn == 0, we win iff f0 = 0. */
     if (!force_squarefree && !sgn) return (_fmpz_vec_is_zero(f0, n-1));
 
