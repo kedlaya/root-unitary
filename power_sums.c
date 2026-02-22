@@ -138,11 +138,10 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
 }
 
 /*
-    Use a subresultant (Sturm-Habicht) sequence to test whether a given
-    polynomial has all real roots. Note that this test has an early abort
-    mechanism: having all real roots means that the sign sequence has
-    the maximal number of sign changes, so the test aborts as soon
-    as a sign change is missed.
+    Use a subresultant sequence to test whether a given polynomial has 
+    real roots. Note that this test has an early abort mechanism: 
+    having real roots means that the sign sequence has the maximal number
+    of sign changes, so the test aborts if any sign change is missed.
 
     This function assumes that:
         - {poly, n} is a normalized vector with n >= 2 and positive leading coefficient;
@@ -205,7 +204,7 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
     sub2 = f0+n;
     if (content != NULL) { // Ducos variation
       sub1 = f1+n-1;
-      for (i=0; i<n-1; i++) {
+      for (i=0; i<n-1; i++) { // Inner loop
         t = f0+i;
         t1 = f1+i;
         fmpz_fmms(t, t, lead1, t1, sub2);
@@ -217,8 +216,9 @@ int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_
       fmpz_mul(f0, f0, lead1);
       for (i=0; i<n-1; i++) {
         t = f0+i;
-        if (i>0) fmpz_fmms(t, poly+i, lead1, f1+i-1, lead2);
-        fmpz_fmms(t, t, lead1, f1+i, sub2);
+        t1 = f1+i;
+        if (i>0) fmpz_fmms(t, poly+i, lead1, t1-1, lead2);
+        fmpz_fmms(t, t, lead1, t1, sub2);
       }
     }
 
@@ -377,7 +377,7 @@ inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, 
   fmpz *poln = pol+n;
   fmpz *modulus = st_data->modlist + n;
   int modulus_is_1 = fmpz_is_one(modulus);
-  fmpz *pow_num = dy_data->power_sums_num+k;
+  fmpz *pow_num = dy_data->power_sums_num + k;
   fmpz *det = dy_data->hankel_dets + 2*k;
   fmpz *t0z = dy_data->w;
 
@@ -540,8 +540,6 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   */
 
   inline void change_by_sign(int update, int r, const fmpz_t val1_num, const fmpz_t val1_den, const fmpz_t val2_num) {
-    fmpz *k;
-
     if (val2_num == NULL) {
       if (r ^ force_squarefree) {
         fmpz_cdiv_q(t2z, val1_num, f);
@@ -590,13 +588,15 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
 
   if (lead_is_1) fmpz_set_ui(t1z, 2*d);
   else fmpz_mul_ui(t1z, lead, 2*d);
-  if (!q_is_1 && k > 1) {
-    fmpz_pow_ui(t0z, q, k/2);
-    fmpz_mul(t1z, t1z, t0z);
-  }
-  if (!q_is_1 && q_is_square && k%2 == 1) {
-    fmpz_sqrt(t0z, q);
-    fmpz_mul(t1z, t1z, t0z);
+  if (!q_is_1) {
+    if (k > 1) {
+      fmpz_pow_ui(t0z, q, k/2);
+      fmpz_mul(t1z, t1z, t0z);
+    }
+    if (q_is_square && k%2 == 1) {
+      fmpz_sqrt(t0z, q);
+      fmpz_mul(t1z, t1z, t0z);
+    }
   }
   _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
   if (q_is_square || k%2 == 0) { // q^{k/2} is rational

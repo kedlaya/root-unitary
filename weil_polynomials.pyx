@@ -58,7 +58,7 @@ from cysignals.signals cimport sig_check
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 
 from sage.arith.misc import next_prime, primitive_root
-from sage.rings.rational_field import QQ
+from sage.rings.integer_ring import ZZ
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.functions.generalized import sgn
 
@@ -250,9 +250,10 @@ cdef class dfs_manager:
                 with nogil:
                     for i in prange(np):
                         next_pol(self.st_data, self.dy_data_buf[i], max_steps)
-                        if self.dy_data_buf[i].flag > 0: t += 1
+                        if self.dy_data_buf[i].flag > 0: 
+                          t += 1
+                          if self.dy_data_buf[i].flag == 2: reciprocal_transform(self.st_data, self.dy_data_buf[i])
                         elif self.dy_data_buf[i].flag == -1: u += 1
-                        elif self.dy_data_buf[i].flag == 2: reciprocal_transform(self.st_data, self.dy_data_buf[i])
                     # Redistribute work to idle processes
                     for i in prange(np):
                         ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np])
@@ -294,7 +295,7 @@ class WeilPolynomials_iter():
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         """
         if polring is None:
-            polring = PolynomialRing(QQ, name='x')
+            polring = PolynomialRing(ZZ, name='x')
         self.pol = polring
         x = self.pol.gen()
         d = Integer(d)
