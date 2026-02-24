@@ -240,23 +240,19 @@ cdef class dfs_manager:
             sig_check() # Check for interrupts
             if np == 1: # Serial mode
                 t = next_pol(self.st_data, self.dy_data_buf[0], max_steps)
-                self.dy_data_buf[0].flag = t
                 if t == -1: u = 1
                 elif t == 2: reciprocal_transform(self.st_data, self.dy_data_buf[0])
             else: # Parallel mode
-                t = 0
-                k = (k<<1) % np # Note that 2 is a primitive root mod np.
-                # Step each process forward in parallel
                 with nogil:
-                    for i in prange(np):
+                    for i in prange(np): # Step each process forward in parallel
+                        ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np]) # Yield work
                         next_pol(self.st_data, self.dy_data_buf[i], max_steps)
-                        if self.dy_data_buf[i].flag > 0: 
-                          t += 1
-                          if self.dy_data_buf[i].flag == 2: reciprocal_transform(self.st_data, self.dy_data_buf[i])
-                        elif self.dy_data_buf[i].flag == -1: u += 1
-                    # Redistribute work to idle processes
+                    t = 0
                     for i in prange(np):
-                        ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np])
+                        t += self.dy_data_buf[i].flag
+                        if self.dy_data_buf[i].flag == 2: reciprocal_transform(self.st_data, self.dy_data_buf[i])
+                        elif self.dy_data_buf[i].flag == -1: u += 1
+                    k = (k<<1) % np # Note that 2 is a primitive root mod np.
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     l = self.extract_poly(i)

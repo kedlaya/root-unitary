@@ -107,7 +107,7 @@ void hankel_determinant_direct(fmpz_t res, const fmpz *seq, int n) {
   Attempt to compute the Hankel determinant associated to the sequence seq of odd length n
   using Dodgson condensation. Returns 1 for success, 0 for failure.
 
-  This function assumes that {w, 2*n-4} is scratch space.
+  This function assumes that {w, 2*n-5} is scratch space.
 */
 
 int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
@@ -118,22 +118,22 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
 
   int i, n1 = n-2;
   fmpz *f0 = w; // Length n-2
-  fmpz *f1 = w+n-2; // Length n-2
+  fmpz *f1 = w+n-2; // Length max(0,n-4)
   fmpz *t = seq, *t1, *t2;
 
-  for (i=0; i<n-2; i++) fmpz_fmms(f1+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
+  for (i=0; i<n-2; i++) fmpz_fmms(f0+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
   while (n1 > 1) {
     for (i=0; i<n1-2; i++) {
       if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
-      t1 = f1+i+1;
-      t2 = f0+i;
+      t1 = f0+i+1;
+      t2 = f1+i;
       fmpz_fmms(t2, t1-1, t1+1, t1, t1);
       fmpz_divexact(t2, t2, t+i+2);
     }
     n1 -= 2;
-    t = f1; f1 = f0; f0 = t;
+    t = f0; f0 = f1; f1 = t;
   }
-  fmpz_set(res, f1);
+  fmpz_set(res, f0);
   return(1);
 }
 
@@ -710,7 +710,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
    and the instances of dy_data2 are pairwise distinct.
 */
 void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if (dy_data == NULL || dy_data2 == NULL || dy_data->flag <= 0 || dy_data2->flag) return;
+  if (dy_data == NULL || dy_data2 == NULL || dy_data == dy_data2 || dy_data->flag <= 0 || dy_data2->flag) return;
 
   int i;
   int d = dy_data->d;
@@ -784,12 +784,11 @@ void reciprocal_transform(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data)
    0: tree exhausted
    -1: maximum number of nodes reached
 
-   It is *not* threadsafe to run next_pol and dynamic_split simultaneously on the same dy_data.
+   It is threadsafe to run this in parallel with dynamic_split.
 */
 
 int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
   if (dy_data==NULL || !dy_data->flag) return(0); // No work assigned to this process
-  dy_data->flag = 0; // Prevent work-stealing while this process is running
 
   int d = st_data->d;
   int n = dy_data->n;
