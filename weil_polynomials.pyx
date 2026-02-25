@@ -1,6 +1,7 @@
 ## To enable OpenMP support, move the next two lines to the top.
 #distutils: libraries = gomp
 #distutils: extra_compile_args = -fopenmp
+#cython: profile=True
 r"""
 Iterator for Weil polynomials.
 
@@ -65,7 +66,10 @@ from sage.functions.generalized import sgn
 from sage.libs.gmp.mpz cimport mpz_set
 from sage.libs.flint.fmpz cimport *
 from sage.libs.flint.fmpz_vec cimport *
+from sage.libs.flint.fmpz_poly cimport *
 from sage.rings.integer cimport Integer
+from sage.rings.polynomial.polynomial_integer_dense_flint cimport Polynomial_integer_dense_flint
+from sage.structure.parent cimport Parent
 
 cdef extern from "power_sums.c":
     ctypedef struct ps_static_data_t:
@@ -100,9 +104,10 @@ cdef class dfs_manager:
     cdef long node_limit
     cdef ps_static_data_t *st_data
     cdef ps_dynamic_data_t **dy_data_buf
+    cdef Parent ring
 
     def __cinit__(self, int d, q, coefflist, modlist,
-                  long node_limit, int parallel, int force_squarefree):
+                  long node_limit, int parallel, int force_squarefree, Parent ring):
         """
         Perform required C-level initialization (e.g., memory allocation).
 
@@ -132,6 +137,7 @@ cdef class dfs_manager:
         else:
             np = Integer(1)
         self.num_processes = np
+        self.ring = ring
         self.dy_data_buf = <ps_dynamic_data_t **>PyMem_Malloc(np * sizeof(ps_dynamic_data_t *))
         if not self.dy_data_buf:
             raise MemoryError()
@@ -193,30 +199,19 @@ cdef class dfs_manager:
             count += self.dy_data_buf[i].node_count
         return count
 
-    cdef list extract_poly(self, int i):
+    cdef Polynomial_integer_dense_flint extract_poly(self, int i):
         """
-        Extract a polynomial computed by process i, returned in a list l (assumed to be empty).
+        Extract a polynomial computed by process i.
         """
-        cdef int j, d = self.d
-        cdef Integer temp
-        cdef long val
-        cdef mpz_ptr z
-        cdef list l = []
-        cdef fmpz_t t
+        cdef int j, n = 2*self.d + 1
+        cdef Polynomial_integer_dense_flint poly = self.ring.zero()
+        cdef fmpz *sympol = self.dy_data_buf[i].sympol
 
-        # Convert a vector of fmpz's into mpz's, then Integers.
-        for j in range(2*d+1):
-            t = &self.dy_data_buf[i].sympol[j]
-            if is_mpz(t[0]):
-                z = _fmpz_promote_val(t)
-                temp = Integer()
-                mpz_set(temp.value, z)
-                _fmpz_demote_val(t)
-            else: # Returned value fits into a long
-                val = <long>(t[0])
-                temp = Integer(val)
-            l.append(temp)
-        return l
+        poly = poly._new()
+        fmpz_poly_realloc(poly._poly, n)
+        for j in range(n):
+           fmpz_poly_set_coeff_fmpz(poly._poly, j, sympol+j)
+        return poly
 
     cpdef object advance_exhaust(self, list ans):
         """
@@ -238,7 +233,7 @@ cdef class dfs_manager:
         cdef int i, k = 1
         cdef int t = 1, u = 0, np = self.num_processes, max_steps = 1000
         cdef long ans_count = 0, ans_max = 10000
-        cdef list l
+        cdef Polynomial_integer_dense_flint poly
 
         while (t and not u and ans_count < ans_max):
             sig_check() # Check for interrupts
@@ -259,8 +254,8 @@ cdef class dfs_manager:
                     k = (k<<1) % np # Note that 2 is a primitive root mod np.
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
-                    l = self.extract_poly(i)
-                    ans.append(l)
+                    poly = self.extract_poly(i)
+                    ans.append(poly)
                     ans_count += 1
         if u:
             raise RuntimeError("Node limit ({0:%d}) exceeded".format(self.node_limit))
@@ -294,10 +289,9 @@ class WeilPolynomials_iter():
             sage: next(it)
             3*x^10 + x^9 + x^8 + 7*x^7 + 5*x^6 + 2*x^5 + 5*x^4 + 7*x^3 + x^2 + x + 3
         """
-        if polring is None:
-            polring = PolynomialRing(ZZ, name='x')
+        self.pol_internal = PolynomialRing(ZZ, name='x')
         self.pol = polring
-        x = self.pol.gen()
+        x = self.pol_internal.gen()
         d = Integer(d)
         if sign != 1 and sign != -1:
             raise ValueError("Invalid sign")
@@ -368,7 +362,7 @@ class WeilPolynomials_iter():
             node_limit = -1
         force_squarefree = Integer(squarefree)
         self.process = dfs_manager(d2, q, coefflist, modlist,
-                                   node_limit, parallel, force_squarefree)
+                                   node_limit, parallel, force_squarefree, self.pol_internal)
         self.q = q
         self.squarefree = squarefree
         self.ans = []
@@ -408,9 +402,11 @@ class WeilPolynomials_iter():
                 self.count = self.process.node_count()
                 self.process = None
                 raise StopIteration
-        cdef list t = self.ans.pop()
-        if self.num_cofactor: return self.pol(t) * self.cofactor
-        return self.pol(t)
+        res = self.ans.pop()
+        if self.pol is not None:
+            res = self.pol(res)
+        if self.num_cofactor: res *= self.cofactor
+        return res
 
     def next(self): # For Python2 backward compatibility
         r"""

@@ -441,8 +441,7 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
     do {
       if (s = TEST_ROOTS(t0z)) break; else fmpz_addmul_ui(t0z, t2z, 2);
     } while (fmpz_cmp(t0z, upper) <= 0);
-    if (s) break;
-    else r--;
+    if (s) break; else r--;
   } while (r >= 0);
   if (!s) return(0); // Found nothing
 
