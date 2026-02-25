@@ -250,7 +250,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
   fmpz *k0, *pol;
 
   ps_static_data_t *st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
-
+  flint_set_num_threads(200);
   st_data->d = d;
   fmpz_init_set(st_data->q, q);
   q_is_1 = fmpz_is_one(q);
@@ -439,8 +439,7 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
       fmpz_sub_ui(t0z, t0z, 1);
     }
     do {
-      if (s = TEST_ROOTS(t0z)) break;
-      else fmpz_addmul_ui(t0z, t2z, 2);
+      if (s = TEST_ROOTS(t0z)) break; else fmpz_addmul_ui(t0z, t2z, 2);
     } while (fmpz_cmp(t0z, upper) <= 0);
     if (s) break;
     else r--;
@@ -461,12 +460,12 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
 
   /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
   fmpz_set(t1z, t0z);
-  while (fmpz_cmp(lower, t0z)) {
+  while (!fmpz_equal(lower, t0z)) {
     fmpz_fmid(t2z, lower, t0z);
     if (TEST_ROOTS(t2z)) fmpz_set(t0z, t2z);
     else fmpz_add_ui(lower, t2z, 1);
   }
-  while (fmpz_cmp(t1z, upper)) {
+  while (!fmpz_equal(t1z, upper)) {
     fmpz_cmid(t0z, t1z, upper);
     if (TEST_ROOTS(t0z)) fmpz_set(t1z, t0z);
     else fmpz_sub_ui(upper, t0z, 1);
@@ -575,19 +574,16 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz_set_ui(pow_num, k); // Temporary change to apply Girard-Newton
   fmpz_zero(pow_num+k);
   for (i=0; i<k; i++) {
-    if (!lead_is_1 && i > 0) fmpz_mul(t0z, t1z, pol+k-1-i);
-    else fmpz_set(t0z, pol+k-i-1);
+    if (!lead_is_1 && i > 0) fmpz_mul(t0z, t1z, pol+k-1-i); else fmpz_set(t0z, pol+k-i-1);
     fmpz_submul(pow_num+k, t0z, pow_num+k-1-i);
     if (!lead_is_1)
-      if (i == 0) fmpz_set(t1z, lead);
-      else if (i < k-1) fmpz_mul(t1z, t1z, lead);
+      if (i == 0) fmpz_set(t1z, lead); else if (i < k-1) fmpz_mul(t1z, t1z, lead);
   }
   fmpz_set_ui(pow_num, d); // Change back to the correct value, needed for Chebyshev criterion
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
-  if (lead_is_1) fmpz_set_ui(t1z, 2*d);
-  else fmpz_mul_ui(t1z, lead, 2*d);
+  if (lead_is_1) fmpz_set_ui(t1z, 2*d); else fmpz_mul_ui(t1z, lead, 2*d);
   if (!q_is_1) {
     if (k > 1) {
       fmpz_pow_ui(t0z, q, k/2);
@@ -638,8 +634,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
     /* Build the sequence of entries of the appropriate Hankel matrix. */
     if (i == 1 && k%2 == 0) { // t0z := 4*lead^2*q
       s = k - 1;
-      if (lead_is_1) fmpz_one(t0z);
-      else fmpz_mul(t0z, lead, lead);
+      if (lead_is_1) fmpz_one(t0z); else fmpz_mul(t0z, lead, lead);
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
       fmpz_mul_ui(t0z, t0z, 4);
     } else {
@@ -667,15 +662,12 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
       hankel_determinant_direct(tz, tza, s);
 
     if (k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0)) {
-      fmpz_set(t0z, tz);
-      if (lead_is_1) fmpz_set(t1z, tz-4);
-      else fmpz_mul(t1z, tz-4, lead_pow);
+      if (i == 1) fmpz_neg(t0z, tz); else fmpz_set(t0z, tz);
+      if (lead_is_1) fmpz_set(t1z, tz-4); else fmpz_mul(t1z, tz-4, lead_pow);
     } else { // If the determinant vanishes, argue that the corner entry is nonnegative
-      fmpz_set(t0z, tza+s-1);
-      if (lead_is_1) fmpz_one(t1z);
-      else fmpz_set(t1z, lead_pow);
+      if (i == 1) fmpz_neg(t0z, tza+s-1); else fmpz_set(t0z, tza+s-1);
+      if (lead_is_1) fmpz_one(t1z); else fmpz_set(t1z, lead_pow);
     }
-    if (i == 1) fmpz_neg(t0z, t0z);
     change_by_sign(1, i, t0z, t1z, NULL);
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
@@ -720,18 +712,18 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
 
   for (i=d; i>k; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
-      /* Copy the current state of the donor to the donee process. */
       int j = d - i + 1;
-      _fmpz_vec_set(dy_data2->pol+i, dy_data->pol+i, j);
-      _fmpz_vec_set(dy_data2->upper+i, dy_data->upper+i, j);
-      _fmpz_vec_set(dy_data2->power_sums_num, dy_data->power_sums_num, j);
-      _fmpz_vec_set(dy_data2->hankel_dets, dy_data->hankel_dets, 2*j);
-
       fmpz *lower = dy_data->pol+i;
       fmpz *upper = dy_data->upper+i;
       fmpz *modulus = st_data->modlist + i;
       int modulus_is_1 = fmpz_is_one(modulus);
       fmpz *t0z = dy_data->w; // Temporary variable
+
+      /* Copy the current state of the donor to the donee process. */
+      _fmpz_vec_set(dy_data2->pol+i, lower, j);
+      _fmpz_vec_set(dy_data2->upper+i, upper, j);
+      _fmpz_vec_set(dy_data2->power_sums_num, dy_data->power_sums_num, j);
+      _fmpz_vec_set(dy_data2->hankel_dets, dy_data->hankel_dets, 2*j);
 
       /* Restrict the donee process to the right half of the interval. */
       fmpz_sub(t0z, upper, lower);
@@ -766,8 +758,7 @@ void reciprocal_transform(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data)
     t = sympol + d - i;
     fmpz_set(t, pol+i);
     for (j=i; j>0; j--) {
-      if (j==i) fmpz_set(t+2*i, t);
-      else fmpz_add(t+2*j, t+2*j, t);
+      if (j==i) fmpz_set(t+2*i, t); else fmpz_add(t+2*j, t+2*j, t);
       if (!q_is_1) fmpz_mul(t, t, q);
       fmpz_mul_ui(t, t, j);
       fmpz_divexact_ui(t, t, i-j+1);
@@ -810,7 +801,7 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
         flag = 0;
         break;
       } else step_forward(st_data, dy_data, n, NULL);
-      count_steps += 1;
+      count_steps++;
     } else if (n < 0) { // Return a solution.
       ascend = 1;
       flag = 2;

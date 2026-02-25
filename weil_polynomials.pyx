@@ -202,16 +202,18 @@ cdef class dfs_manager:
         cdef long val
         cdef mpz_ptr z
         cdef list l = []
+        cdef fmpz_t t
 
         # Convert a vector of fmpz's into mpz's, then Integers.
         for j in range(2*d+1):
-            if is_mpz(self.dy_data_buf[i].sympol[j]):
-                z = _fmpz_promote_val(&self.dy_data_buf[i].sympol[j])
+            t = &self.dy_data_buf[i].sympol[j]
+            if is_mpz(t[0]):
+                z = _fmpz_promote_val(t)
                 temp = Integer()
                 mpz_set(temp.value, z)
-                _fmpz_demote_val(&self.dy_data_buf[i].sympol[j])
+                _fmpz_demote_val(t)
             else: # Returned value fits into a long
-                val = <long>(self.dy_data_buf[i].sympol[j])
+                val = <long>(t[0])
                 temp = Integer(val)
             l.append(temp)
         return l
@@ -228,7 +230,9 @@ cdef class dfs_manager:
             sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = iter(w)
-            sage: it.process.advance_exhaust()[0]
+            sage: ans = []
+            sage: it.process.advance_exhaust(ans)
+            sage: ans[0]
             [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3]
         """
         cdef int i, k = 1
@@ -247,11 +251,11 @@ cdef class dfs_manager:
                     for i in prange(np): # Step each process forward in parallel
                         ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np]) # Yield work
                         next_pol(self.st_data, self.dy_data_buf[i], max_steps)
-                    t = 0
-                    for i in prange(np):
-                        t += self.dy_data_buf[i].flag
                         if self.dy_data_buf[i].flag == 2: reciprocal_transform(self.st_data, self.dy_data_buf[i])
                         elif self.dy_data_buf[i].flag == -1: u += 1
+                    t = 0
+                    for i in prange(np):
+                        t += self.dy_data_buf[i].flag # Count active processes
                     k = (k<<1) % np # Note that 2 is a primitive root mod np.
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
@@ -368,6 +372,7 @@ class WeilPolynomials_iter():
         self.q = q
         self.squarefree = squarefree
         self.ans = []
+        self.num_cofactor = num_cofactor
 
     def __iter__(self):
         r"""
@@ -404,7 +409,8 @@ class WeilPolynomials_iter():
                 self.process = None
                 raise StopIteration
         cdef list t = self.ans.pop()
-        return self.pol(t) * self.cofactor
+        if self.num_cofactor: return self.pol(t) * self.cofactor
+        return self.pol(t)
 
     def next(self): # For Python2 backward compatibility
         r"""
