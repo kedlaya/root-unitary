@@ -1,7 +1,6 @@
 ## To enable OpenMP support, move the next two lines to the top.
 #distutils: libraries = gomp
 #distutils: extra_compile_args = -fopenmp
-#cython: profile=True
 r"""
 Iterator for Weil polynomials.
 
@@ -39,6 +38,7 @@ AUTHOR:
                    compute Hankel determinants via Dodgson condensation when possible
                    compute subresultants via Ducos method
                    more balanced work-splitting
+                   more direct conversion of output to Sage polynomials
 
 A standalone version of this code can be found at
    https://github.com/kedlaya/root-unitary
