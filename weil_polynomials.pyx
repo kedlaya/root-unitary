@@ -1,6 +1,7 @@
 ## To enable OpenMP support, move the next two lines to the top.
 #distutils: libraries = gomp
 #distutils: extra_compile_args = -fopenmp
+#cython: profile=True
 r"""
 Iterator for Weil polynomials.
 
@@ -89,7 +90,6 @@ cdef extern from "power_sums.c":
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
 
     void ps_dynamic_split(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
-    int reciprocal_transform(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) nogil
     int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
 
 cdef class dfs_manager:
@@ -153,7 +153,7 @@ cdef class dfs_manager:
                                          temp_array, node_limit, force_squarefree)
 
         # Initialize processes, but assign work to only one process.
-        # In parallel mode, other processes will get initialized later via work-stealing.
+        # In parallel mode, other processes will get initialized later via work sharing.
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(coefflist[i]).value)
         self.dy_data_buf[0] = ps_dynamic_init(d, temp_q, temp_array)
@@ -207,7 +207,7 @@ cdef class dfs_manager:
         cdef Polynomial_integer_dense_flint poly = self.ring.zero()
         cdef fmpz *sympol = self.dy_data_buf[i].sympol
 
-        poly = poly._new()
+        poly = poly._new() # Allocate a new polynomial in self.ring
         fmpz_poly_realloc(poly._poly, n)
         for j in range(n):
            fmpz_poly_set_coeff_fmpz(poly._poly, j, sympol+j)
@@ -240,14 +240,12 @@ cdef class dfs_manager:
             if np == 1: # Serial mode
                 t = next_pol(self.st_data, self.dy_data_buf[0], max_steps)
                 if t == -1: u = 1
-                elif t == 2: reciprocal_transform(self.st_data, self.dy_data_buf[0])
             else: # Parallel mode
                 with nogil:
                     for i in prange(np): # Step each process forward in parallel
                         ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np]) # Yield work
                         next_pol(self.st_data, self.dy_data_buf[i], max_steps)
-                        if self.dy_data_buf[i].flag == 2: reciprocal_transform(self.st_data, self.dy_data_buf[i])
-                        elif self.dy_data_buf[i].flag == -1: u += 1
+                        if self.dy_data_buf[i].flag == -1: u += 1
                     t = 0
                     for i in prange(np):
                         t += self.dy_data_buf[i].flag # Count active processes

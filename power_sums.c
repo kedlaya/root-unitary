@@ -14,6 +14,7 @@
 
 */
 
+#include <stdlib.h>
 #include "power_sums.h"
 
 /* Check for OpenMP at runtime. */
@@ -35,26 +36,26 @@ inline int is_mpz(fmpz f) {
 }
 
 /* Set res to floor((a+b)/2). */
-inline void fmpz_fmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
+void fmpz_fmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
   fmpz_add(res, a, b);
   fmpz_fdiv_q_ui(res, res, 2);
 }
 
 /* Set res to ceil((a+b)/2). */
-inline void fmpz_cmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
+void fmpz_cmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
   fmpz_add(res, a, b);
   fmpz_cdiv_q_ui(res, res, 2);
 }
 
 /* Set res to ceil(sqrt(a)). For the floor, use FLINT's built-in fmpz_sqrt instead. */
-inline void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
+void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
   int s = fmpz_root(res, a, 2);
   if (!s) fmpz_add_ui(res, res, 1);
 }
 
 /* Set res to floor((a/b + c sqrt(q))/d). No aliasing allowed. b and d must be positive.
    If b is NULL we interpret it as 1. */
-inline void fmpq_floor_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
+void fmpq_floor_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
   fmpz_mul(res, c, c);
   fmpz_mul(res, res, q);
   if (fmpz_sgn(c) >= 0) fmpz_sqrt(res, res);
@@ -70,7 +71,7 @@ inline void fmpq_floor_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fm
 
 /* Set res to ceil((a/b + c sqrt(q))/d). No aliasing allowed. b and d must be positive.
    If b is NULL we interpret it as 1. */
-inline void fmpq_ceil_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
+void fmpq_ceil_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
   fmpz_mul(res, c, c);
   fmpz_mul(res, res, q);
   if (fmpz_sgn(c) >= 0) fmpz_sqrt_c(res, res);
@@ -152,7 +153,7 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
     Based on code by Sebastian Pancratz from the FLINT repository (plus the Ducos variation).
 */
 
-int _fmpz_poly_all_real_roots(fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
+int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
 			      const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
 
@@ -370,7 +371,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
 /* Increment the current moving counter and update stored data to match. 
    If step is NULL it is interpreted as 1. */
 
-inline void step_forward(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
+void step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
   int d = st_data->d;
   int k = d - n;
   fmpz *pol = dy_data->pol;
@@ -478,7 +479,7 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
 
    The value of dy_data->pol+n is assumed to be correct modulo st_data->modlist+n.
 */
-int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
+int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
   if (n < 0) return(1);
 
   /* Static data */
@@ -489,7 +490,7 @@ int set_range_from_power_sums(ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   fmpz *modulus = st_data->modlist + n;
   int modulus_is_0 = fmpz_is_zero(modulus);
   int modulus_is_1 = fmpz_is_one(modulus);
-  fmpz *q = st_data->q;
+  const fmpz *q = st_data->q;
   int q_is_1 = fmpz_is_one(q);
   int q_is_square = q_is_1 ? 1 : fmpz_is_square(q);
 
@@ -714,7 +715,7 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
       int j = d - i + 1;
       fmpz *lower = dy_data->pol+i;
       fmpz *upper = dy_data->upper+i;
-      fmpz *modulus = st_data->modlist + i;
+      fmpz *modulus = st_data->modlist+i;
       int modulus_is_1 = fmpz_is_one(modulus);
       fmpz *t0z = dy_data->w; // Temporary variable
 
@@ -793,15 +794,14 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
   int flag = 1;
   int count_steps = 0;
 
-  while (count_steps <= max_steps) {
+  while (1) {
     if (ascend) { // Ascend the tree and step forward as needed.
-      do {n++; } while (n <= d && (ascend = (fmpz_cmp(pol+n, upper+n) >= 0)));
-      if (n > d) { // This process is exhausted.
-        flag = 0;
-        break;
-      } else step_forward(st_data, dy_data, n, NULL);
-      count_steps++;
+      count_steps += 1;
+      do {n++; } while ((flag = (n <= d)) && (ascend = (fmpz_cmp(pol+n, upper+n) >= 0)));
+      if (!flag || count_steps > max_steps) break;
+      step_forward(st_data, dy_data, n, NULL);
     } else if (n < 0) { // Return a solution.
+      reciprocal_transform(st_data, dy_data);
       ascend = 1;
       flag = 2;
       break;
