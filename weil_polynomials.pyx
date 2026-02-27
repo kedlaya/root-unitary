@@ -40,6 +40,7 @@ AUTHOR:
                    compute subresultants via Ducos method
                    more balanced work-splitting
                    more direct conversion of output to Sage polynomials
+                   improved chunking in parallel mode
 
 A standalone version of this code can be found at
    https://github.com/kedlaya/root-unitary

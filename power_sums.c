@@ -800,11 +800,9 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
 
   while (1) {
     if (ascend) { // Ascend the tree and step forward as needed.
-      count_steps += 1;
       do {n++; } while ((flag = (n <= d)) && (ascend = (fmpz_cmp(pol+n, upper+n) >= 0)));
       if (!flag) break;
       step_forward(st_data, dy_data, n, NULL);
-      if (count_steps > max_steps) break;
     } else if (n < 0) { // Return a solution.
       reciprocal_transform(st_data, dy_data);
       ascend = 1;
@@ -819,6 +817,8 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
 	  break;
 	}
       }
+      count_steps += (d-n+1)*(d-n+1);
+      if (count_steps > max_steps) break;
     }
   }
   /* Record the final working state. */
