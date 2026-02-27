@@ -89,7 +89,7 @@ cdef extern from "power_sums.c":
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
 
-    void ps_dynamic_split(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
+    int ps_dynamic_split(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
     int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
 
 cdef class dfs_manager:
@@ -230,7 +230,7 @@ cdef class dfs_manager:
             sage: ans[0]
             [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3]
         """
-        cdef int i, k = 1
+        cdef int i, k = 1, flag
         cdef int t = 1, u = 0, np = self.num_processes, max_steps = 1000
         cdef long ans_count = 0, ans_max = 10000
         cdef Polynomial_integer_dense_flint poly
@@ -241,15 +241,14 @@ cdef class dfs_manager:
                 t = next_pol(self.st_data, self.dy_data_buf[0], max_steps)
                 if t == -1: u = 1
             else: # Parallel mode
+                t = 0
                 with nogil:
                     for i in prange(np): # Step each process forward in parallel
-                        ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np]) # Yield work
-                        next_pol(self.st_data, self.dy_data_buf[i], max_steps)
-                        if self.dy_data_buf[i].flag == -1: u += 1
-                    t = 0
-                    for i in prange(np):
-                        t += self.dy_data_buf[i].flag # Count active processes
-                    k = (k<<1) % np # Note that 2 is a primitive root mod np.
+                        t += ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np]) # Yield work
+                        flag = next_pol(self.st_data, self.dy_data_buf[i], max_steps)
+                        t += flag
+                        if flag == -1: u += 1
+                k = (k<<1) % np # Note that 2 is a primitive root mod np.
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     poly = self.extract_poly(i)

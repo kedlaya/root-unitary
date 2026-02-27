@@ -34,6 +34,5 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist);
 void ps_static_clear(ps_static_data_t *st_data);
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data);
 
-void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2);
-void reciprocal_transform(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data);
+int ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2);
 int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps);

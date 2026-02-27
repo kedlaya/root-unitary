@@ -2,6 +2,6 @@
 	all
 
 all:
-	gcc weilpoly.c -lflint -o weilpoly
+	gcc weilpoly.c -pg -fopenmp -lflint -lgomp -o weilpoly
 
 

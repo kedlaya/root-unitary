@@ -122,7 +122,7 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
   fmpz *f1 = w+n-2; // Length max(0,n-4)
   fmpz *t = seq, *t1, *t2;
 
-  for (i=0; i<n-2; i++) fmpz_fmms(f0+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
+  for (i=0; i<n1; i++) fmpz_fmms(f0+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
   while (n1 > 1) {
     for (i=0; i<n1-2; i++) {
       if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
@@ -485,7 +485,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   /* Static data */
 
   int d = st_data->d;
-  int k = d - n;
+  int k = d - n, k2 = k % 2;
   int force_squarefree = st_data->force_squarefree;
   fmpz *modulus = st_data->modlist + n;
   int modulus_is_0 = fmpz_is_zero(modulus);
@@ -589,13 +589,13 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
       fmpz_pow_ui(t0z, q, k/2);
       fmpz_mul(t1z, t1z, t0z);
     }
-    if (q_is_square && k%2 == 1) {
+    if (q_is_square && k2 == 1) {
       fmpz_sqrt(t0z, q);
       fmpz_mul(t1z, t1z, t0z);
     }
   }
   _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
-  if (q_is_square || k%2 == 0) { // q^{k/2} is rational
+  if (q_is_square || k2 == 0) { // q^{k/2} is rational
     if (!lead_is_1) fmpz_mul(t1z, lead_pow, t1z);
     fmpz_add(t2z, t0z, t1z);
     change_by_sign(modulus_is_0, 0, t2z, lead_pow, NULL);
@@ -616,11 +616,11 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     fmpz_add(t2z, t0z, t1z);
     change_by_sign(1, 1, t2z, NULL, NULL);
     fmpz_sub(t2z, t0z, t1z);
-    change_by_sign(1, 1-(k%2), t2z, NULL, NULL);
+    change_by_sign(1, 1-k2, t2z, NULL, NULL);
   } else {
     change_by_sign(1, 1, t0z, NULL, t1z);
     fmpz_neg(t1z, t1z);
-    change_by_sign(1, 1-(k%2), t0z, NULL, t1z);
+    change_by_sign(1, 1-k2, t0z, NULL, t1z);
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
@@ -629,29 +629,31 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
      k is odd and q is not a perfect square. */
 
   for (i=0; i<=1; i++) {
-    if (!q_is_square && k%2 == 1) continue; // Hankel matrix is not defined over Q
+    if (!q_is_square && k2 == 1) continue; // Hankel matrix is not defined over Q
 
     /* Build the sequence of entries of the appropriate Hankel matrix. */
-    if (i == 1 && k%2 == 0) { // t0z := 4*lead^2*q
+    if (i == 1 && k2 == 0) { // t0z := 4*lead^2*q
       s = k - 1;
-      if (lead_is_1) fmpz_one(t0z); else fmpz_mul(t0z, lead, lead);
+      if (!lead_is_1) {
+        fmpz_mul(t0z, lead, lead);
+        fmpz_mul_ui(t0z, t0z, 4);
+      } else fmpz_set_ui(t0z, 4);
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
-      fmpz_mul_ui(t0z, t0z, 4);
-    } else {
-      s = k + 1 - k%2;
-      if (k%2 == 1) // t0z := 2*lead*sqrt(q)
-        if (q_is_1) fmpz_mul_ui(t0z, lead, 2);
-        else {
-          fmpz_sqrt(t0z, q);
-          if (!lead_is_1) fmpz_mul(t0z, t0z, lead);
-          fmpz_mul_ui(t0z, t0z, 2);
-        }
+    } else if (k2 == 0) s = k+1;
+    else { // t0z := 2*lead*sqrt(q)
+      s = k;
+      if (q_is_1) fmpz_mul_ui(t0z, lead, 2);
+      else {
+        fmpz_sqrt(t0z, q);
+        if (!lead_is_1) fmpz_mul(t0z, t0z, lead);
+        fmpz_mul_ui(t0z, t0z, 2);
+      }
     }
-    if (i == 0 && k%2 == 0) tza = pow_num;
+    if (i == 0 && k2 == 0) tza = pow_num;
     else {
       tza = w;
       _fmpz_vec_scalar_mul_fmpz(tza, pow_num, s, t0z);
-      if (k%2 == 0) _fmpz_vec_sub(tza, tza, pow_num+2, s);
+      if (k2 == 0) _fmpz_vec_sub(tza, tza, pow_num+2, s);
       else if (i == 0) _fmpz_vec_add(tza, tza, pow_num+1, s);
       else _fmpz_vec_sub(tza, tza, pow_num+1, s);
     }
@@ -697,12 +699,13 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
 /* Split off a subtree (without allocating new memory).
    The donor process yields its current branch at the first coefficient that is not uniquely specified.
    The donee process may in turn be split immediately.
+   Return value is 1 if a split is executed and 0 otherwise.
 
    It is safe to run this in parallel as long as the instances of dy_data are pairwise distinct
    and the instances of dy_data2 are pairwise distinct.
 */
-void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
-  if (dy_data == NULL || dy_data2 == NULL || dy_data == dy_data2 || dy_data->flag <= 0 || dy_data2->flag) return;
+int ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) {
+  if (dy_data == NULL || dy_data2 == NULL || dy_data == dy_data2 || dy_data->flag <= 0 || dy_data2->flag) return(0);
 
   int i;
   int d = dy_data->d;
@@ -738,8 +741,9 @@ void ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_dat
       fmpz_sub_ui(t0z, t0z, 1);
       if (!modulus_is_1) fmpz_mul(t0z, t0z, modulus);
       fmpz_add(upper, lower, t0z);
-      break;
+      return(1);
     }
+  return(0);
 }
 
 /* Compute the reciprocal transform of pol and store it in sympol. */
@@ -798,8 +802,9 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
     if (ascend) { // Ascend the tree and step forward as needed.
       count_steps += 1;
       do {n++; } while ((flag = (n <= d)) && (ascend = (fmpz_cmp(pol+n, upper+n) >= 0)));
-      if (!flag || count_steps > max_steps) break;
+      if (!flag) break;
       step_forward(st_data, dy_data, n, NULL);
+      if (count_steps > max_steps) break;
     } else if (n < 0) { // Return a solution.
       reciprocal_transform(st_data, dy_data);
       ascend = 1;
