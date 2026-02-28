@@ -432,8 +432,8 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
   /* Look for a single value where the Rolle criterion holds. */
   fmpz_add_ui(t0z, t0z, 1);
   r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1)); forced to be positive
+  fmpz_one_2exp(t2z, r);
   do {
-    fmpz_one_2exp(t2z, r);
     if (!r) fmpz_set(t0z, lower);
     else {
       fmpz_add(t0z, lower, t2z);
@@ -442,7 +442,9 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
     do {
       if (s = TEST_ROOTS(t0z)) break; else fmpz_addmul_ui(t0z, t2z, 2);
     } while (fmpz_cmp(t0z, upper) <= 0);
-    if (s) break; else r--;
+    if (s) break;
+    r--;
+    fmpz_divexact_ui(t2z, t2z, 2);
   } while (r >= 0);
   if (!s) return(0); // Found nothing
 

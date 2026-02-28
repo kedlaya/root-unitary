@@ -241,20 +241,20 @@ cdef class dfs_manager:
             if np == 1: # Serial mode
                 t = next_pol(self.st_data, self.dy_data_buf[0], max_steps)
                 if t == -1: u = 1
+                if t == 2: ans_count += 1
             else: # Parallel mode
                 t = 0
-                with nogil:
-                    for i in prange(np): # Step each process forward in parallel
-                        t += ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np]) # Yield work
-                        flag = next_pol(self.st_data, self.dy_data_buf[i], max_steps)
-                        t += flag
-                        if flag == -1: u += 1
+                for i in prange(np, nogil=True): # Step each process forward in parallel
+                    t += ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np]) # Yield work
+                    flag = next_pol(self.st_data, self.dy_data_buf[i], max_steps)
+                    t += flag
+                    if flag == -1: u += 1
+                    if flag == 2: ans_count += 1
                 k = (k<<1) % np # Note that 2 is a primitive root mod np.
             for i in range(np):
                 if self.dy_data_buf[i].flag == 2: # Extract a solution
                     poly = self.extract_poly(i)
                     ans.append(poly)
-                    ans_count += 1
         if u:
             raise RuntimeError("Node limit ({0:%d}) exceeded".format(self.node_limit))
         return ans
@@ -359,8 +359,8 @@ class WeilPolynomials_iter():
         if node_limit is None:
             node_limit = -1
         force_squarefree = Integer(squarefree)
-        self.process = dfs_manager(d2, q, coefflist, modlist,
-                                   node_limit, parallel, force_squarefree, self.pol_internal)
+        self.process = dfs_manager(d2, q, coefflist, modlist, node_limit,
+                                   parallel, force_squarefree, self.pol_internal)
         self.q = q
         self.squarefree = squarefree
         self.ans = []
