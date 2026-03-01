@@ -87,7 +87,7 @@ cdef extern from "power_sums.c":
     int is_mpz(fmpz f)
 
     ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist, long node_limit, int force_squarefree)
-    ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist)
+    ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
 
@@ -158,9 +158,9 @@ cdef class dfs_manager:
         # In parallel mode, other processes will get initialized later via work sharing.
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(coefflist[i]).value)
-        self.dy_data_buf[0] = ps_dynamic_init(d, temp_q, temp_array)
+        self.dy_data_buf[0] = ps_dynamic_init(d, temp_array)
         for i in range(1, np):
-            self.dy_data_buf[i] = ps_dynamic_init(d, temp_q, NULL)
+            self.dy_data_buf[i] = ps_dynamic_init(d, NULL)
 
         fmpz_clear(temp_lead)
         fmpz_clear(temp_q)

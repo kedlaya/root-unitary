@@ -33,8 +33,8 @@ int main(int argc, char* argv[]) {
   fmpz_set(temp_array+d, temp_lead);
   
   dy_data = (ps_dynamic_data_t **)malloc(np*sizeof(NULL));
-  dy_data[0] = ps_dynamic_init(d, temp_q, temp_array);
-  for (i=1; i<np; i++) dy_data[i] = ps_dynamic_init(d, temp_q, NULL);
+  dy_data[0] = ps_dynamic_init(d, temp_array);
+  for (i=1; i<np; i++) dy_data[i] = ps_dynamic_init(d, NULL);
   fmpz_clear(temp_lead);
   fmpz_clear(temp_q);
   _fmpz_vec_clear(temp_array, d+1);

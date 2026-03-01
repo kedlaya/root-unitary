@@ -120,7 +120,7 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
   int i, n1 = n-2;
   fmpz *f0 = w; // Length n-2
   fmpz *f1 = w+n1; // Length max(0,n-4)
-  fmpz *t = seq, *t1, *t2;
+  fmpz *t = (fmpz *)seq, *t1, *t2;
 
   for (i=0; i<n1; i++) fmpz_fmms(f0+i, t+i, t+i+2, t+i+1, t+i+1);
   while (n1 > 1) {
@@ -175,15 +175,14 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1,
     /* At this point deg(f0 or poly) = n+1, deg(f1) = n.
        Compute the next leading coefficient (up to a positive factor). */
 
-    t = f0+n-1;
-    lead1 = f1+n;
+    t = f0+n-1; lead1 = f1+n;
     if (content != NULL) { // Ducos variation
       fmpz_fmms(t, t, lead1, lead1-1, t+1);
       fmpz_divexact(t, t, content);
       if (n>1) fmpz_sub(t, t, lead1-2);
       fmpz_fmma(t, t, lead1, lead1-1, lead1-1);
     } else if (n > 1) { // No Ducos variation
-      lead2 = poly+n+1;
+      lead2 = (fmpz *)poly+n+1;
       fmpz_fmms(t+1, lead2-1, lead1, lead1-1, lead2);
       fmpz_fmms(t, lead2-2, lead1, lead1-2, lead2);
       fmpz_fmms(t, t, lead1, lead1-1, t+1);
@@ -206,8 +205,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1,
     if (content != NULL) { // Ducos variation
       sub1 = f1+n-1;
       for (i=0; i<n-1; i++) { // Inner loop
-        t = f0+i;
-        t1 = f1+i;
+        t = f0+i; t1 = f1+i;
         fmpz_fmms(t, t, lead1, t1, sub2);
         fmpz_divexact(t, t, content);
         if (i>0) fmpz_sub(t, t, t1-1);
@@ -216,8 +214,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1,
     } else { // No Ducos variation, direct Euclidean division
       fmpz_mul(f0, f0, lead1);
       for (i=0; i<n-1; i++) {
-        t = f0+i;
-        t1 = f1+i;
+        t = f0+i; t1 = f1+i;
         if (i>0) fmpz_fmms(t, poly+i, lead1, t1-1, lead2);
         fmpz_fmms(t, t, lead1, t1, sub2);
       }
@@ -306,7 +303,7 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
 
 /* Dynamic memory allocation and initialization.
    Call with coefflist == NULL to prepare an inactive process. */
-ps_dynamic_data_t *ps_dynamic_init(int d, fmpz_t q, fmpz *coefflist) {
+ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   ps_dynamic_data_t *dy_data = (ps_dynamic_data_t *)malloc(sizeof(ps_dynamic_data_t));
 
   dy_data->d = d;
@@ -442,9 +439,8 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
       if (s = TEST_ROOTS(t0z)) break; else fmpz_addmul_ui(t0z, t2z, 2);
     } while (fmpz_cmp(t0z, upper) <= 0);
     if (s) break;
-    r--;
     fmpz_divexact_ui(t2z, t2z, 2);
-  } while (r >= 0);
+  } while ((--r) >= 0);
   if (!s) return(0); // Found nothing
 
   if (r == 0) { // In this case, enforce lower == upper and exit
@@ -641,7 +637,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
         fmpz_mul_ui(t0z, t0z, 4);
       } else fmpz_set_ui(t0z, 4);
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
-    } else if (k2 == 0) s = k+1;
+    } else if (k2 == 0) s = k + 1;
     else { // t0z := 2*lead*sqrt(q)
       s = k;
       if (q_is_1) fmpz_mul_ui(t0z, lead, 2);
@@ -748,12 +744,12 @@ int ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data
 
 /* Compute the reciprocal transform of pol and store it in sympol. */
 
-void reciprocal_transform(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
+void reciprocal_transform(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
   int d = st_data->d;
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
   fmpz *t;
-  fmpz *q = st_data->q;
+  fmpz *q = (fmpz *)st_data->q;
   int q_is_1 = fmpz_is_one(q);
   int i, j;
 
@@ -782,7 +778,7 @@ void reciprocal_transform(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data)
    It is threadsafe to run this in parallel with dynamic_split.
 */
 
-int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
+int next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
   if (dy_data==NULL || !dy_data->flag) return(0); // No work assigned to this process
 
   int d = st_data->d;
@@ -810,13 +806,11 @@ int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_step
       break;
     } else { // Compute children of the current node.
       n--;
-      if (ascend = !set_range_from_power_sums(st_data, dy_data, n)) { // Found a terminal node
-	node_count++;
-	if (node_limit != -1 && node_count >= node_limit) {
+      if ((ascend = !set_range_from_power_sums(st_data, dy_data, n))) // Found a terminal node
+	if (node_limit != -1 && (++node_count) >= node_limit) {
 	  flag = -1;
 	  break;
 	}
-      }
       count_steps += (d-n+1)*(d-n+1);
       if (count_steps > max_steps) break;
     }
