@@ -1,7 +1,8 @@
-## To enable OpenMP support, move the next two lines to the top.
+## To enable OpenMP support, move the two lines starting with #distutils to the top.
+# For best results, you may need to set the environment variable OMP_NUM_THREADS to a
+# suitably large value (e.g., export OMP_NUM_THREADS=250).
 #distutils: libraries = gomp
 #distutils: extra_compile_args = -fopenmp
-#cython: profile=True
 r"""
 Iterator for Weil polynomials.
 
@@ -168,7 +169,6 @@ cdef class dfs_manager:
     def __dealloc__(self):
         """
         Deallocate memory.
-
         """
         ps_static_clear(self.st_data)
         self.st_data = NULL
@@ -232,29 +232,30 @@ cdef class dfs_manager:
             [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3]
         """
         cdef int i, k = 1, flag
-        cdef int t = 1, u = 0, np = self.num_processes, max_steps = 1000
+        cdef int t = 1, u = 0, np = self.num_processes, max_steps = 10000
         cdef long ans_count = 0, ans_max = 10000
-        cdef Polynomial_integer_dense_flint poly
 
-        while (t and not u and ans_count < ans_max):
-            sig_check() # Check for interrupts
-            if np == 1: # Serial mode
+        if np == 1: # Serial mode
+            while (t and not u and ans_count < ans_max):
+                sig_check() # Check for interrupts
                 t = next_pol(self.st_data, self.dy_data_buf[0], max_steps)
-                if t == -1: u = 1
-                if t == 2: ans_count += 1
-            else: # Parallel mode
+                if t == 2: # Extract a solution
+                    ans_count += 1
+                    ans.append(self.extract_poly(0))
+                elif t == -1: u = 1
+        else: # Parallel mode
+            while (t and not u and ans_count < ans_max):
+                sig_check() # Check for interrupts
                 t = 0
                 for i in prange(np, nogil=True): # Step each process forward in parallel
                     t += ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np]) # Yield work
                     flag = next_pol(self.st_data, self.dy_data_buf[i], max_steps)
                     t += flag
-                    if flag == -1: u += 1
-                    if flag == 2: ans_count += 1
+                    if flag == 2:
+                        ans_count += 1
+                        with gil: ans.append(self.extract_poly(i))
+                    elif flag == -1: u += 1
                 k = (k<<1) % np # Note that 2 is a primitive root mod np.
-            for i in range(np):
-                if self.dy_data_buf[i].flag == 2: # Extract a solution
-                    poly = self.extract_poly(i)
-                    ans.append(poly)
         if u:
             raise RuntimeError("Node limit ({0:%d}) exceeded".format(self.node_limit))
         return ans

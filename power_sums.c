@@ -119,10 +119,10 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
 
   int i, n1 = n-2;
   fmpz *f0 = w; // Length n-2
-  fmpz *f1 = w+n-2; // Length max(0,n-4)
+  fmpz *f1 = w+n1; // Length max(0,n-4)
   fmpz *t = seq, *t1, *t2;
 
-  for (i=0; i<n1; i++) fmpz_fmms(f0+i, seq+i, seq+i+2, seq+i+1, seq+i+1);
+  for (i=0; i<n1; i++) fmpz_fmms(f0+i, t+i, t+i+2, t+i+1, t+i+1);
   while (n1 > 1) {
     for (i=0; i<n1-2; i++) {
       if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
@@ -153,8 +153,8 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
     Based on code by Sebastian Pancratz from the FLINT repository (plus the Ducos variation).
 */
 
-int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1, int force_squarefree,
-			      const fmpz_t a, const fmpz_t b) {
+int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1,
+                              int force_squarefree, const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
 
   int sgn, i;
@@ -251,7 +251,6 @@ ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist,
   fmpz *k0, *pol;
 
   ps_static_data_t *st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
-  flint_set_num_threads(200);
   st_data->d = d;
   fmpz_init_set(st_data->q, q);
   q_is_1 = fmpz_is_one(q);
@@ -574,10 +573,11 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
      This is the k-th power sum times c^k where c is the leading coefficient. */
 
   fmpz_set_ui(pow_num, k); // Temporary change to apply Girard-Newton
-  fmpz_zero(pow_num+k);
+  tz = pow_num + k;
+  fmpz_zero(tz);
   for (i=0; i<k; i++) {
     if (!lead_is_1 && i > 0) fmpz_mul(t0z, t1z, pol+k-1-i); else fmpz_set(t0z, pol+k-i-1);
-    fmpz_submul(pow_num+k, t0z, pow_num+k-1-i);
+    fmpz_submul(tz, t0z, tz-1-i);
     if (!lead_is_1)
       if (i == 0) fmpz_set(t1z, lead); else if (i < k-1) fmpz_mul(t1z, t1z, lead);
   }
@@ -668,7 +668,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     if (k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0)) {
       if (i == 1) fmpz_neg(t0z, tz); else fmpz_set(t0z, tz);
       if (lead_is_1) fmpz_set(t1z, tz-4); else fmpz_mul(t1z, tz-4, lead_pow);
-    } else { // If the determinant vanishes, argue that the corner entry is nonnegative
+    } else { // Argue that the corner entry is nonnegative
       if (i == 1) fmpz_neg(t0z, tza+s-1); else fmpz_set(t0z, tza+s-1);
       if (lead_is_1) fmpz_one(t1z); else fmpz_set(t1z, lead_pow);
     }
@@ -711,9 +711,7 @@ int ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data
 
   int i;
   int d = dy_data->d;
-  int n = dy_data->n;
-  int ascend = dy_data->ascend;
-  int k = n + ascend;
+  int k = dy_data->n + dy_data->ascend;
 
   for (i=d; i>k; i--)
     if (fmpz_cmp(dy_data->pol+i, dy_data->upper+i) < 0) {
