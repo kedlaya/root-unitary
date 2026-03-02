@@ -242,7 +242,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1,
 *****/
 
 /* Static memory allocation and initialization. */
-ps_static_data_t *ps_static_init(int d, fmpz_t q, fmpz_t lead, fmpz *modlist, 
+ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, fmpz *modlist,
                                  long node_limit, int force_squarefree) {
   int i, j, q_is_1, q_is_square;
   fmpz *k0, *pol;
@@ -312,10 +312,6 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   dy_data->ascend = 0;
   dy_data->pol = _fmpz_vec_init(d+1);
   dy_data->sympol = _fmpz_vec_init(2*d+1);
-  if (coefflist != NULL) {
-    dy_data->flag = 1; // Activate this process
-    _fmpz_vec_set(dy_data->pol, coefflist, d+1);
-  } else dy_data->flag = 0; // Flag this process as inactive
   dy_data->upper = _fmpz_vec_init(d+1);
   dy_data->power_sums_num = _fmpz_vec_init(d+1);
   fmpz_set_si(dy_data->power_sums_num, d);
@@ -328,6 +324,10 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   dy_data->wlen = 3*d+10;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
 
+  if (coefflist != NULL) {
+    dy_data->flag = 1; // Activate this process
+    _fmpz_vec_set(dy_data->pol, coefflist, d+1);
+  } else dy_data->flag = 0; // Flag this process as inactive
   return(dy_data);
 }
 
@@ -436,7 +436,7 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
       fmpz_sub_ui(t0z, t0z, 1);
     }
     do {
-      if (s = TEST_ROOTS(t0z)) break; else fmpz_addmul_ui(t0z, t2z, 2);
+      if ((s = TEST_ROOTS(t0z))) break; else fmpz_addmul_ui(t0z, t2z, 2);
     } while (fmpz_cmp(t0z, upper) <= 0);
     if (s) break;
     fmpz_divexact_ui(t2z, t2z, 2);
@@ -574,8 +574,9 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   for (i=0; i<k; i++) {
     if (!lead_is_1 && i > 0) fmpz_mul(t0z, t1z, pol+k-1-i); else fmpz_set(t0z, pol+k-i-1);
     fmpz_submul(tz, t0z, tz-1-i);
-    if (!lead_is_1)
+    if (!lead_is_1) {
       if (i == 0) fmpz_set(t1z, lead); else if (i < k-1) fmpz_mul(t1z, t1z, lead);
+    }
   }
   fmpz_set_ui(pow_num, d); // Change back to the correct value, needed for Chebyshev criterion
 

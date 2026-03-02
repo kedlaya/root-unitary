@@ -29,15 +29,15 @@ int main(int argc, char* argv[]) {
   fmpz_zero(temp_array+d);
   for (i=1; i<=d; i++) fmpz_one(temp_array+i);
   st_data = ps_static_init(d, temp_q, temp_lead, temp_array, -1, 0);
+  fmpz_clear(temp_q);
+
   _fmpz_vec_zero(temp_array, d);
   fmpz_set(temp_array+d, temp_lead);
-  
+  fmpz_clear(temp_lead);
   dy_data = (ps_dynamic_data_t **)malloc(np*sizeof(NULL));
   dy_data[0] = ps_dynamic_init(d, temp_array);
-  for (i=1; i<np; i++) dy_data[i] = ps_dynamic_init(d, NULL);
-  fmpz_clear(temp_lead);
-  fmpz_clear(temp_q);
   _fmpz_vec_clear(temp_array, d+1);
+  for (i=1; i<np; i++) dy_data[i] = ps_dynamic_init(d, NULL);
   
   fprintf(stderr, "Computing Weil polynomials with d = %d, q = %ld, lead = %ld (threads: %d)\n", d0, q, lead, np);
   while (t) {
