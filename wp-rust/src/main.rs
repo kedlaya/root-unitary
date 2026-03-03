@@ -29,7 +29,7 @@ fn main() {
     let d0 = &args[1].parse::<i64>().unwrap();
     let q = &args[2].parse::<i64>().unwrap();
     let lead = &args[3].parse::<i64>().unwrap();
-    let max_threads = 1000;
+    let max_threads = 100;
     eprintln!("Computing Weil polynomials with d = {d0}, q = {q}, lead = {lead} (threads: {max_threads})");
 
     // Initialize static data used by the C code.
@@ -37,6 +37,7 @@ fn main() {
     let max_steps = 10000;
     let d = d0/2;
     let d_size = (d0+1) as usize;
+    let d32 = d as i32;
     let mut ans_count = 0;
 
     let mut temp_lead: fmpz = unsafe { zeroed() };
@@ -52,7 +53,7 @@ fn main() {
         for i in 1..(d as usize)+1 { fmpz_one(temp_array.add(i)); }
     }
 
-    let st_data = StaticPtr{ptr: unsafe { ps_static_init(d as i32, &mut temp_q, &mut temp_lead, temp_array, -1, 0) }};
+    let st_data = StaticPtr{ptr: unsafe { ps_static_init(d32, &mut temp_q, &mut temp_lead, temp_array, -1, 0) }};
 
     unsafe {
         fmpz_clear(&mut temp_lead);
@@ -63,13 +64,13 @@ fn main() {
 
     // Construct deque (double-ended queue) of work packets, initially with only one term.
     let mut work: VecDeque<DynamicPtr> = VecDeque::new();
-    work.push_back(DynamicPtr{ptr: unsafe { ps_dynamic_init(d as i32, temp_array) }});
+    work.push_back(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, temp_array) }});
     unsafe { _fmpz_vec_clear(temp_array, d+1); }
 
     // Construct deque of empty packets.
     let mut reserve: VecDeque<DynamicPtr> = VecDeque::new();
     for _ in 1..max_threads {
-        reserve.push_back(DynamicPtr{ptr: unsafe { ps_dynamic_init(d as i32, ptr::null_mut()) }});
+        reserve.push_back(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, ptr::null_mut()) }});
     }
 
     // Construct deque of Senders to dispatch work to threads.
@@ -83,6 +84,8 @@ fn main() {
 
     // Run the outer loop while there is still outstanding work.
     while reserve.len() < max_threads {
+        let i = reserve.len();
+        eprintln!("{i}, {ans_count}");
 
         // Spawn threads with queued packets.
         for data in work.drain(..) {
@@ -127,23 +130,21 @@ fn main() {
 
         // Collect split and terminated processes.
         for data in rx_data.try_iter() {
-            let flag = unsafe { (*data.ptr).flag };
-            if flag == 0 { reserve.push_back(data); }
-            else { work.push_back(data); }
-        }
-
-        // Create a dummy split to avoid blocking.
-        if reserve.len() == 0 {
-           let tx = dispatch.pop_front().unwrap(); 
-           let data = DynamicPtr{ ptr: ptr::null_mut() };
-           tx.send(data).unwrap();
+            let p = data.ptr;
+            if !p.is_null() {
+                let flag = unsafe { (*p).flag };
+                if flag == 0 { reserve.push_back(data); }
+                else { work.push_back(data); }
+            }
         }
 
         // Distribute reserve processes.
-        while dispatch.len() > 0 && reserve.len() > 0 {
-           let tx = dispatch.pop_front().unwrap(); // Can only be used *once*
-           let data = reserve.pop_front().unwrap();
-           tx.send(data).unwrap();
+        while let Some(tx) = dispatch.pop_front() {
+            if let Some(data) = reserve.pop_front() { tx.send(data).unwrap(); }
+            else { // Create one dummy split to prevent deadlock.
+                tx.send(DynamicPtr{ ptr: ptr::null_mut() }).unwrap();
+                break;
+            }
         }
     }
 
