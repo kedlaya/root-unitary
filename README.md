@@ -57,6 +57,8 @@ There are also some test scripts. See the README files in the following director
 * k3-scripts: Build tables associated to K3 surfaces
 * k3-quartic-f2: Scripts and data associated to smooth quartic surfaces over F2
 
+As of 2026, we also provide wrapper code in C and Rust.
+
 This code is made available under the Lesser GNU Public License (LGPL), 
 version 3.0 or any later version.
 

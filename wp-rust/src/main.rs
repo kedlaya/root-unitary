@@ -96,15 +96,12 @@ fn main() {
             dispatch.push_back(tx_dispatch);
             thread::spawn(move || {
                 let _ = st_data.clone(); // Makes st_data available in the spawned thread
-                let mut flag;
+                let mut flag, sympol;
                 let pause = time::Duration::from_millis(10);
-                let mut sympol;
                 loop {
-                    // Do some work. If we find a polynomial, send it back.
-                    // If there is no more work, pause to allow other threads to catch up.
                     unsafe { flag = next_pol(st_data.ptr, data.ptr, steps); }
-                    if flag == 0 { thread::sleep(pause); }
-                    else if flag == 2 {
+                    if flag == 0 { thread::sleep(pause); } // Let other threads catch up.
+                    else if flag == 2 { // Return a polynomial.
                         let mut ans: Vec<i64> = Vec::with_capacity(d_size);
                         sympol = unsafe { (*data.ptr).sympol };
                         for j in 0..d_size { ans.push( unsafe { *sympol.add(j) }); }
