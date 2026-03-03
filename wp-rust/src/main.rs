@@ -12,6 +12,8 @@ use crate::bindings::ps_dynamic_clear;
 use crate::bindings::ps_dynamic_split;
 use crate::bindings::next_pol;
 
+// Wrapper types for raw pointers. These are required to convince Rust
+// to allow these to be passed between threads.
 #[derive(Copy, Clone)]
 struct StaticPtr{ ptr: *const StaticData }
 unsafe impl Send for StaticPtr {}
@@ -31,7 +33,7 @@ fn main() {
     let d0 = &args[1].parse::<i64>().unwrap();
     let q = &args[2].parse::<i64>().unwrap();
     let lead = &args[3].parse::<i64>().unwrap();
-    let max_threads = 100;
+    let max_threads = 200; // Recommended value is 2n^2 where n = # of available cores
     eprintln!("Computing Weil polynomials with d = {d0}, q = {q}, lead = {lead} (threads: {max_threads})");
 
     let max_steps = 1000; // Maximum steps in a single call to next_pol
@@ -40,7 +42,8 @@ fn main() {
     let d32 = d as i32;
     let mut ans_count = 0;
 
-    // Initialize static data used by the C code, and a deque (double-ended queue) of work packets.
+    // Initialize static data used by the C code, a deque (double-ended queue) of work packets,
+    // and a deque of reserve packets.
     let st_data;
     let mut work: VecDeque<DynamicPtr> = VecDeque::new();
     unsafe {
@@ -88,7 +91,7 @@ fn main() {
             let (tx_dispatch, rx_dispatch) = mpsc::channel::<DynamicPtr>();
             dispatch.push_back(tx_dispatch);
             thread::spawn(move || {
-                let _ = st_data.clone(); // Makes st_data available in the spawned thread
+                let _ = st_data.clone(); // Makes st_data.ptr available in the spawned thread
                 let (mut flag, mut sympol);
                 loop {
                     unsafe { flag = next_pol(st_data.ptr, data.ptr, max_steps); }
@@ -99,18 +102,16 @@ fn main() {
                         tx_answers_clone.send(ans).unwrap();
                     }
 
-                    // If we still have work and no messages, continue.
+                    // Check the termination conditions.
                     let x = rx_dispatch.try_recv();
-                    if flag > 0 && x.is_err() { continue; }
-
-                    // Split work and terminate.
-                    // If we have no more work, this requires waiting for a message.
-                    let data2 = if x.is_err() { rx_dispatch.recv().unwrap() } else { x.unwrap() };
-                    unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr); }
-                    tx_data_clone.send(data).unwrap();
-                    tx_data_clone.send(data2).unwrap();
-                    break;
-               }
+                    if flag == 0 || x.is_ok() {
+                        let data2 = if x.is_ok() { x.unwrap() } else { rx_dispatch.recv().unwrap()};
+                        unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr); }
+                        tx_data_clone.send(data).unwrap();
+                        tx_data_clone.send(data2).unwrap();
+                        break;
+                    }
+                }
             });
         }
 
