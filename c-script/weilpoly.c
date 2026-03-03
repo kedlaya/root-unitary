@@ -65,6 +65,7 @@ int main(int argc, char* argv[]) {
   ps_static_clear(st_data);
   for (i=0; i<np; i++) ps_dynamic_clear(dy_data[i]);
   free(dy_data);
+  flint_cleanup_master();
   fprintf(stderr, "Total number of polynomials: %ld\n", count);
   return(0);
 }

@@ -150,7 +150,9 @@ fn main() {
 
     // Release allocated memory.
     unsafe {
+       use flint3_sys::*;
        ps_static_clear(st_data.ptr);
        for data in reserve.drain(..) { ps_dynamic_clear(data.ptr); }
+       flint_cleanup_master();
     }
 }

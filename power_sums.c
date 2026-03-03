@@ -281,13 +281,8 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, fmpz 
 
   st_data->binom_mat = _fmpz_vec_init((d+1)*(d+1));
   for (i=0; i<=d; i++)
-    for (j=0; j<=d; j++) {
-//      fmpz_bin_uiui(st_data->binom_mat+(d+1)*i+j, j, i); <-- possible memory leak
-      k0 = st_data->binom_mat+(d+1)*i+j;
-      fmpz_one(k0);
-      for (k=0; k<i; k++) fmpz_mul_ui(k0, k0, j-k);
-      for (k=0; k<i; k++) fmpz_divexact_ui(k0, k0, i-k);
-    }
+    for (j=0; j<=d; j++)
+      fmpz_bin_uiui(st_data->binom_mat+(d+1)*i+j, j, i);
 
   st_data->eval_pm2_mats = _fmpz_vec_init(2*(d+1)*(d+1));
   for (i=0; i<=d; i++)
