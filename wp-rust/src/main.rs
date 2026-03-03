@@ -84,7 +84,6 @@ fn main() {
 
     // Run the outer loop while there is still outstanding work.
     while reserve.len() < max_threads {
-        println!("{ans_count}");
         // Spawn threads with queued packets.
         for data in work.drain(..) {
             let tx_answers_clone = tx_answers.clone();

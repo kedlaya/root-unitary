@@ -244,7 +244,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1,
 /* Static memory allocation and initialization. */
 ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, fmpz *modlist,
                                  long node_limit, int force_squarefree) {
-  int i, j, q_is_1, q_is_square;
+  int i, j, k, q_is_1, q_is_square;
   fmpz *k0, *pol;
 
   ps_static_data_t *st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
@@ -281,8 +281,13 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, fmpz 
 
   st_data->binom_mat = _fmpz_vec_init((d+1)*(d+1));
   for (i=0; i<=d; i++)
-    for (j=0; j<=d; j++)
-      fmpz_bin_uiui(st_data->binom_mat+(d+1)*i+j, j, i);
+    for (j=0; j<=d; j++) {
+//      fmpz_bin_uiui(st_data->binom_mat+(d+1)*i+j, j, i); <-- possible memory leak
+      k0 = st_data->binom_mat+(d+1)*i+j;
+      fmpz_one(k0);
+      for (k=0; k<i; k++) fmpz_mul_ui(k0, k0, j-k);
+      for (k=0; k<i; k++) fmpz_divexact_ui(k0, k0, i-k);
+    }
 
   st_data->eval_pm2_mats = _fmpz_vec_init(2*(d+1)*(d+1));
   for (i=0; i<=d; i++)
@@ -724,6 +729,11 @@ int ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data
       _fmpz_vec_set(dy_data2->upper+i, upper, j);
       _fmpz_vec_set(dy_data2->power_sums_num, dy_data->power_sums_num, j);
       _fmpz_vec_set(dy_data2->hankel_dets, dy_data->hankel_dets, 2*j);
+
+      /* Clear unused values to make sure large mpz's get deallocated promptly. */
+      _fmpz_vec_zero(dy_data2->power_sums_num+j, d+1-j);
+      _fmpz_vec_zero(dy_data2->hankel_dets+2*j, 2*(d+1-j));
+      _fmpz_vec_zero(dy_data2->w, dy_data2->wlen);
 
       /* Restrict the donee process to the right half of the interval. */
       fmpz_sub(t0z, upper, lower);
