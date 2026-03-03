@@ -84,6 +84,7 @@ fn main() {
 
     // Run the outer loop while there is still outstanding work.
     while reserve.len() < max_threads {
+        println!("{ans_count}");
         // Spawn threads with queued packets.
         for data in work.drain(..) {
             let tx_answers_clone = tx_answers.clone();
@@ -105,7 +106,7 @@ fn main() {
                     // Check the termination conditions.
                     let x = rx_dispatch.try_recv();
                     if flag == 0 || x.is_ok() {
-                        let data2 = if x.is_ok() { x.unwrap() } else { rx_dispatch.recv().unwrap()};
+                        let data2 = if x.is_ok() { x.unwrap() } else { rx_dispatch.recv().unwrap() };
                         unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr); }
                         tx_data_clone.send(data).unwrap();
                         tx_data_clone.send(data2).unwrap();
