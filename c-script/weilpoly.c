@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
   
   fprintf(stderr, "Computing Weil polynomials with d = %d, q = %ld, lead = %ld (threads: %d)\n", d0, q, lead, np);
   while (t) {
-    #pragma omp parallel private(thread_id, flag, i) 
+    #pragma omp parallel private(thread_id, flag) 
     {
       thread_id = omp_get_thread_num();
       flag = next_pol(st_data, dy_data[thread_id], 1000);      
@@ -61,7 +61,12 @@ int main(int argc, char* argv[]) {
       ps_dynamic_split(st_data, dy_data[thread_id], dy_data[(thread_id+1)%np]);
     }
   }
-  
+
+  #pragma omp parallel 
+  {
+    flint_cleanup();
+  }
+ 
   ps_static_clear(st_data);
   for (i=0; i<np; i++) ps_dynamic_clear(dy_data[i]);
   free(dy_data);

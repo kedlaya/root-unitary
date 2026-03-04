@@ -12,6 +12,8 @@ use crate::bindings::ps_dynamic_clear;
 use crate::bindings::ps_dynamic_split;
 use crate::bindings::next_pol;
 
+use flint3_sys::*;
+
 // Wrapper types for raw pointers. These are required to convince Rust
 // to allow these to be passed between threads.
 #[derive(Copy, Clone)]
@@ -47,7 +49,6 @@ fn main() {
     let st_data;
     let mut work: VecDeque<DynamicPtr> = VecDeque::new();
     unsafe {
-        use flint3_sys::*;
         let mut temp_lead: fmpz = 0;
         let mut temp_q: fmpz = 0;
         let temp_array;
@@ -109,6 +110,7 @@ fn main() {
                         unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr); }
                         tx_data_clone.send(data).unwrap();
                         tx_data_clone.send(data2).unwrap();
+                        unsafe { flint_cleanup(); }
                         break;
                     }
                 }
@@ -150,7 +152,6 @@ fn main() {
 
     // Release allocated memory.
     unsafe {
-       use flint3_sys::*;
        ps_static_clear(st_data.ptr);
        for data in reserve.drain(..) { ps_dynamic_clear(data.ptr); }
        flint_cleanup_master();

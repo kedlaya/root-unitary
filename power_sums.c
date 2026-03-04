@@ -244,7 +244,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1,
 /* Static memory allocation and initialization. */
 ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, fmpz *modlist,
                                  long node_limit, int force_squarefree) {
-  int i, j, k, q_is_1, q_is_square;
+  int i, j, q_is_1, q_is_square;
   fmpz *k0, *pol;
 
   ps_static_data_t *st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
