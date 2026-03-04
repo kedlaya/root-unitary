@@ -728,6 +728,7 @@ int ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data
       /* Clear unused values to make sure large mpz's get deallocated promptly. */
       _fmpz_vec_zero(dy_data2->power_sums_num+j, d+1-j);
       _fmpz_vec_zero(dy_data2->hankel_dets+2*j, 2*(d+1-j));
+      _fmpz_vec_zero(dy_data->w, dy_data->wlen);
       _fmpz_vec_zero(dy_data2->w, dy_data2->wlen);
 
       /* Restrict the donee process to the right half of the interval. */

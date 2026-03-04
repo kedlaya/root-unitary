@@ -44,10 +44,13 @@ fn main() {
     let d32 = d as i32;
     let mut ans_count = 0;
 
-    // Initialize static data used by the C code, a deque (double-ended queue) of work packets,
-    // and a deque of reserve packets.
+    // Construct deques for loaded work packets, empty packets, and Senders to dispatch work to threads.
+    let mut work: VecDeque<DynamicPtr> = VecDeque::with_capacity(max_threads);
+    let mut reserve: VecDeque<DynamicPtr> = VecDeque::with_capacity(max_threads);
+    let mut dispatch: VecDeque<mpsc::Sender<DynamicPtr>> = VecDeque::with_capacity(max_threads);
+
+    // Initialize static data used by the C code.
     let st_data;
-    let mut work: VecDeque<DynamicPtr> = VecDeque::new();
     unsafe {
         let mut temp_lead: fmpz = 0;
         let mut temp_q: fmpz = 0;
@@ -67,15 +70,7 @@ fn main() {
         work.push_back(DynamicPtr{ptr: ps_dynamic_init(d32, temp_array) });
         _fmpz_vec_clear(temp_array, d+1);
     }
-
-    // Construct deque of empty packets.
-    let mut reserve: VecDeque<DynamicPtr> = VecDeque::new();
-    for _ in 1..max_threads {
-        reserve.push_back(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, ptr::null_mut()) }});
-    }
-
-    // Construct deque of Senders to dispatch work to threads.
-    let mut dispatch: VecDeque<mpsc::Sender<DynamicPtr>> = VecDeque::new();
+    for _ in 1..max_threads { reserve.push_back(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, ptr::null_mut()) }}); }
 
     // Construct channel to return answers.
     let (tx_answers, rx_answers) = mpsc::channel::<Vec<i64>>();
@@ -85,6 +80,8 @@ fn main() {
 
     // Run the outer loop while there is still outstanding work.
     while reserve.len() < max_threads {
+        let i = max_threads - reserve.len();
+        eprintln!("Active threads: {i}; answer count: {ans_count}");
         // Spawn threads with queued packets.
         for data in work.drain(..) {
             let tx_answers_clone = tx_answers.clone();
@@ -103,14 +100,16 @@ fn main() {
                         tx_answers_clone.send(ans).unwrap();
                     }
 
-                    // Check the termination conditions.
+                    // Check for termination triggers.
                     let x = rx_dispatch.try_recv();
                     if flag == 0 || x.is_ok() {
                         let data2 = if x.is_ok() { x.unwrap() } else { rx_dispatch.recv().unwrap() };
-                        unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr); }
+                        unsafe {
+                          ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr);
+                          flint_cleanup(); // Clear FLINT cache for this thread.
+                        }
                         tx_data_clone.send(data).unwrap();
                         tx_data_clone.send(data2).unwrap();
-                        unsafe { flint_cleanup(); }
                         break;
                     }
                 }
@@ -118,6 +117,7 @@ fn main() {
         }
 
         // Collect answers. Assumes all fmpz's represent slong's.
+        let ans_count0 = ans_count;
         for res in rx_answers.try_iter() {
             record(res);
             ans_count += 1;
@@ -126,7 +126,7 @@ fn main() {
         // Collect split and terminated processes.
         for data in rx_data.try_iter() {
             let p = data.ptr;
-            if !p.is_null() { // NULL is possible here due to dummy splits
+            if !p.is_null() { // null is possible here due to dummy splits.
                 let deq = if unsafe { (*p).flag } == 0 { &mut reserve } else { &mut work };
                 deq.push_back(data);
             }
@@ -135,8 +135,9 @@ fn main() {
         // Distribute reserve processes.
         while let Some(tx) = dispatch.pop_front() {
             if let Some(data) = reserve.pop_front() { tx.send(data).unwrap(); }
-            else { // Create one dummy split to prevent deadlock.
-                tx.send(DynamicPtr{ ptr: ptr::null_mut() }).unwrap();
+            else { // If the answer queue was empty, create a dummy split to prevent deadlock.
+                if ans_count > ans_count0 { dispatch.push_front(tx); }
+                else { tx.send(DynamicPtr{ ptr: ptr::null_mut() }).unwrap(); }
                 break;
             }
         }
