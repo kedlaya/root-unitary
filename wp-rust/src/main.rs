@@ -3,14 +3,7 @@ use std::collections::VecDeque;
 use std::sync::mpsc;
 
 mod bindings;
-use crate::bindings::StaticData;
-use crate::bindings::DynamicData;
-use crate::bindings::ps_static_init;
-use crate::bindings::ps_static_clear;
-use crate::bindings::ps_dynamic_init;
-use crate::bindings::ps_dynamic_clear;
-use crate::bindings::ps_dynamic_split;
-use crate::bindings::next_pol;
+use crate::bindings::*;
 
 use flint3_sys::*;
 
@@ -38,7 +31,7 @@ fn main() {
     let max_threads = 200; // Recommended value is 2n^2 where n = # of available cores
     eprintln!("Computing Weil polynomials with d = {d0}, q = {q}, lead = {lead} (threads: {max_threads})");
 
-    let max_steps = 1000; // Maximum steps in a single call to next_pol
+    let max_steps = 1000; // Maximum steps in a single call to ps_next_pol
     let d = d0/2;
     let d_size = (d0+1) as usize;
     let d32 = d as i32;
@@ -92,7 +85,7 @@ fn main() {
                 let _ = st_data.clone(); // Makes st_data.ptr available in the spawned thread
                 let (mut flag, mut sympol);
                 loop {
-                    unsafe { flag = next_pol(st_data.ptr, data.ptr, max_steps); }
+                    unsafe { flag = ps_next_pol(st_data.ptr, data.ptr, max_steps); }
                     if flag == 2 { // Return a polynomial.
                         let mut ans: Vec<i64> = Vec::with_capacity(d_size);
                         sympol = unsafe { (*data.ptr).sympol };
@@ -106,7 +99,7 @@ fn main() {
                         let data2 = if x.is_ok() { x.unwrap() } else { rx_dispatch.recv().unwrap() };
                         unsafe {
                           ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr);
-                          flint_cleanup(); // Clear FLINT cache for this thread.
+                          ps_cleanup(1); // Clear FLINT cache for this thread.
                         }
                         tx_data_clone.send(data).unwrap();
                         tx_data_clone.send(data2).unwrap();
@@ -155,6 +148,6 @@ fn main() {
     unsafe {
        ps_static_clear(st_data.ptr);
        for data in reserve.drain(..) { ps_dynamic_clear(data.ptr); }
-       flint_cleanup_master();
+       ps_cleanup(0);
     }
 }

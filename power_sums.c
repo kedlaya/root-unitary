@@ -785,7 +785,7 @@ void reciprocal_transform(const ps_static_data_t *st_data, ps_dynamic_data_t *dy
    It is threadsafe to run this in parallel with dynamic_split.
 */
 
-int next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
+int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) {
   if (dy_data==NULL || !dy_data->flag) return(0); // No work assigned to this process
 
   int d = st_data->d;
@@ -828,4 +828,9 @@ int next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int ma
   dy_data->node_count = node_count;
   dy_data->flag = flag;
   return(flag);
+}
+
+void ps_cleanup(int n) {
+  if (n == 0) flint_cleanup_master();
+  else if (n == 1) flint_cleanup();
 }

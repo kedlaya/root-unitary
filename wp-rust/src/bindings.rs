@@ -57,6 +57,10 @@ unsafe extern "C" {
 }
 
 unsafe extern "C" {
+    pub fn ps_cleanup(n: c_int);
+}
+
+unsafe extern "C" {
     pub fn ps_dynamic_split(
         st_data: *const StaticData,
         dy_data: *mut DynamicData,
@@ -65,7 +69,7 @@ unsafe extern "C" {
 }
 
 unsafe extern "C" {
-    pub fn next_pol(
+    pub fn ps_next_pol(
         st_data: *const StaticData,
         dy_data: *mut DynamicData,
         max_steps: c_int,

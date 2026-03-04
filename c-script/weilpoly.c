@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
     #pragma omp parallel private(thread_id, flag) 
     {
       thread_id = omp_get_thread_num();
-      flag = next_pol(st_data, dy_data[thread_id], 1000);      
+      flag = ps_next_pol(st_data, dy_data[thread_id], 1000);      
     }
     t = 0; 
     for (thread_id=0; thread_id<np; thread_id++) {
@@ -64,13 +64,13 @@ int main(int argc, char* argv[]) {
 
   #pragma omp parallel 
   {
-    flint_cleanup();
+    ps_cleanup(1);
   }
  
   ps_static_clear(st_data);
   for (i=0; i<np; i++) ps_dynamic_clear(dy_data[i]);
   free(dy_data);
-  flint_cleanup_master();
+  ps_cleanup(0);
   fprintf(stderr, "Total number of polynomials: %ld\n", count);
   return(0);
 }

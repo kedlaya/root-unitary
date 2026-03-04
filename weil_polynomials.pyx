@@ -90,9 +90,10 @@ cdef extern from "power_sums.c":
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
+    void ps_cleanup(int n)
 
     int ps_dynamic_split(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2) nogil
-    int next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
+    int ps_next_pol(ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps) nogil
 
 cdef class dfs_manager:
     """
@@ -238,7 +239,7 @@ cdef class dfs_manager:
         if np == 1: # Serial mode
             while (t and not u and ans_count < ans_max):
                 sig_check() # Check for interrupts
-                t = next_pol(self.st_data, self.dy_data_buf[0], max_steps)
+                t = ps_next_pol(self.st_data, self.dy_data_buf[0], max_steps)
                 if t == 2: # Extract a solution
                     ans_count += 1
                     ans.append(self.extract_poly(0))
@@ -249,7 +250,7 @@ cdef class dfs_manager:
                 t = 0
                 for i in prange(np, nogil=True): # Step each process forward in parallel
                     t += ps_dynamic_split(self.st_data, self.dy_data_buf[i], self.dy_data_buf[(i+k) % np]) # Yield work
-                    flag = next_pol(self.st_data, self.dy_data_buf[i], max_steps)
+                    flag = ps_next_pol(self.st_data, self.dy_data_buf[i], max_steps)
                     t += flag
                     if flag == 2:
                         ans_count += 1
@@ -459,9 +460,9 @@ class WeilPolynomials():
     If parallel is False, then the order of values is descending lexicographical
     (i.e., polynomials with the largest coefficients of largest degrees sort first).
 
-    If parallel is True, then the order of values is not specified. (Beware that
+    If parallel is True, then the order of values is not specified. Beware that
     due to increased overhead, parallel execution may not yield a significant
-    speedup for small problem sizes.)
+    speedup for small problem sizes.
 
     INPUT:
 
