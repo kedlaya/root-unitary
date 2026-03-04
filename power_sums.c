@@ -258,10 +258,10 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, fmpz 
   st_data->modlist = _fmpz_vec_init(d+1);
   k0 = st_data->modlist; // Used as a temporary variable for now
 
+  /* Matrix of cefficients of 2*(i-th Chebyshev polynomial)(x/2).
+     The coefficient of x^j is multiplied by c^{i-j} q^{(i-j)/2} where c is the leading coefficient. */
   st_data->sum_mats = _fmpz_vec_init((d+1)*(d+1));
   for (i=0; i<=d; i++) {
-    /* Coefficients of 2*(i-th Chebyshev polynomial)(x/2).
-       The coefficient of x^j is multiplied by c^{i-j} q^{(i-j)/2} where c is the leading coefficient. */
     pol = st_data->sum_mats + (d+1)*i;
     _fmpz_poly_chebyshev_t(pol, i);
     _fmpz_poly_scale_2exp(pol, i+1, -1);
@@ -277,13 +277,17 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, fmpz 
       }
   }
 
-  for (i=0; i<=d; i++) fmpz_set(st_data->modlist + i, modlist+d-i);
+  /* Moduli constraints. If not specified, fix the leading coefficient and impose no other constraints. */
+  if (modlist == NULL) for (i=0; i<d; i++) fmpz_one(st_data->modlist+i);
+  else for (i=0; i<=d; i++) fmpz_set(st_data->modlist + i, modlist+d-i);
 
+  /* Matrix of binomial coefficients. */
   st_data->binom_mat = _fmpz_vec_init((d+1)*(d+1));
   for (i=0; i<=d; i++)
     for (j=0; j<=d; j++)
       fmpz_bin_uiui(st_data->binom_mat+(d+1)*i+j, j, i);
 
+  /* Matrices to evaluate derivatives at +-2*sqrt(q). */
   st_data->eval_pm2_mats = _fmpz_vec_init(2*(d+1)*(d+1));
   for (i=0; i<=d; i++)
     for (j=0; j<=i; j++) {

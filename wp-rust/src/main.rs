@@ -1,11 +1,10 @@
 use std::{env,ptr,thread};
+use std::alloc::{alloc_zeroed, dealloc, Layout};
 use std::collections::VecDeque;
 use std::sync::mpsc;
 
 mod bindings;
 use crate::bindings::*;
-
-use flint3_sys::*;
 
 // Wrapper types for raw pointers. These are required to convince Rust
 // to allow these to be passed between threads.
@@ -37,31 +36,20 @@ fn main() {
     let d32 = d as i32;
     let mut ans_count = 0;
 
+    // Initialize static data used by the C code.
+    let st_data = unsafe { StaticPtr{ptr: ps_static_init(d32, q as *const i64, lead as *const i64, ptr::null_mut(), -1, 0)} };
+    
     // Construct deques for loaded work packets, empty packets, and Senders to dispatch work to threads.
     let mut work: VecDeque<DynamicPtr> = VecDeque::with_capacity(max_threads);
     let mut reserve: VecDeque<DynamicPtr> = VecDeque::with_capacity(max_threads);
     let mut dispatch: VecDeque<mpsc::Sender<DynamicPtr>> = VecDeque::with_capacity(max_threads);
 
-    // Initialize static data used by the C code.
-    let st_data;
-    unsafe {
-        let mut temp_lead: fmpz = 0;
-        let mut temp_q: fmpz = 0;
-        let temp_array;
-        fmpz_init(&mut temp_lead);
-        fmpz_set_si(&mut temp_lead, *lead);
-        fmpz_init(&mut temp_q);
-        fmpz_set_si(&mut temp_q, *q);
-        temp_array = _fmpz_vec_init(d+1);
-        fmpz_zero(temp_array.add(d as usize));
-        for i in 1..=(d as usize) { fmpz_one(temp_array.add(i)); }
-        st_data = StaticPtr{ptr: ps_static_init(d32, &mut temp_q, &mut temp_lead, temp_array, -1, 0) };
-        fmpz_clear(&mut temp_lead);
-        fmpz_clear(&mut temp_q);
-        _fmpz_vec_zero(temp_array, d);
-        fmpz_set(temp_array.add(d as usize), &temp_lead);
-        work.push_back(DynamicPtr{ptr: ps_dynamic_init(d32, temp_array) });
-        _fmpz_vec_clear(temp_array, d+1);
+    let layout = Layout::array::<i64>((d+1) as usize).unwrap();
+    unsafe{
+        let ptr = alloc_zeroed(layout) as *mut i64;
+        *ptr.add(d as usize) = *lead;
+        work.push_back(DynamicPtr{ptr: ps_dynamic_init(d32, ptr) });
+        dealloc(ptr as *mut u8, layout);
     }
     for _ in 1..max_threads { reserve.push_back(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, ptr::null_mut()) }}); }
 
