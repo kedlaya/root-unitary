@@ -1,4 +1,5 @@
 fn main() {
+    println!("cargo::rustc-link-lib=flint");
     cc::Build::new()
         .file("../power_sums.c")
         .compile("power_sums");

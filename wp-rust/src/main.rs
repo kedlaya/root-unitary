@@ -71,23 +71,25 @@ fn main() {
             dispatch.push_back(tx_dispatch);
             thread::spawn(move || {
                 let _ = st_data.clone(); // Makes st_data.ptr available in the spawned thread
-                let (mut flag, mut sympol);
+                let (mut flag, mut sympol, mut x);
                 loop {
                     unsafe { flag = ps_next_pol(st_data.ptr, data.ptr, max_steps); }
                     if flag == 2 { // Return a polynomial.
                         let mut ans: Vec<i64> = Vec::with_capacity(d_size);
-                        sympol = unsafe { (*data.ptr).sympol };
-                        for j in 0..d_size { ans.push( unsafe { *sympol.add(j) }); }
+                        unsafe { 
+                            sympol = (*data.ptr).sympol;
+                            for j in 0..d_size { ans.push(*sympol.add(j)); }
+                        }
                         tx_answers_clone.send(ans).unwrap();
                     }
 
                     // Check for termination triggers.
-                    let x = rx_dispatch.try_recv();
+                    x = rx_dispatch.try_recv();
                     if flag == 0 || x.is_ok() {
                         let data2 = if x.is_ok() { x.unwrap() } else { rx_dispatch.recv().unwrap() };
                         unsafe {
-                          ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr);
-                          ps_cleanup(1); // Clear FLINT cache for this thread.
+                            ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr);
+                            ps_cleanup(1); // Clear FLINT cache for this thread.
                         }
                         tx_data_clone.send(data).unwrap();
                         tx_data_clone.send(data2).unwrap();
