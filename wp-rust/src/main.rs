@@ -75,21 +75,20 @@ fn main() {
             dispatch.push_back(tx_dispatch);
             thread::spawn(move || {
                 let _ = st_data.clone(); // Makes st_data.ptr available in the spawned thread
+                let sympol = unsafe { (*data.ptr).sympol };
                 let data2 = loop {
+                    // Step this process forward. If we find a polynomial, return it via a channel.
+                    // Otherwise, check exit/split conditions.
                     let flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, max_steps) };
-
-                    // If a polynomial was found, return it via a channel.
-                    // Otherwise, check exit conditions.
                     if flag == 2 {
-                        let sympol = unsafe { (*data.ptr).sympol };
                         let ans = Vec::from_iter((0..d_size).map(|x| unsafe { *sympol.add(x) }));
                         tx_answers_clone.send(ans).unwrap();
-                    } else if let Ok(data2) = rx_dispatch.try_recv() { break data2; }
-                    else if flag == 0 { break rx_dispatch.recv().unwrap(); }
+                    } else if flag == 0 { break rx_dispatch.recv().unwrap(); }
+                    else if let Ok(data2) = rx_dispatch.try_recv() { break data2; }
                 };
                 // Clean up and return packets.
                 unsafe {
-                    ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr);
+                    ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr); // No-op if data2.ptr is null
                     ps_cleanup(1); // Clear FLINT cache for this thread.
                 }
                 tx_data_clone.send(data).unwrap();
@@ -97,11 +96,10 @@ fn main() {
             });
         }
 
-        // Collect split and terminated processes.
+        // Collect split, terminated, and dummy processes.
         for data in rx_data.try_iter() {
-            let p = data.ptr;
-            if !p.is_null() { // null is possible here due to dummy processes.
-                let deq = if unsafe { (*p).flag } == 0 { &mut reserve } else { &mut work };
+            if let Some(p) = unsafe { data.ptr.as_ref() } {
+                let deq = if p.flag == 0 { &mut reserve } else { &mut work };
                 deq.push_back(data);
             }
         }
@@ -111,7 +109,7 @@ fn main() {
         for (tx, data) in zip(dispatch.drain(..n), reserve.drain(..n)) { tx.send(data).unwrap(); }
         if let Some(tx) = dispatch.pop_front() { tx.send(DynamicPtr{ ptr: null }).unwrap(); }
 
-        // Collect answers.
+        // Collect and count answers.
         ans_count += rx_answers.try_iter().map(|x| { record(x); }).count();
     }
 
