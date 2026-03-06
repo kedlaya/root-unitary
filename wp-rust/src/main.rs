@@ -1,6 +1,7 @@
 use std::{env,ptr,thread};
 use std::alloc::{alloc_zeroed, dealloc, Layout};
 use std::collections::VecDeque;
+use std::cmp::min;
 use std::iter::zip;
 use std::sync::mpsc;
 
@@ -16,10 +17,13 @@ unsafe impl Send for StaticPtr {}
 struct DynamicPtr{ ptr: *mut DynamicData }
 unsafe impl Send for DynamicPtr {}
 
-// Record polynomials.
-fn record(res: Vec<i64>) {
-    for j in res { print!("{j} "); } 
-    println!();
+// Record polynomials taken from an iterator.
+// Assumes all fmpz's returned are single limbs.
+fn record<T: Iterator<Item = Vec<i64>>>(iter: T) -> usize {
+    return iter.map(|x| {
+        for j in x { print!("{j} "); }
+        println!();
+    }).count();
 }
 
 fn main() {
@@ -60,6 +64,8 @@ fn main() {
     // Construct channel to return packets.
     let (tx_data, rx_data) = mpsc::channel::<DynamicPtr>();
 
+    let null = ptr::null_mut();
+
     // Run the outer loop while there is still outstanding work.
     while reserve.len() < max_threads {
         eprintln!("Active threads: {}; answer count: {}", max_threads - reserve.len(), ans_count);
@@ -93,37 +99,27 @@ fn main() {
             });
         }
 
-        // Collect answers. Assumes all fmpz's represent slong's.
-        let ans_count0 = ans_count;
-        for res in rx_answers.try_iter() {
-            record(res);
-            ans_count += 1;
-        }
-
         // Collect split and terminated processes.
         for data in rx_data.try_iter() {
             let p = data.ptr;
-            if !p.is_null() { // null is possible here due to dummy splits.
+            if !p.is_null() { // null is possible here due to dummy processes.
                 let deq = if unsafe { (*p).flag } == 0 { &mut reserve } else { &mut work };
                 deq.push_back(data);
             }
         }
 
         // Distribute reserve processes, plus one dummy process to prevent deadlock.
-        let n = dispatch.len().min(reserve.len());
+        let n = min(dispatch.len(), reserve.len());
         for (tx, data) in zip(dispatch.drain(..n), reserve.drain(..n)) { tx.send(data).unwrap(); }
-        if ans_count > ans_count0 && dispatch.len() > 0 {
-            let tx = dispatch.pop_front().unwrap();
-            tx.send(DynamicPtr{ ptr: ptr::null_mut() }).unwrap(); 
-        }
+        if let Some(tx) = dispatch.pop_front() { tx.send(DynamicPtr{ ptr: null }).unwrap(); }
+
+        // Collect answers.
+        ans_count += record(rx_answers.try_iter());
     }
 
     // Unblock the answer channel, then collect remaining answers.
     drop(tx_answers);
-    for res in rx_answers {
-        record(res);
-        ans_count += 1;
-    }
+    ans_count += record(rx_answers.iter());
     eprintln!("Number of polynomials found: {ans_count}");
 
     // Release allocated memory.
