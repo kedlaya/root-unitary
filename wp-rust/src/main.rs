@@ -1,9 +1,9 @@
-use std::{env,ptr,thread};
+use std::{env, ptr, thread};
 use std::alloc::{alloc_zeroed, dealloc, Layout};
 use std::collections::VecDeque;
 use std::cmp::min;
 use std::iter::zip;
-use std::sync::mpsc;
+use std::sync::mpsc::{channel, Sender};
 
 mod bindings;
 use crate::bindings::*;
@@ -19,11 +19,9 @@ unsafe impl Send for DynamicPtr {}
 
 // Record polynomials taken from an iterator.
 // Assumes all fmpz's returned are single limbs.
-fn record<T: Iterator<Item = Vec<i64>>>(iter: T) -> usize {
-    return iter.map(|x| {
-        for j in x { print!("{j} "); }
-        println!();
-    }).count();
+fn record(res: Vec<i64>) {
+    for j in res { print!("{j} "); }
+    println!();
 }
 
 fn main() {
@@ -47,7 +45,7 @@ fn main() {
     // Construct deques for loaded work packets, empty packets, and Senders to dispatch work to threads.
     let mut work: VecDeque<DynamicPtr> = VecDeque::with_capacity(max_threads);
     let mut reserve: VecDeque<DynamicPtr> = VecDeque::with_capacity(max_threads);
-    let mut dispatch: VecDeque<mpsc::Sender<DynamicPtr>> = VecDeque::with_capacity(max_threads);
+    let mut dispatch: VecDeque<Sender<DynamicPtr>> = VecDeque::with_capacity(max_threads);
 
     let layout = Layout::array::<i64>((d+1) as usize).unwrap();
     unsafe{
@@ -59,10 +57,10 @@ fn main() {
     for _ in 1..max_threads { reserve.push_back(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, ptr::null_mut()) }}); }
 
     // Construct channel to return answers.
-    let (tx_answers, rx_answers) = mpsc::channel::<Vec<i64>>();
+    let (tx_answers, rx_answers) = channel::<Vec<i64>>();
 
     // Construct channel to return packets.
-    let (tx_data, rx_data) = mpsc::channel::<DynamicPtr>();
+    let (tx_data, rx_data) = channel::<DynamicPtr>();
 
     let null = ptr::null_mut();
 
@@ -73,7 +71,7 @@ fn main() {
         for data in work.drain(..) {
             let tx_answers_clone = tx_answers.clone();
             let tx_data_clone = tx_data.clone();
-            let (tx_dispatch, rx_dispatch) = mpsc::channel::<DynamicPtr>();
+            let (tx_dispatch, rx_dispatch) = channel::<DynamicPtr>();
             dispatch.push_back(tx_dispatch);
             thread::spawn(move || {
                 let _ = st_data.clone(); // Makes st_data.ptr available in the spawned thread
@@ -114,12 +112,12 @@ fn main() {
         if let Some(tx) = dispatch.pop_front() { tx.send(DynamicPtr{ ptr: null }).unwrap(); }
 
         // Collect answers.
-        ans_count += record(rx_answers.try_iter());
+        ans_count += rx_answers.try_iter().map(|x| { record(x); }).count();
     }
 
     // Unblock the answer channel, then collect remaining answers.
     drop(tx_answers);
-    ans_count += record(rx_answers.iter());
+    ans_count += rx_answers.iter().map(|x| { record(x); }).count();
     eprintln!("Number of polynomials found: {ans_count}");
 
     // Release allocated memory.
