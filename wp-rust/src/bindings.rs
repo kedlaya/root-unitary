@@ -1,6 +1,6 @@
 use cty::c_int;
 use cty::c_long;
-use flint3_sys::*;
+use flint3_sys::*; // Needed for linking
 
 #[repr(C)]
 pub struct StaticData {

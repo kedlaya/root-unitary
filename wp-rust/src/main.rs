@@ -1,6 +1,7 @@
 use std::{env,ptr,thread};
 use std::alloc::{alloc_zeroed, dealloc, Layout};
 use std::collections::VecDeque;
+use std::iter::zip;
 use std::sync::mpsc;
 
 mod bindings;
@@ -61,8 +62,7 @@ fn main() {
 
     // Run the outer loop while there is still outstanding work.
     while reserve.len() < max_threads {
-        let i = max_threads - reserve.len();
-        eprintln!("Active threads: {i}; answer count: {ans_count}");
+        eprintln!("Active threads: {}; answer count: {}", max_threads - reserve.len(), ans_count);
         // Spawn threads with queued packets.
         for data in work.drain(..) {
             let tx_answers_clone = tx_answers.clone();
@@ -71,31 +71,25 @@ fn main() {
             dispatch.push_back(tx_dispatch);
             thread::spawn(move || {
                 let _ = st_data.clone(); // Makes st_data.ptr available in the spawned thread
-                let (mut flag, mut sympol, mut x);
-                loop {
-                    unsafe { flag = ps_next_pol(st_data.ptr, data.ptr, max_steps); }
-                    if flag == 2 { // Return a polynomial.
-                        let mut ans: Vec<i64> = Vec::with_capacity(d_size);
-                        unsafe { 
-                            sympol = (*data.ptr).sympol;
-                            for j in 0..d_size { ans.push(*sympol.add(j)); }
-                        }
-                        tx_answers_clone.send(ans).unwrap();
-                    }
+                let data2 = loop {
+                    let flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, max_steps) };
 
-                    // Check for termination triggers.
-                    x = rx_dispatch.try_recv();
-                    if flag == 0 || x.is_ok() {
-                        let data2 = if x.is_ok() { x.unwrap() } else { rx_dispatch.recv().unwrap() };
-                        unsafe {
-                            ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr);
-                            ps_cleanup(1); // Clear FLINT cache for this thread.
-                        }
-                        tx_data_clone.send(data).unwrap();
-                        tx_data_clone.send(data2).unwrap();
-                        break;
-                    }
+                    // If a polynomial was found, return it via a channel.
+                    // Otherwise, check exit conditions.
+                    if flag == 2 {
+                        let sympol = unsafe { (*data.ptr).sympol };
+                        let ans = Vec::from_iter((0..d_size).map(|x| unsafe { *sympol.add(x) }));
+                        tx_answers_clone.send(ans).unwrap();
+                    } else if let Ok(data2) = rx_dispatch.try_recv() { break data2; }
+                    else if flag == 0 { break rx_dispatch.recv().unwrap(); }
+                };
+                // Clean up and return packets.
+                unsafe {
+                    ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr);
+                    ps_cleanup(1); // Clear FLINT cache for this thread.
                 }
+                tx_data_clone.send(data).unwrap();
+                tx_data_clone.send(data2).unwrap();
             });
         }
 
@@ -115,14 +109,12 @@ fn main() {
             }
         }
 
-        // Distribute reserve processes.
-        while let Some(tx) = dispatch.pop_front() {
-            if let Some(data) = reserve.pop_front() { tx.send(data).unwrap(); }
-            else { // If the answer queue was empty, create a dummy split to prevent deadlock.
-                if ans_count > ans_count0 { dispatch.push_front(tx); }
-                else { tx.send(DynamicPtr{ ptr: ptr::null_mut() }).unwrap(); }
-                break;
-            }
+        // Distribute reserve processes, plus one dummy process to prevent deadlock.
+        let n = dispatch.len().min(reserve.len());
+        for (tx, data) in zip(dispatch.drain(..n), reserve.drain(..n)) { tx.send(data).unwrap(); }
+        if ans_count > ans_count0 && dispatch.len() > 0 {
+            let tx = dispatch.pop_front().unwrap();
+            tx.send(DynamicPtr{ ptr: ptr::null_mut() }).unwrap(); 
         }
     }
 
