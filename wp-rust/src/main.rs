@@ -66,7 +66,8 @@ fn main() {
 
     // Run the outer loop while there is still outstanding work.
     while reserve.len() < max_threads {
-        eprintln!("Active threads: {}; answer count: {}", max_threads - reserve.len(), ans_count);
+        eprintln!("Active workers: {}; answer count: {}", max_threads - reserve.len(), ans_count);
+
         // Spawn threads with queued packets.
         for data in work.drain(..) {
             let tx_answers_clone = tx_answers.clone();
@@ -104,13 +105,19 @@ fn main() {
             }
         }
 
-        // Distribute reserve processes, plus one dummy process to prevent deadlock.
+        // Distribute reserve processes to trigger splitting.
         let n = min(dispatch.len(), reserve.len());
         for (tx, data) in zip(dispatch.drain(..n), reserve.drain(..n)) { tx.send(data).unwrap(); }
-        if let Some(tx) = dispatch.pop_front() { tx.send(DynamicPtr{ ptr: null }).unwrap(); }
+        if n > 0 { continue; }
 
         // Collect and count answers.
-        ans_count += rx_answers.try_iter().map(|x| { record(x); }).count();
+        let new_count = rx_answers.try_iter().map(|x| { record(x); }).count();
+        ans_count += new_count;
+
+        // If there were no answers collected and no work queued, force a dummy split to break deadlock.
+        if work.len() == 0 && new_count == 0 && dispatch.len() > 0 {
+            dispatch.pop_front().unwrap().send(DynamicPtr{ ptr: null }).unwrap();
+        }
     }
 
     // Unblock the answer channel, then collect remaining answers.
