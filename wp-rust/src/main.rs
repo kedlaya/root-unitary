@@ -33,14 +33,15 @@ fn main() {
     let max_threads = 200; // Recommended value is 2n^2 where n = # of available cores
     eprintln!("Computing Weil polynomials with d = {d0}, q = {q}, lead = {lead} (threads: {max_threads})");
 
-    let max_steps = 1000; // Maximum steps in a single call to ps_next_pol
+    let max_steps = 1024; // Maximum steps in a single call to ps_next_pol
+    let mut steps = 1;
     let d = d0/2;
     let d_size = (d0+1) as usize;
     let d32 = d as i32;
     let mut ans_count = 0;
 
     // Initialize static data used by the C code.
-    let st_data = unsafe { StaticPtr{ptr: ps_static_init(d32, q as *const i64, lead as *const i64, ptr::null_mut(), -1, 0)} };
+    let st_data = StaticPtr{ptr: unsafe {ps_static_init(d32, q as *const i64, lead as *const i64, ptr::null_mut(), -1, 0) }};
     
     // Construct deques for loaded work packets, empty packets, and Senders to dispatch work to threads.
     let mut work: VecDeque<DynamicPtr> = VecDeque::with_capacity(max_threads);
@@ -51,7 +52,7 @@ fn main() {
     unsafe{
         let ptr = alloc_zeroed(layout) as *mut i64;
         *ptr.add(d as usize) = *lead;
-        work.push_back(DynamicPtr{ptr: ps_dynamic_init(d32, ptr) });
+        work.push_back(DynamicPtr{ptr: ps_dynamic_init(d32, ptr)});
         dealloc(ptr as *mut u8, layout);
     }
     for _ in 1..max_threads { reserve.push_back(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, ptr::null_mut()) }}); }
@@ -80,7 +81,7 @@ fn main() {
                 let data2 = loop {
                     // Step this process forward. If we find a polynomial, return it via a channel.
                     // Otherwise, check exit/split conditions.
-                    let flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, max_steps) };
+                    let flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, steps) };
                     if flag == 2 {
                         let ans = Vec::from_iter((0..d_size).map(|x| unsafe { *sympol.add(x) }));
                         tx_answers_clone.send(ans).unwrap();
@@ -108,13 +109,16 @@ fn main() {
         // Distribute reserve processes to trigger splitting.
         let n = min(dispatch.len(), reserve.len());
         for (tx, data) in zip(dispatch.drain(..n), reserve.drain(..n)) { tx.send(data).unwrap(); }
-        if n > 0 { continue; }
+        if n > 0 { 
+            if steps < max_steps { steps += n as i32; } 
+            continue; 
+        }
 
         // Collect and count answers.
         let new_count = rx_answers.try_iter().map(|x| { record(x); }).count();
         ans_count += new_count;
 
-        // If there were no answers collected and no work queued, force a dummy split to break deadlock.
+        // If there were no answers collected and no work queued, force a dummy split to avert deadlock.
         if work.len() == 0 && new_count == 0 && dispatch.len() > 0 {
             dispatch.pop_front().unwrap().send(DynamicPtr{ ptr: null }).unwrap();
         }

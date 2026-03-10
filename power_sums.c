@@ -242,7 +242,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1,
 *****/
 
 /* Static memory allocation and initialization. */
-ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, fmpz *modlist,
+ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const fmpz *modlist,
                                  long node_limit, int force_squarefree) {
   int i, j, q_is_1, q_is_square;
   fmpz *k0, *pol;
@@ -279,7 +279,7 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, fmpz 
 
   /* Moduli constraints. If not specified, fix the leading coefficient and impose no other constraints. */
   if (modlist == NULL) for (i=0; i<d; i++) fmpz_one(st_data->modlist+i);
-  else for (i=0; i<=d; i++) fmpz_set(st_data->modlist + i, modlist+d-i);
+  else for (i=0; i<=d; i++) fmpz_set(st_data->modlist+i, modlist+d-i);
 
   /* Matrix of binomial coefficients. */
   st_data->binom_mat = _fmpz_vec_init((d+1)*(d+1));
@@ -434,13 +434,13 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
   r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1)); forced to be positive
   fmpz_one_2exp(t2z, r);
   do {
-    if (!r) fmpz_set(t0z, lower);
-    else {
+    if (r) {
       fmpz_add(t0z, lower, t2z);
       fmpz_sub_ui(t0z, t0z, 1);
-    }
+    } else fmpz_set(t0z, lower);
     do {
-      if ((s = TEST_ROOTS(t0z))) break; else fmpz_addmul_ui(t0z, t2z, 2);
+      if ((s = TEST_ROOTS(t0z))) break; 
+      else fmpz_addmul_ui(t0z, t2z, 2);
     } while (fmpz_cmp(t0z, upper) <= 0);
     if (s) break;
     fmpz_divexact_ui(t2z, t2z, 2);
@@ -642,24 +642,21 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
         fmpz_mul_ui(t0z, t0z, 4);
       } else fmpz_set_ui(t0z, 4);
       if (!q_is_1) fmpz_mul(t0z, t0z, q);
-    } else if (k2 == 0) s = k + 1;
-    else { // t0z := 2*lead*sqrt(q)
+    } else if (k2 == 1) { // t0z := 2*lead*sqrt(q)
       s = k;
-      if (q_is_1) fmpz_mul_ui(t0z, lead, 2);
-      else {
+      if (!q_is_1) {
         fmpz_sqrt(t0z, q);
         if (!lead_is_1) fmpz_mul(t0z, t0z, lead);
         fmpz_mul_ui(t0z, t0z, 2);
-      }
-    }
-    if (i == 0 && k2 == 0) tza = pow_num;
-    else {
+      } else fmpz_mul_ui(t0z, lead, 2);
+    } else s = k + 1;
+    if (i != 0 || k2 != 0) {
       tza = w;
       _fmpz_vec_scalar_mul_fmpz(tza, pow_num, s, t0z);
       if (k2 == 0) _fmpz_vec_sub(tza, tza, pow_num+2, s);
       else if (i == 0) _fmpz_vec_add(tza, tza, pow_num+1, s);
       else _fmpz_vec_sub(tza, tza, pow_num+1, s);
-    }
+    } else tza = pow_num;
 
     /* Compute the determinant, then deduce a condition. */
     tz = dy_data->hankel_dets + 2*k + i;
@@ -690,6 +687,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   fmpz_add(dy_data->upper+n, pol, upper);
 
   /* Set the new polynomial value, then correct the k-th power sum and related quantities. */
+
   step_forward(st_data, dy_data, n, lower);
 
   return(1);
