@@ -76,12 +76,13 @@ fn main() {
                 let sympol = unsafe { (*data.ptr).sympol };
                 let x = loop {
                     // Step this process forward. If we find a polynomial, return it via a channel.
-                    // Otherwise, check exit/split conditions.
                     let flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, steps) };
                     if flag == 2 {
                         let iter = (0..d_size).map(|x| unsafe { *sympol.add(x) });
                         tx_answers_clone.send(Vec::from_iter(iter)).unwrap();
-                    } else if flag == 0 { break rx_dispatch.recv().unwrap(); }
+                    }
+                    // Check exit/split conditions.
+                    if flag == 0 { break rx_dispatch.recv().unwrap(); }
                     else if let Ok(x) = rx_dispatch.try_recv() { break x; }
                 };
                 // Split if necessary, clean up, and return packets.
@@ -123,7 +124,7 @@ fn main() {
     // Release allocated memory.
     unsafe {
        ps_static_clear(st_data.ptr);
-       for data in reserve.drain(..) { ps_dynamic_clear(data.ptr); }
+       for data in reserve { ps_dynamic_clear(data.ptr); }
        ps_cleanup(0);
     }
 }
