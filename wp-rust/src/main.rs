@@ -30,7 +30,7 @@ fn main() {
     let d0 = &args[1].parse::<i64>().unwrap();
     let q = &args[2].parse::<i64>().unwrap();
     let lead = &args[3].parse::<i64>().unwrap();
-    let max_threads = 200; // Recommended value is 2n^2 where n = # of available cores
+    let max_threads = 200; // Recommended value is n^2 where n = # of available cores
     eprintln!("Computing Weil polynomials with d = {d0}, q = {q}, lead = {lead} (threads: {max_threads})");
 
     let max_steps = 1024; // Maximum steps in a single call to ps_next_pol
@@ -83,50 +83,50 @@ fn main() {
                     // Otherwise, check exit/split conditions.
                     let flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, steps) };
                     if flag == 2 {
-                        let ans = Vec::from_iter((0..d_size).map(|x| unsafe { *sympol.add(x) }));
-                        tx_answers_clone.send(ans).unwrap();
+                        let iter = (0..d_size).map(|x| unsafe { *sympol.add(x) });
+                        tx_answers_clone.send(Vec::from_iter(iter)).unwrap();
                     } else if flag == 0 { break rx_dispatch.recv().unwrap(); }
                     else if let Ok(data2) = rx_dispatch.try_recv() { break data2; }
                 };
-                // Clean up and return packets.
-                unsafe {
-                    ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr); // No-op if data2.ptr is null
-                    ps_cleanup(1); // Clear FLINT cache for this thread.
+                // Split if necessary, clean up, and return packets.
+                if !data2.ptr.is_null() {
+                    unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr); }
+                    tx_data_clone.send(data2).unwrap();
                 }
                 tx_data_clone.send(data).unwrap();
-                tx_data_clone.send(data2).unwrap();
+                unsafe { ps_cleanup(1); } // Clear FLINT cache for this thread.
             });
         }
 
-        // Collect split, terminated, and dummy processes.
+        // Collect split and terminated processes.
         for data in rx_data.try_iter() {
-            if let Some(p) = unsafe { data.ptr.as_ref() } {
-                let deq = if p.flag == 0 { &mut reserve } else { &mut work };
-                deq.push_back(data);
-            }
+            if unsafe { (*data.ptr).flag } == 0 { reserve.push_back(data); }
+            else { work.push_back(data); }
         }
 
         // Distribute reserve processes to trigger splitting.
         let n = min(dispatch.len(), reserve.len());
-        for (tx, data) in zip(dispatch.drain(..n), reserve.drain(..n)) { tx.send(data).unwrap(); }
-        if n > 0 { 
-            if steps < max_steps { steps += n as i32; } 
-            continue; 
+        if n > 0 {
+           if steps < max_steps { steps += n as i32; } // Recalibrate steps after runup
+           for (tx, data) in zip(dispatch.drain(..n), reserve.drain(..n)) { tx.send(data).unwrap(); }
+           continue;
         }
 
         // Collect and count answers.
-        let new_count = rx_answers.try_iter().map(|x| { record(x); }).count();
+        let new_count = rx_answers.try_iter().map(|x| record(x)).count();
         ans_count += new_count;
 
         // If there were no answers collected and no work queued, force a dummy split to avert deadlock.
-        if work.len() == 0 && new_count == 0 && dispatch.len() > 0 {
-            dispatch.pop_front().unwrap().send(DynamicPtr{ ptr: null }).unwrap();
+        // This can only occur in rare cases where all active threads finish roughly at once.
+        if work.len() == 0 && new_count == 0 {
+            let _ = dispatch.pop_front().map(|x| x.send(DynamicPtr{ ptr: null }));
         }
     }
 
     // Unblock the answer channel, then collect remaining answers.
+    // In practice all answers get collected earlier, but we cannot guarantee this.
     drop(tx_answers);
-    ans_count += rx_answers.iter().map(|x| { record(x); }).count();
+    ans_count += rx_answers.iter().map(|x| record(x)).count();
     eprintln!("Number of polynomials found: {ans_count}");
 
     // Release allocated memory.
