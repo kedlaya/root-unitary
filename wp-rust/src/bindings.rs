@@ -7,11 +7,13 @@ pub struct StaticData {
     pub d: c_int,
     pub force_squarefree: c_int,
     pub node_limit: c_long,
-    pub q: *const i64,
-    pub modlist: *const i64,
-    pub binom_mat: *const i64,
-    pub sum_mats: *const i64,
-    pub eval_pm2_mats: *const i64
+    pub q: *const c_long,
+    pub q_sqrt: *const c_long,
+    pub modlist: *const c_long,
+    pub binom_mat: *const c_long,
+    pub sum_mats: *const c_long,
+    pub eval_pm2_mats: *const c_long,
+    pub ranges: *const c_long,
 }
 
 #[repr(C)]
@@ -21,21 +23,21 @@ pub struct DynamicData {
     pub ascend: cty::c_int,
     pub flag: cty::c_int,
     pub node_count: cty::c_long,
-    pub pol: *mut i64,
-    pub sympol: *mut i64,
-    pub upper: *mut i64,
-    pub power_sums_num: *mut i64,
-    pub hankel_dets: *mut i64,
-    pub w: *mut i64,
+    pub pol: *mut c_long,
+    pub sympol: *mut c_long,
+    pub upper: *mut c_long,
+    pub power_sums_num: *mut c_long,
+    pub hankel_dets: *mut c_long,
+    pub w: *mut c_long,
     pub wlen: cty::c_long
 }
 
 unsafe extern "C" {
     pub fn ps_static_init(
         d: c_int,
-        q: *const i64,
-        lead: *const i64,
-        modlist: *const i64,
+        q: *const c_long,
+        lead: *const c_long,
+        modlist: *const c_long,
         node_limit: c_long,
         force_squarefree: c_int,
     ) -> *const StaticData;
@@ -44,7 +46,7 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn ps_dynamic_init(
         d: c_int,
-        coefflist: *mut i64,
+        coefflist: *mut c_long,
     ) ->  *mut DynamicData;
 }
 

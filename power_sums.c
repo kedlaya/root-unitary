@@ -153,7 +153,7 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
     Based on code by Sebastian Pancratz from the FLINT repository (plus the Ducos variation).
 */
 
-int _fmpz_poly_all_real_roots(const fmpz *poly, long n, fmpz *f0, fmpz *f1,
+int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
                               int force_squarefree, const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
 
@@ -252,6 +252,10 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
   fmpz_init_set(st_data->q, q);
   q_is_1 = fmpz_is_one(q);
   q_is_square = fmpz_is_square(q);
+  if (q_is_square) {
+     fmpz_init(st_data->q_sqrt);
+     fmpz_sqrt(st_data->q_sqrt, q);
+  }
   st_data->node_limit = node_limit;
   st_data->force_squarefree = force_squarefree;
 
@@ -293,14 +297,21 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
     for (j=0; j<=i; j++) {
       k0 = st_data->eval_pm2_mats + (d+1)*(2*i+j%2) + j;
       if (q_is_1) fmpz_one(k0);
-      else if (q_is_square) {
-        fmpz_sqrt(k0, q);
-        fmpz_pow_ui(k0, k0, j);
-      } else fmpz_pow_ui(k0, q, j/2);
+      else if (q_is_square) fmpz_pow_ui(k0, st_data->q_sqrt, j);
+      else fmpz_pow_ui(k0, q, j/2);
       fmpz_mul_2exp(k0, k0, j);
       fmpz_mul_si(k0, k0, -i);
       fmpz_mul(k0, k0, st_data->binom_mat + (d+2)*(d-i) + j);
     }
+
+  st_data->ranges = _fmpz_vec_init(d+1);
+  for (i=1; i<=d; i++) {
+    k0 = st_data->ranges + i;
+    if (q_is_square) fmpz_pow_ui(k0, st_data->q_sqrt, i);
+    else fmpz_pow_ui(k0, q, i/2);
+    fmpz_mul_ui(k0, k0, 2*d);
+    fmpz_mul(k0, k0, lead);
+  }
 
   return(st_data);
 }
@@ -341,11 +352,13 @@ void ps_static_clear(ps_static_data_t *st_data) {
 
   int d = st_data->d;
 
+  if (fmpz_is_square(st_data->q)) fmpz_clear(st_data->q_sqrt);
   fmpz_clear(st_data->q);
   _fmpz_vec_clear(st_data->modlist, d+1);
   _fmpz_vec_clear(st_data->binom_mat, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->sum_mats, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->eval_pm2_mats, 2*(d+1)*(d+1));
+  _fmpz_vec_clear(st_data->ranges, d+1);
   free(st_data);
 }
 
@@ -586,28 +599,19 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
-  if (lead_is_1) fmpz_set_ui(t1z, 2*d); else fmpz_mul_ui(t1z, lead, 2*d);
-  if (!q_is_1) {
-    if (k > 1) {
-      fmpz_pow_ui(t0z, q, k/2);
-      fmpz_mul(t1z, t1z, t0z);
-    }
-    if (q_is_square && k2 == 1) {
-      fmpz_sqrt(t0z, q);
-      fmpz_mul(t1z, t1z, t0z);
-    }
-  }
   _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
+  fmpz_set(t1z, st_data->ranges+k);
+  tz = (lead_is_1) ? NULL : lead_pow;
   if (q_is_square || k2 == 0) { // q^{k/2} is rational
-    if (!lead_is_1) fmpz_mul(t1z, lead_pow, t1z);
+    if (!lead_is_1) fmpz_mul(t1z, tz, t1z);
     fmpz_add(t2z, t0z, t1z);
-    change_by_sign(modulus_is_0, 0, t2z, lead_pow, NULL);
+    change_by_sign(modulus_is_0, 0, t2z, tz, NULL);
     fmpz_sub(t2z, t0z, t1z);
-    change_by_sign(modulus_is_0, 1, t2z, lead_pow, NULL);
+    change_by_sign(modulus_is_0, 1, t2z, tz, NULL);
   } else { // q^{k/2} is irrational
-    change_by_sign(modulus_is_0, 0, t0z, lead_pow, t1z);
+    change_by_sign(modulus_is_0, 0, t0z, tz, t1z);
     fmpz_neg(t1z, t1z);
-    change_by_sign(modulus_is_0, 1, t0z, lead_pow, t1z);
+    change_by_sign(modulus_is_0, 1, t0z, tz, t1z);
   }
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
@@ -634,7 +638,6 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   for (i=0; i<=1; i++) {
     if (!q_is_square && k2 == 1) continue; // Hankel matrix is not defined over Q
 
-    /* Build the sequence of entries of the appropriate Hankel matrix. */
     if (i == 1 && k2 == 0) { // t0z := 4*lead^2*q
       s = k - 1;
       if (!lead_is_1) {
@@ -645,11 +648,13 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     } else if (k2 == 1) { // t0z := 2*lead*sqrt(q)
       s = k;
       if (!q_is_1) {
-        fmpz_sqrt(t0z, q);
+        fmpz_set(t0z, st_data->q_sqrt);
         if (!lead_is_1) fmpz_mul(t0z, t0z, lead);
         fmpz_mul_ui(t0z, t0z, 2);
       } else fmpz_mul_ui(t0z, lead, 2);
     } else s = k + 1;
+
+    /* Build the sequence of entries of the appropriate Hankel matrix. */
     if (i != 0 || k2 != 0) {
       tza = w;
       _fmpz_vec_scalar_mul_fmpz(tza, pow_num, s, t0z);
@@ -658,11 +663,25 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
       else _fmpz_vec_sub(tza, tza, pow_num+1, s);
     } else tza = pow_num;
 
-    /* Compute the determinant, then deduce a condition. */
+    /* If applicable, use the recursive relationship between upper and lower Hankel determinants. 
+       Otherwise, compute the determinant by condensation (if possible) or directly. */
     tz = dy_data->hankel_dets + 2*k + i;
-    if (!hankel_determinant_condensation(tz, tza, s, w+k+1)) 
+    if (q_is_square && i == 1 && k > 1 && !fmpz_is_zero(dy_data->hankel_dets+2*k-4)) {
+      if (k2 == 0) {
+        fmpz_fmms(t0z, dy_data->hankel_dets+2*k-2, dy_data->hankel_dets+2*k-1, dy_data->hankel_dets+2*k-3, dy_data->hankel_dets+2*k);
+        fmpz_divexact(tz, t0z, dy_data->hankel_dets+2*k-4);
+      } else {
+        fmpz_mul(t0z, dy_data->hankel_dets+2*k-2, dy_data->hankel_dets+2*k-1);
+        fmpz_mul_ui(t0z, t0z, 4);
+        if (!q_is_1) fmpz_mul(t0z, t0z, st_data->q_sqrt);
+        if (!lead_is_1) fmpz_mul(t0z, t0z, lead);
+        fmpz_submul(t0z, dy_data->hankel_dets+2*k-3, dy_data->hankel_dets+2*k);
+        fmpz_divexact(tz, t0z, dy_data->hankel_dets+2*k-4);
+      }
+    } else if (!hankel_determinant_condensation(tz, tza, s, w+k+1))
       hankel_determinant_direct(tz, tza, s);
 
+    /* Deduce a linear constraint. */
     if (k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0)) {
       if (i == 1) fmpz_neg(t0z, tz); else fmpz_set(t0z, tz);
       if (lead_is_1) fmpz_set(t1z, tz-4); else fmpz_mul(t1z, tz-4, lead_pow);
@@ -802,6 +821,7 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
 
   int flag = 1;
   int count_steps = 0;
+  int i;
 
   while (1) {
     if (ascend) { // Ascend the tree and step forward as needed.
@@ -820,7 +840,7 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
 	  flag = -1;
 	  break;
 	}
-      count_steps += (d-n+1)*(d-n+1);
+      i = d-n+1; count_steps += i*i;
       if (count_steps > max_steps) break;
     }
   }

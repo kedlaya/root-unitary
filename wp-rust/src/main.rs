@@ -1,6 +1,7 @@
 use std::{env, ptr, thread};
 use std::alloc::{alloc_zeroed, dealloc, Layout};
 use std::sync::mpsc::{channel, Sender};
+use cty::{c_int,c_long};
 
 mod bindings;
 use crate::bindings::*;
@@ -24,9 +25,9 @@ fn record(res: Vec<i64>) {
 fn main() {
     // Read command line arguments and count threads.
     let args: Vec<String> = env::args().collect();
-    let d0 = &args[1].parse::<i64>().unwrap();
-    let q = &args[2].parse::<i64>().unwrap();
-    let lead = &args[3].parse::<i64>().unwrap();
+    let d0 = &args[1].parse::<c_int>().unwrap();
+    let q = &args[2].parse::<c_long>().unwrap();
+    let lead = &args[3].parse::<c_long>().unwrap();
     let max_threads = 200; // Recommended value is n^2 where n = # of available cores
     eprintln!("Computing Weil polynomials with d = {d0}, q = {q}, lead = {lead} (threads: {max_threads})");
 
@@ -34,21 +35,22 @@ fn main() {
     let mut steps = 1;
     let d = d0/2;
     let d_size = (d0+1) as usize;
-    let d32 = d as i32;
+    let d32 = d as c_int;
+    let answer_quota = 10000;
     let mut ans_count = 0;
 
     // Initialize static data used by the C code.
     let null = ptr::null_mut();
-    let st_data = StaticPtr{ptr: unsafe {ps_static_init(d32, q as *const i64, lead as *const i64, null, -1, 0) }};
+    let st_data = StaticPtr{ptr: unsafe {ps_static_init(d32, q as *const c_long, lead as *const c_long, null, -1, 0) }};
     
     // Construct deques for loaded work packets, empty packets, and Senders to dispatch work to threads.
     let mut work: Vec<DynamicPtr> = Vec::with_capacity(max_threads);
     let mut reserve: Vec<DynamicPtr> = Vec::with_capacity(max_threads);
     let mut dispatch: Vec<Sender<Option<DynamicPtr>>> = Vec::with_capacity(max_threads);
 
-    let layout = Layout::array::<i64>((d+1) as usize).unwrap();
+    let layout = Layout::array::<c_long>((d+1) as usize).unwrap();
     unsafe{
-        let ptr = alloc_zeroed(layout) as *mut i64;
+        let ptr = alloc_zeroed(layout) as *mut c_long;
         *ptr.add(d as usize) = *lead;
         work.push(DynamicPtr{ptr: ps_dynamic_init(d32, ptr)});
         dealloc(ptr as *mut u8, layout);
@@ -56,7 +58,7 @@ fn main() {
     for _ in 1..max_threads { reserve.push(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, null) }}); }
 
     // Construct channel to return answers.
-    let (tx_answers, rx_answers) = channel::<Vec<i64>>();
+    let (tx_answers, rx_answers) = channel::<Vec<c_long>>();
 
     // Construct channel to return packets.
     let (tx_data, rx_data) = channel::<DynamicPtr>();
@@ -112,11 +114,11 @@ fn main() {
         }
 
         // Collect and count answers.
-        ans_count += rx_answers.try_iter().map(|x| record(x)).count();
+        // We cap the number of answers collected at once to keep this loop circulating.
+        ans_count += rx_answers.try_iter().take(answer_quota).map(|x| record(x)).count();
     }
 
     // Unblock the answer channel, then collect remaining answers.
-    // In practice all answers get collected earlier, but we cannot guarantee this.
     drop(tx_answers);
     ans_count += rx_answers.iter().map(|x| record(x)).count();
     eprintln!("Number of polynomials found: {ans_count}");
