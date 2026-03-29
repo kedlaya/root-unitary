@@ -36,7 +36,7 @@ fn main() {
     let d = d0/2;
     let d_size = (d0+1) as usize;
     let d32 = d as c_int;
-    let answer_quota = 10000;
+    let answer_quota = 100000;
     let mut ans_count = 0;
 
     // Initialize static data used by the C code.

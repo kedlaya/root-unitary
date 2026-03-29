@@ -200,15 +200,17 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
 
     /* Set f0 to the pseudoremainder of poly (in the first iteration) or f0 (otherwise)
        modulo f1, leaving f0[n], f0[n+1] intact as well as f0[n-1] (except to remove content). */
-
     sub2 = f0+n;
     if (content != NULL) { // Ducos variation
       sub1 = f1+n-1;
-      for (i=0; i<n-1; i++) { // Inner loop
+      fmpz_fmms(f0, f0, lead1, f1, sub2);
+      fmpz_divexact(f0, f0, content);
+      fmpz_fmma(f0, f0, lead1, f1, sub1);
+      for (i=1; i<n-1; i++) { // Inner loop
         t = f0+i; t1 = f1+i;
         fmpz_fmms(t, t, lead1, t1, sub2);
         fmpz_divexact(t, t, content);
-        if (i>0) fmpz_sub(t, t, t1-1);
+        fmpz_sub(t, t, t1-1);
         fmpz_fmma(t, t, lead1, t1, sub1);
       }
     } else { // No Ducos variation, direct Euclidean division
@@ -221,7 +223,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
     }
 
     /* If not forcing squarefree but sgn == 0, we win iff f0 = 0. */
-    if (!force_squarefree && !sgn) return (_fmpz_vec_is_zero(f0, n-1));
+    if (!sgn && !force_squarefree) return (_fmpz_vec_is_zero(f0, n-1));
 
     /* Divide f0 by content. */
     if (content != NULL) _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, content);
