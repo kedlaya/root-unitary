@@ -637,7 +637,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
      In order to restrict to integer arithmetic, we skip this condition when
      k is odd and q is not a perfect square. */
 
-  for (i=0; i<=1; i++) {
+  for (i=1; i>=0; i--) {
     if (!q_is_square && k2 == 1) continue; // Hankel matrix is not defined over Q
 
     if (i == 1 && k2 == 0) { // t0z := 4*lead^2*q
@@ -659,20 +659,22 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     /* If applicable, use the recursive relationship between upper and lower Hankel determinants. 
        Otherwise, compute the determinant by condensation (if possible) or directly. */
     tz = dy_data->hankel_dets + 2*k + i;
-    if (q_is_square && i == 1 && k > 1 && !fmpz_is_zero(tz-5)) {
+    if (q_is_square && i == 0 && k > 1 && !fmpz_is_zero(tz-3)) {
       if (k2 == 1) {
          tza = t1z;
          fmpz_mul_ui(tza, tz-2, 4);
          if (!q_is_1) fmpz_mul(tza, tza, st_data->q_sqrt);
          if (!lead_is_1) fmpz_mul(tza, tza, lead);
       } else tza = tz-2;
-      fmpz_fmms(t1z, tz-3, tza, tz-4, tz-1);
-      fmpz_divexact(tz, t1z, tz-5);
-      tza = w;
-      fmpz_mul(tza+s-1, pow_num+s-1, t0z);
-      fmpz_sub(tza+s-1, tza+s-1, pow_num+s+1-k2);
+      fmpz_fmms(t1z, tz-1, tza, tz-4, tz+1);
+      fmpz_divexact(tz, t1z, tz-3);
+      if (k2 == 1) {
+        tza = w;
+        fmpz_mul(tza+s-1, pow_num+s-1, t0z);
+        fmpz_add(tza+s-1, tza+s-1, pow_num+s+1-k2);
+      } else tza = pow_num;
     } else {
-      if (i != 0 || k2 != 0) {
+      if (i == 1 || k2 == 1) {
         tza = w;
         _fmpz_vec_scalar_mul_fmpz(tza, pow_num, s, t0z);
         if (k2 == 0) _fmpz_vec_sub(tza, tza, pow_num+2, s);
