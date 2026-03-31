@@ -1,5 +1,7 @@
 use cty::c_int;
 use cty::c_long;
+
+#[allow(unused)]
 use flint3_sys::*; // Needed for linking
 
 #[repr(C)]
