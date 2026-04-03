@@ -246,15 +246,16 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
 /* Static memory allocation and initialization. */
 ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const fmpz *modlist,
                                  long node_limit, int force_squarefree) {
-  int i, j, q_is_1, q_is_square;
+  int i, j;
   fmpz *k0, *pol;
 
   ps_static_data_t *st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
   st_data->d = d;
   fmpz_init_set(st_data->q, q);
-  q_is_1 = fmpz_is_one(q);
-  q_is_square = fmpz_is_square(q);
-  if (q_is_square) {
+  st_data->q_is_1 = fmpz_is_one(q);
+  st_data->q_is_square = fmpz_is_square(q);
+  st_data->lead_is_1 = fmpz_is_one(lead);
+  if (st_data->q_is_square) {
      fmpz_init(st_data->q_sqrt);
      fmpz_sqrt(st_data->q_sqrt, q);
   }
@@ -271,12 +272,12 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
     pol = st_data->sum_mats + (d+1)*i;
     _fmpz_poly_chebyshev_t(pol, i);
     _fmpz_poly_scale_2exp(pol, i+1, -1);
-    if (!q_is_1)
+    if (!st_data->q_is_1)
       for (j=i%2; j<=i; j+=2) {
         fmpz_pow_ui(k0, q, (i-j)/2);
         fmpz_mul(pol+j, k0, pol+j);
       }
-    if (!fmpz_is_one(lead))
+    if (!st_data->lead_is_1)
       for (j=i%2; j<=i; j+=2) {
         fmpz_pow_ui(k0, lead, i-j);
         fmpz_mul(pol+j, k0, pol+j);
@@ -298,8 +299,8 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
   for (i=0; i<=d; i++)
     for (j=0; j<=i; j++) {
       k0 = st_data->eval_pm2_mats + (d+1)*(2*i+j%2) + j;
-      if (q_is_1) fmpz_one(k0);
-      else if (q_is_square) fmpz_pow_ui(k0, st_data->q_sqrt, j);
+      if (st_data->q_is_1) fmpz_one(k0);
+      else if (st_data->q_is_square) fmpz_pow_ui(k0, st_data->q_sqrt, j);
       else fmpz_pow_ui(k0, q, j/2);
       fmpz_mul_2exp(k0, k0, j);
       fmpz_mul_si(k0, k0, -i);
@@ -309,7 +310,7 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
   st_data->ranges = _fmpz_vec_init(d+1);
   for (i=1; i<=d; i++) {
     k0 = st_data->ranges + i;
-    if (q_is_square) fmpz_pow_ui(k0, st_data->q_sqrt, i);
+    if (st_data->q_is_square) fmpz_pow_ui(k0, st_data->q_sqrt, i);
     else fmpz_pow_ui(k0, q, i/2);
     fmpz_mul_ui(k0, k0, 2*d);
     fmpz_mul(k0, k0, lead);
@@ -397,11 +398,10 @@ void step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, i
   fmpz *det = dy_data->hankel_dets + 2*k;
   fmpz *t0z = dy_data->w;
 
-  if (fmpz_is_one(pol+d)) fmpz_set_ui(t0z, k);
-  else {
+  if (!st_data->lead_is_1) {
     fmpz_pow_ui(t0z, pol+d, k-1);
     fmpz_mul_ui(t0z, t0z, k);
-  }
+  } else fmpz_set_ui(t0z, k);
   if (!modulus_is_1) fmpz_mul(t0z, t0z, modulus);
   if (step == NULL)
     if (modulus_is_1) fmpz_add_ui(poln, poln, 1);
@@ -448,7 +448,7 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
   fmpz_add_ui(t0z, t0z, 1);
   r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1)); forced to be positive
   fmpz_one_2exp(t2z, r);
-  do {
+  while (1) {
     if (r) {
       fmpz_add(t0z, lower, t2z);
       fmpz_sub_ui(t0z, t0z, 1);
@@ -458,9 +458,9 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
       else fmpz_addmul_ui(t0z, t2z, 2);
     } while (fmpz_cmp(t0z, upper) <= 0);
     if (s) break;
+    if (--r < 0) return(0); // Found nothing
     fmpz_divexact_ui(t2z, t2z, 2);
-  } while ((--r) >= 0);
-  if (!s) return(0); // Found nothing
+  }
 
   if (r == 0) { // In this case, enforce lower == upper and exit
     fmpz_set(lower, t0z);
@@ -507,14 +507,14 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   int modulus_is_0 = fmpz_is_zero(modulus);
   int modulus_is_1 = fmpz_is_one(modulus);
   const fmpz *q = st_data->q;
-  int q_is_1 = fmpz_is_one(q);
-  int q_is_square = q_is_1 ? 1 : fmpz_is_square(q);
+  int q_is_1 = st_data->q_is_1;
+  int q_is_square = st_data->q_is_square;
 
   /* Dynamic data */
 
   fmpz *pol = dy_data->pol + n;
   fmpz *lead = pol + k;
-  int lead_is_1 = fmpz_is_one(lead);
+  int lead_is_1 = st_data->lead_is_1;
   fmpz *pow_num = dy_data->power_sums_num;
 
   /* Integers allocated from working space, maintained throughout */
@@ -587,17 +587,23 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   /* Update pow_num[k] using the Girard-Newton formula.
      This is the k-th power sum times c^k where c is the leading coefficient. */
 
-  fmpz_set_ui(pow_num, k); // Temporary change to apply Girard-Newton
-  tz = pow_num + k;
-  fmpz_zero(tz);
-  for (i=0; i<k; i++) {
-    if (!lead_is_1 && i > 0) fmpz_mul(t0z, t1z, pol+k-1-i); else fmpz_set(t0z, pol+k-i-1);
-    fmpz_submul(tz, t0z, tz-1-i);
-    if (!lead_is_1) {
-      if (i == 0) fmpz_set(t1z, lead); else if (i < k-1) fmpz_mul(t1z, t1z, lead);
+  if (k > 1) {
+    tz = pow_num + k;
+    // Take i=0
+    fmpz_mul(tz, pol+k-1, tz-1);
+    fmpz_neg(tz, tz);
+    if (!lead_is_1) fmpz_set(t1z, lead);    
+    for (i=1; i<k-1; i++) {
+      if (!lead_is_1) {
+        fmpz_mul(t0z, t1z, pol+k-1-i);
+        fmpz_submul(tz, t0z, tz-1-i);
+      } else fmpz_submul(tz, pol+k-i-1, tz-1-i);
+      if (!lead_is_1) fmpz_mul(t1z, t1z, lead);
     }
-  }
-  fmpz_set_ui(pow_num, d); // Change back to the correct value, needed for Chebyshev criterion
+    // Take i = k-1
+    if (!lead_is_1) fmpz_mul(t0z, t1z, pol); else fmpz_set(t0z, pol);
+    fmpz_submul_ui(tz, t0z, k);
+  } else fmpz_neg(pow_num+1, pol);
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
