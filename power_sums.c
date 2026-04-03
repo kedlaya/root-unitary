@@ -264,6 +264,13 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
 
   st_data->modlist = _fmpz_vec_init(d+1);
   k0 = st_data->modlist; // Used as a temporary variable for now
+  
+  fmpz_init(st_data->c0); // c0 = 4*lead^2*q
+  fmpz_mul(st_data->c0, lead, lead);
+  fmpz_mul(st_data->c0, st_data->c0, q);
+  fmpz_mul_ui(st_data->c0, st_data->c0, 4);
+  fmpz_init(st_data->c1); // c1 = 2*lead*sqrt(q)
+  if (st_data->q_is_square) fmpz_sqrt(st_data->c1, st_data->c0);
 
   /* Matrix of cefficients of 2*(i-th Chebyshev polynomial)(x/2).
      The coefficient of x^j is multiplied by c^{i-j} q^{(i-j)/2} where c is the leading coefficient. */
@@ -315,6 +322,21 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
     fmpz_mul_ui(k0, k0, 2*d);
     fmpz_mul(k0, k0, lead);
   }
+  
+  /* Matrix to compute reciprocal transform. */
+  fmpz_mat_init(st_data->pol_to_sym, 2*d+1, d+1);
+  fmpz_mat_zero(st_data->pol_to_sym);
+  for (i=0; i<=d; i++) {
+    k0 = fmpz_mat_entry(st_data->pol_to_sym, d-i, i);
+    fmpz_one(k0);
+    for (j=i; j>0; j--) {
+      if (j==i) fmpz_set(fmpz_mat_entry(st_data->pol_to_sym, d+i, i), k0); 
+      else fmpz_add(fmpz_mat_entry(st_data->pol_to_sym, d-i+2*j, i), fmpz_mat_entry(st_data->pol_to_sym, d-i+2*j, i), k0);
+      if (!st_data->q_is_1) fmpz_mul(k0, k0, q);
+      fmpz_mul_ui(k0, k0, j);
+      fmpz_divexact_ui(k0, k0, i-j+1);
+    }
+  }
 
   return(st_data);
 }
@@ -357,11 +379,14 @@ void ps_static_clear(ps_static_data_t *st_data) {
 
   if (fmpz_is_square(st_data->q)) fmpz_clear(st_data->q_sqrt);
   fmpz_clear(st_data->q);
+  fmpz_clear(st_data->c0);
+  fmpz_clear(st_data->c1);
   _fmpz_vec_clear(st_data->modlist, d+1);
   _fmpz_vec_clear(st_data->binom_mat, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->sum_mats, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->eval_pm2_mats, 2*(d+1)*(d+1));
   _fmpz_vec_clear(st_data->ranges, d+1);
+  fmpz_mat_clear(st_data->pol_to_sym);
   free(st_data);
 }
 
@@ -507,7 +532,6 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   int modulus_is_0 = fmpz_is_zero(modulus);
   int modulus_is_1 = fmpz_is_one(modulus);
   const fmpz *q = st_data->q;
-  int q_is_1 = st_data->q_is_1;
   int q_is_square = st_data->q_is_square;
 
   /* Dynamic data */
@@ -589,20 +613,21 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
 
   if (k > 1) {
     tz = pow_num + k;
-    // Take i=0
-    fmpz_mul(tz, pol+k-1, tz-1);
-    fmpz_neg(tz, tz);
-    if (!lead_is_1) fmpz_set(t1z, lead);    
-    for (i=1; i<k-1; i++) {
-      if (!lead_is_1) {
+    if (!lead_is_1) {
+      fmpz_mul(tz, pol+k-1, tz-1);
+      fmpz_set(t1z, lead);
+      for (i=1; i<k-1; i++) {
         fmpz_mul(t0z, t1z, pol+k-1-i);
-        fmpz_submul(tz, t0z, tz-1-i);
-      } else fmpz_submul(tz, pol+k-i-1, tz-1-i);
-      if (!lead_is_1) fmpz_mul(t1z, t1z, lead);
+        fmpz_addmul(tz, t0z, tz-1-i);
+        fmpz_mul(t1z, t1z, lead);
+      }
+      fmpz_mul(t0z, t1z, pol); 
+      fmpz_addmul_ui(tz, t0z, k);
+    } else {
+      _fmpz_vec_dot(tz, pol+1, pow_num+1, k-1);
+      fmpz_addmul_ui(tz, pol, k);
     }
-    // Take i = k-1
-    if (!lead_is_1) fmpz_mul(t0z, t1z, pol); else fmpz_set(t0z, pol);
-    fmpz_submul_ui(tz, t0z, k);
+    fmpz_neg(tz, tz);
   } else fmpz_neg(pow_num+1, pol);
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
@@ -646,31 +671,21 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   for (i=1; i>=0; i--) {
     if (!q_is_square && k2 == 1) continue; // Hankel matrix is not defined over Q
 
-    if (i == 1 && k2 == 0) { // t0z := 4*lead^2*q
+    if (i == 1 && k2 == 0) {
       s = k - 1;
-      if (!lead_is_1) {
-        fmpz_mul(t0z, lead, lead);
-        fmpz_mul_ui(t0z, t0z, 4);
-      } else fmpz_set_ui(t0z, 4);
-      if (!q_is_1) fmpz_mul(t0z, t0z, q);
-    } else if (k2 == 1) { // t0z := 2*lead*sqrt(q)
+      fmpz_set(t0z, st_data->c0); // t0z := 4*lead^2*q
+    } else if (k2 == 1) {
       s = k;
-      if (!q_is_1) {
-        fmpz_set(t0z, st_data->q_sqrt);
-        if (!lead_is_1) fmpz_mul(t0z, t0z, lead);
-        fmpz_mul_ui(t0z, t0z, 2);
-      } else fmpz_mul_ui(t0z, lead, 2);
+      fmpz_set(t0z, st_data->c1); // t0z := 2*lead*sqrt(q)
     } else s = k + 1;
 
-    /* If applicable, use the recursive relationship between upper and lower Hankel determinants. 
-       Otherwise, compute the determinant by condensation (if possible) or directly. */
+    /* If applicable, use the recursive relationship between upper and lower Hankel determinants. */
     tz = dy_data->hankel_dets + 2*k + i;
     if (q_is_square && i == 0 && k > 1 && !fmpz_is_zero(tz-3)) {
       if (k2 == 1) {
          tza = t1z;
-         fmpz_mul_ui(tza, tz-2, 4);
-         if (!q_is_1) fmpz_mul(tza, tza, st_data->q_sqrt);
-         if (!lead_is_1) fmpz_mul(tza, tza, lead);
+         fmpz_mul_ui(tza, tz-2, 2);
+         fmpz_mul(tza, tza, st_data->c1);
       } else tza = tz-2;
       fmpz_fmms(t1z, tz-1, tza, tz-4, tz+1);
       fmpz_divexact(tz, t1z, tz-3);
@@ -680,6 +695,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
         fmpz_add(tza+s-1, tza+s-1, pow_num+s+1-k2);
       } else tza = pow_num;
     } else {
+      /* Otherwise, compute the determinant by condensation (if possible) or directly. */
       if (i == 1 || k2 == 1) {
         tza = w;
         _fmpz_vec_scalar_mul_fmpz(tza, pow_num, s, t0z);
@@ -786,22 +802,8 @@ void reciprocal_transform(const ps_static_data_t *st_data, ps_dynamic_data_t *dy
   int d = st_data->d;
   fmpz *pol = dy_data->pol;
   fmpz *sympol = dy_data->sympol;
-  fmpz *t;
-  fmpz *q = (fmpz *)st_data->q;
-  int q_is_1 = fmpz_is_one(q);
-  int i, j;
 
-  /* Convert pol into its reciprocal transform, stored in sympol. */
-  for (i=0; i<=d; i++) {
-    t = sympol + d - i;
-    fmpz_set(t, pol+i);
-    for (j=i; j>0; j--) {
-      if (j==i) fmpz_set(t+2*i, t); else fmpz_add(t+2*j, t+2*j, t);
-      if (!q_is_1) fmpz_mul(t, t, q);
-      fmpz_mul_ui(t, t, j);
-      fmpz_divexact_ui(t, t, i-j+1);
-    }
-  }
+  fmpz_mat_mul_fmpz_vec(sympol, st_data->pol_to_sym, pol, d+1);
 }
 
 /* Top-level flow control: allow one process to run for up to max_steps iterations,

@@ -12,7 +12,7 @@ use crate::bindings::*;
 struct StaticPtr{ ptr: *const StaticData }
 unsafe impl Send for StaticPtr {}
 
-struct DynamicPtr{ ptr: *mut DynamicData }
+struct DynamicPtr{ ptr: *mut DynamicData, flag: i32 }
 unsafe impl Send for DynamicPtr {}
 
 // Record polynomials taken from an iterator.
@@ -52,10 +52,10 @@ fn main() {
     unsafe{
         let ptr = alloc_zeroed(layout) as *mut c_long;
         *ptr.add(d as usize) = *lead;
-        work.push(DynamicPtr{ptr: ps_dynamic_init(d32, ptr)});
+        work.push(DynamicPtr{ptr: ps_dynamic_init(d32, ptr), flag: 1});
         dealloc(ptr as *mut u8, layout);
     }
-    for _ in 1..max_threads { reserve.push(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, null) }}); }
+    for _ in 1..max_threads { reserve.push(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, null) }, flag: 0}); }
 
     // Construct channel to return answers.
     let (tx_answers, rx_answers) = channel::<Vec<c_long>>();
@@ -68,7 +68,7 @@ fn main() {
         eprintln!("Active workers: {}; answer count: {}", max_threads - reserve.len(), ans_count);
 
         // Spawn threads with queued packets.
-        for data in work.drain(..) {
+        for mut data in work.drain(..) {
             let tx_answers_clone = tx_answers.clone();
             let tx_data_clone = tx_data.clone();
             let (tx_dispatch, rx_dispatch) = channel::<Option<DynamicPtr>>();
@@ -78,18 +78,21 @@ fn main() {
                 let sympol = unsafe { (*data.ptr).sympol };
                 let x = loop {
                     // Step this process forward. If we find a polynomial, return it via a channel.
-                    let flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, steps) };
-                    if flag == 2 {
+                    data.flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, steps) };
+                    if data.flag == 2 {
                         let iter = (0..d_size).map(|x| unsafe { *sympol.add(x) });
                         tx_answers_clone.send(Vec::from_iter(iter)).unwrap();
                     }
                     // Check exit/split conditions.
-                    if flag == 0 { break rx_dispatch.recv().unwrap(); }
+                    if data.flag == 0 { break rx_dispatch.recv().unwrap(); }
                     else if let Ok(x) = rx_dispatch.try_recv() { break x; }
                 };
                 // Split if necessary, clean up, and return packets.
-                if let Some(data2) = x {
-                    unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr); }
+                if let Some(mut data2) = x {
+                    unsafe { 
+                      ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr);
+                      data2.flag = (*data2.ptr).flag;
+                    }
                     tx_data_clone.send(data2).unwrap();
                 }
                 tx_data_clone.send(data).unwrap();
@@ -99,7 +102,7 @@ fn main() {
 
         // Collect split and terminated processes.
         for data in rx_data.try_iter() {
-            if unsafe { (*data.ptr).flag } == 0 { reserve.push(data); }
+            if data.flag == 0 { reserve.push(data); }
             else { work.push(data); }
         }
 

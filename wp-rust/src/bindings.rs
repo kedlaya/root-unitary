@@ -11,6 +11,8 @@ pub struct StaticData {
     pub node_limit: c_long,
     pub q: *const c_long,
     pub q_sqrt: *const c_long,
+    pub c0: *const c_long,
+    pub c1: *const c_long,
     pub q_is_1: c_int,
     pub q_is_square: c_int,
     pub lead_is_1: c_int,    

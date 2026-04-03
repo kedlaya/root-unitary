@@ -12,9 +12,10 @@
 typedef struct ps_static_data {
   int d, force_squarefree;
   long node_limit;
-  fmpz_t q, q_sqrt;
+  fmpz_t q, q_sqrt, c0, c1;
   int q_is_1, q_is_square, lead_is_1;
   fmpz *modlist, *binom_mat, *sum_mats, *eval_pm2_mats, *ranges;
+  fmpz_mat_t pol_to_sym;
 } ps_static_data_t;
 
 typedef struct ps_dynamic_data {
