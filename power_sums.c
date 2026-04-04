@@ -63,30 +63,20 @@ void fmpz_div_q(fmpz_t res, const fmpz_t a, const fmpz_t b, int r) {
    No aliasing allowed. b and d must be positive.
    If b is NULL we interpret it as 1. If c is NULL we interpret it as 0. */
 void fmpq_floor_ceil_quad(fmpz_t res, int r, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
-  if (c == NULL) {
-    if (b != NULL) {
-      if (r) fmpz_cdiv_q(res, a, b);
-      else fmpz_fdiv_q(res, a, b);
-    } else fmpz_set(res, a);
-  } else { 
+  const fmpz *tmp;
+
+  if (c != NULL) {
+    int s = fmpz_sgn(c) > 0;
     fmpz_mul(res, c, c);
     fmpz_mul(res, res, q);
-    if (r) { 
-      if (fmpz_sgn(c) < 0) {
-        fmpz_sqrt(res, res);
-        fmpz_neg(res, res);
-      } else fmpz_sqrt_c(res, res);
-    } else {
-      if (fmpz_sgn(c) < 0) {
-        fmpz_sqrt_c(res, res);
-        fmpz_neg(res, res);
-      } else fmpz_sqrt(res, res);
-    }
+    if (r ^ s) fmpz_sqrt(res, res); else fmpz_sqrt_c(res, res);
+    if (!s) fmpz_neg(res, res);
     if (b != NULL) fmpz_mul(res, res, b);
     fmpz_add(res, res, a);
-    if (b != NULL) fmpz_div_q(res, res, b, r);
-  }
-  fmpz_div_q(res, res, d, r);
+    tmp = res;
+  } else tmp = a;
+  if (b != NULL) { fmpz_div_q(res, tmp, b, r); tmp = res; }
+  fmpz_div_q(res, tmp, d, r);
 }
 
 /*
@@ -524,13 +514,22 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
   return(1);
 }
 
+/* Update pow_num[k] using the Girard-Newton formula.
+   This is the k-th power sum times c^k where c is the leading coefficient. */
+
 void update_power_sums(fmpz *pow_num, fmpz *pol, int k) {
   fmpz *tz = pow_num + k;
   fmpz *lead = pol + k;
   int i;
 
-  fmpz_mul_si(tz, pol, -k);
-  for (i=1; i<k; i++) fmpz_fmms(tz, tz, lead, pol+i, pow_num+i);
+  if (fmpz_is_one(lead)) {
+    tz = pow_num + k;
+    _fmpz_vec_dot_general(tz, NULL, 1, pol+1, pow_num+1, 0, k-1);
+    fmpz_submul_ui(tz, pol, k);
+  } else {
+    fmpz_mul_si(tz, pol, -k);
+    for (i=1; i<k; i++) fmpz_fmms(tz, tz, lead, pol+i, pow_num+i);
+  }
 }
 
 /* The following is the key subroutine: given some initial coefficients, compute
@@ -615,14 +614,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     fmpz_zero(upper);
   } else if (!modulus_is_1) fmpz_mul(f, f, modulus);
 
-  /* Update pow_num[k] using the Girard-Newton formula.
-     This is the k-th power sum times c^k where c is the leading coefficient. */
-
-  if (lead_pow == NULL) {
-    tz = pow_num + k;
-    _fmpz_vec_dot_general(tz, NULL, 1, pol+1, pow_num+1, 0, k-1);
-    fmpz_submul_ui(tz, pol, k);
-  } else update_power_sums(pow_num, pol, k);
+  update_power_sums(pow_num, pol, k);
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
