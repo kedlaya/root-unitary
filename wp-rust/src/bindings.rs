@@ -21,6 +21,8 @@ pub struct StaticData {
     pub sum_mats: *const c_long,
     pub eval_pm2_mats: *const c_long,
     pub ranges: *const c_long,
+    pub lead_pows: *const c_long,
+    pub pol_to_sym: fmpz_mat_t
 }
 
 #[repr(C)]

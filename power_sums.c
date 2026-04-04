@@ -337,6 +337,11 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
       fmpz_divexact_ui(k0, k0, i-j+1);
     }
   }
+  
+  if (!st_data->lead_is_1) {
+    st_data->lead_pows = _fmpz_vec_init(d+1);
+    for (i=0; i<=d; i++) fmpz_pow_ui(st_data->lead_pows+i, lead, i);
+  }
 
   return(st_data);
 }
@@ -387,6 +392,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
   _fmpz_vec_clear(st_data->eval_pm2_mats, 2*(d+1)*(d+1));
   _fmpz_vec_clear(st_data->ranges, d+1);
   fmpz_mat_clear(st_data->pol_to_sym);
+  if (!st_data->lead_is_1) _fmpz_vec_clear(st_data->lead_pows, d+1);
   free(st_data);
 }
 
@@ -427,7 +433,7 @@ void step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, i
     fmpz_pow_ui(t0z, pol+d, k-1);
     fmpz_mul_ui(t0z, t0z, k);
   } else fmpz_set_ui(t0z, k);
-  if (!modulus_is_1) fmpz_mul(t0z, t0z, modulus);
+  fmpz_mul(t0z, t0z, modulus);
   if (step == NULL)
     if (modulus_is_1) fmpz_add_ui(poln, poln, 1);
     else fmpz_add(poln, poln, modulus);
@@ -514,6 +520,20 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
   return(1);
 }
 
+void update_power_sums(fmpz *pow_num, fmpz *pol, int k, fmpz *t0z, fmpz *lead_pows) {
+  fmpz *tz = pow_num + k;
+  int i;
+
+  fmpz_mul(tz, pol+k-1, tz-1);
+  for (i=1; i<k-1; i++) {
+    fmpz_mul(t0z, lead_pows+i, pol+k-1-i);
+    fmpz_addmul(tz, t0z, tz-1-i);
+  }
+  fmpz_mul(t0z, lead_pows+k-1, pol); 
+  fmpz_addmul_ui(tz, t0z, k);
+  fmpz_neg(tz, tz);
+}
+
 /* The following is the key subroutine: given some initial coefficients, compute
    a lower and upper bound for the next coefficient. Return 1 iff the resulting
    interval is nonempty.
@@ -526,34 +546,31 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   /* Static data */
 
   int d = st_data->d;
-  int k = d - n, k2 = k % 2;
+  int k = d - n;
+  int k2 = k % 2;
   int force_squarefree = st_data->force_squarefree;
   fmpz *modulus = st_data->modlist + n;
   int modulus_is_0 = fmpz_is_zero(modulus);
   int modulus_is_1 = fmpz_is_one(modulus);
   const fmpz *q = st_data->q;
   int q_is_square = st_data->q_is_square;
+  fmpz *lead_pow = (st_data->lead_is_1) ? NULL : st_data->lead_pows+k-1;
 
   /* Dynamic data */
 
   fmpz *pol = dy_data->pol + n;
-  fmpz *lead = pol + k;
-  int lead_is_1 = st_data->lead_is_1;
   fmpz *pow_num = dy_data->power_sums_num;
 
   /* Integers allocated from working space, maintained throughout */
 
   fmpz *f = dy_data->w;
-  fmpz *lead_pow = f+1;
-  fmpz_pow_ui(lead_pow, lead, k-1);
-
-  fmpz *upper = f+2;
-  fmpz *lower = f+3;
+  fmpz *upper = f+1;
+  fmpz *lower = f+2;
 
   /* Local working space, not maintained throughout */
 
   int i, s;
-  fmpz *w = f+4; // Length 3*k+3, passed to subroutines
+  fmpz *w = f+3; // Length 3*k+3, passed to subroutines
 
   fmpz *t0z = w;
   fmpz *t1z = w+1;
@@ -612,39 +629,27 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
      This is the k-th power sum times c^k where c is the leading coefficient. */
 
   if (k > 1) {
-    tz = pow_num + k;
-    if (!lead_is_1) {
-      fmpz_mul(tz, pol+k-1, tz-1);
-      fmpz_set(t1z, lead);
-      for (i=1; i<k-1; i++) {
-        fmpz_mul(t0z, t1z, pol+k-1-i);
-        fmpz_addmul(tz, t0z, tz-1-i);
-        fmpz_mul(t1z, t1z, lead);
-      }
-      fmpz_mul(t0z, t1z, pol); 
-      fmpz_addmul_ui(tz, t0z, k);
-    } else {
-      _fmpz_vec_dot(tz, pol+1, pow_num+1, k-1);
-      fmpz_addmul_ui(tz, pol, k);
-    }
-    fmpz_neg(tz, tz);
+    if (lead_pow == NULL) {
+      tz = pow_num + k;
+      _fmpz_vec_dot_general(tz, NULL, 1, pol+1, pow_num+1, 0, k-1);
+      fmpz_submul_ui(tz, pol, k);
+    } else update_power_sums(pow_num, pol, k, t0z, st_data->lead_pows);
   } else fmpz_neg(pow_num+1, pol);
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
   _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
   fmpz_set(t1z, st_data->ranges+k);
-  tz = (lead_is_1) ? NULL : lead_pow;
   if (q_is_square || k2 == 0) { // q^{k/2} is rational
-    if (!lead_is_1) fmpz_mul(t1z, tz, t1z);
+    if (lead_pow != NULL) fmpz_mul(t1z, lead_pow, t1z);
     fmpz_add(t2z, t0z, t1z);
-    change_by_sign(modulus_is_0, 0, t2z, tz, NULL);
+    change_by_sign(modulus_is_0, 0, t2z, lead_pow, NULL);
     fmpz_sub(t2z, t0z, t1z);
-    change_by_sign(modulus_is_0, 1, t2z, tz, NULL);
+    change_by_sign(modulus_is_0, 1, t2z, lead_pow, NULL);
   } else { // q^{k/2} is irrational
-    change_by_sign(modulus_is_0, 0, t0z, tz, t1z);
+    change_by_sign(modulus_is_0, 0, t0z, lead_pow, t1z);
     fmpz_neg(t1z, t1z);
-    change_by_sign(modulus_is_0, 1, t0z, tz, t1z);
+    change_by_sign(modulus_is_0, 1, t0z, lead_pow, t1z);
   }
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
@@ -710,12 +715,12 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     /* Deduce a linear constraint. */
     if (k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0)) {
       if (i == 1) fmpz_neg(t0z, tz); else fmpz_set(t0z, tz);
-      if (lead_is_1) fmpz_set(t1z, tz-4); else fmpz_mul(t1z, tz-4, lead_pow);
+      if (lead_pow == NULL) fmpz_set(t1z, tz-4); else fmpz_mul(t1z, tz-4, lead_pow);
+      change_by_sign(1, i, t0z, t1z, NULL);
     } else { // Argue that the corner entry is nonnegative
       if (i == 1) fmpz_neg(t0z, tza+s-1); else fmpz_set(t0z, tza+s-1);
-      if (lead_is_1) fmpz_one(t1z); else fmpz_set(t1z, lead_pow);
+      change_by_sign(1, i, t0z, lead_pow, NULL);
     }
-    change_by_sign(1, i, t0z, t1z, NULL);
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 

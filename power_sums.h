@@ -14,7 +14,7 @@ typedef struct ps_static_data {
   long node_limit;
   fmpz_t q, q_sqrt, c0, c1;
   int q_is_1, q_is_square, lead_is_1;
-  fmpz *modlist, *binom_mat, *sum_mats, *eval_pm2_mats, *ranges;
+  fmpz *modlist, *binom_mat, *sum_mats, *eval_pm2_mats, *ranges, *lead_pows;
   fmpz_mat_t pol_to_sym;
 } ps_static_data_t;
 

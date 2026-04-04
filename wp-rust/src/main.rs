@@ -89,10 +89,7 @@ fn main() {
                 };
                 // Split if necessary, clean up, and return packets.
                 if let Some(mut data2) = x {
-                    unsafe { 
-                      ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr);
-                      data2.flag = (*data2.ptr).flag;
-                    }
+                    data2.flag = unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr) };
                     tx_data_clone.send(data2).unwrap();
                 }
                 tx_data_clone.send(data).unwrap();
