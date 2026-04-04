@@ -80,18 +80,32 @@ void fmpq_floor_ceil_quad(fmpz_t res, int r, const fmpz_t a, const fmpz_t b, con
 }
 
 void _fmpz_vec_fmms(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, int n) {
-  int i;
-  for (i=0; i<n; i++) fmpz_fmms(res+i, a+i, b+i, c+i, d+i);
+  for (int i=0; i<n; i++) fmpz_fmms(res+i, a+i, b+i, c+i, d+i);
+}
+
+void _fmpz_vec_fmms_divexact(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, const fmpz_t e, int n) {
+  for (int i=0; i<n; i++) {
+    fmpz_fmms(res+i, a+i, b+i, c+i, d+i);
+    fmpz_divexact(res+i, res+i, e+i);
+  }
 }
 
 void _fmpz_vec_scalar_fmma(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, const fmpz_t d, int n) {
-  int i;
-  for (i=0; i<n; i++) fmpz_fmma(res+i, a+i, b, c+i, d);
+  for (int i=0; i<n; i++) fmpz_fmma(res+i, a+i, b, c+i, d);
+}
+
+void _fmpz_vec_scalar_fmma_one(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, int n) {
+  _fmpz_vec_scalar_mul_fmpz(res, a, n, b);
+  _fmpz_vec_add(res, res, c, n);
 }
 
 void _fmpz_vec_scalar_fmms(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, const fmpz_t d, int n) {
-  int i;
-  for (i=0; i<n; i++) fmpz_fmms(res+i, a+i, b, c+i, d);
+  for (int i=0; i<n; i++) fmpz_fmms(res+i, a+i, b, c+i, d);
+}
+
+void _fmpz_vec_scalar_fmms_one(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, int n) {
+  _fmpz_vec_scalar_mul_fmpz(res, a, n, b);
+  _fmpz_vec_sub(res, res, c, n);
 }
 
 /*
@@ -101,12 +115,12 @@ void _fmpz_vec_scalar_fmms(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz 
 
 void hankel_determinant_direct(fmpz_t res, const fmpz *seq, int n) {
   fmpz_mat_t mat;
-  int i, j, s;
+  int s;
 
   s = n/2 + 1;
   fmpz_mat_init(mat, s, s);
-  for (i=0; i<s; i++)
-    for (j=0; j<s; j++)
+  for (int i=0; i<s; i++)
+    for (int j=0; j<s; j++)
       fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
   fmpz_mat_det(res, mat);
   fmpz_mat_clear(mat);
@@ -129,19 +143,14 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
   int i, n1 = n-2;
   fmpz *f0 = w; // Length n-2
   fmpz *f1 = w+n1; // Length max(0,n-4)
-  fmpz *t = (fmpz *)seq, *t1, *t2;
+  fmpz *t = (fmpz *)seq;
 
   _fmpz_vec_fmms(f0, t, t+2, t+1, t+1, n1);
   while (n1 > 1) {
     n1 -= 2;
     for (i=0; i<n1; i++) 
       if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
-    for (i=0; i<n1; i++) {
-      t1 = f0+i+1;
-      t2 = f1+i;
-      fmpz_fmms(t2, t1-1, t1+1, t1, t1);
-      fmpz_divexact(t2, t2, t+i+2);
-    }
+    _fmpz_vec_fmms_divexact(f1, f0, f0+2, f0+1, f0+1, t+2, n1);
     t = f0; f0 = f1; f1 = t;
   }
   fmpz_set(res, f0);
@@ -577,7 +586,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
 
   /* Local working space, not maintained throughout */
 
-  int i, j, s;
+  int i, j, j1, s;
   fmpz *w = f+3; // Length 3*k+3, passed to subroutines
 
   fmpz *t0z = w;
@@ -686,9 +695,10 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
         /* Compute the Hankel determinant by condensation (if possible) or directly. 
            Predefined: c1 == 2*lead*sqrt(q), c0 == 4*lead^2*q. */
         if (i == 1 || k2 == 1) {
-          tza = w+s+1;
-          fmpz_set_si(tza, i == 0 ? 1 : -1);
-          _fmpz_vec_scalar_fmma(w, pow_num, k2 == 1 ? st_data->c1 : st_data->c0, pow_num+(k2 == 0 ? 2 : 1), tza, s);
+          tza = (fmpz *)(k2 == 1 ? st_data->c1 : st_data->c0);
+          j1 = k2 == 0 ? 2 : 1;
+          if (i == 0) _fmpz_vec_scalar_fmma_one(w, pow_num, tza, pow_num+j1, s);
+          else _fmpz_vec_scalar_fmms_one(w, pow_num, tza, pow_num+j1, s);
           tza = w;
         } else tza = pow_num;
         if (!hankel_determinant_condensation(tz, tza, s, w+k+1))
