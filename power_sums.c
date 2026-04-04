@@ -53,36 +53,40 @@ void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
   if (!s) fmpz_add_ui(res, res, 1);
 }
 
-/* Set res to floor((a/b + c sqrt(q))/d). No aliasing allowed. b and d must be positive.
-   If b is NULL we interpret it as 1. */
-void fmpq_floor_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
-  fmpz_mul(res, c, c);
-  fmpz_mul(res, res, q);
-  if (fmpz_sgn(c) >= 0) fmpz_sqrt(res, res);
-  else {
-    fmpz_sqrt_c(res, res);
-    fmpz_neg(res, res);
-  }
-  if (b != NULL) fmpz_mul(res, res, b);
-  fmpz_add(res, res, a);
-  if (b != NULL) fmpz_fdiv_q(res, res, b);
-  fmpz_fdiv_q(res, res, d);
+/* Set res to floor(a/b) if r == 0 and ceil(r/b) if r == 1. Aliasing allowed. */
+void fmpz_div_q(fmpz_t res, const fmpz_t a, const fmpz_t b, int r) {
+  if (r) fmpz_cdiv_q(res, a, b);
+  else fmpz_fdiv_q(res, a, b);
 }
 
-/* Set res to ceil((a/b + c sqrt(q))/d). No aliasing allowed. b and d must be positive.
-   If b is NULL we interpret it as 1. */
-void fmpq_ceil_quad(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
-  fmpz_mul(res, c, c);
-  fmpz_mul(res, res, q);
-  if (fmpz_sgn(c) >= 0) fmpz_sqrt_c(res, res);
-  else {
-    fmpz_sqrt(res, res);
-    fmpz_neg(res, res);
+/* Set res to the floor (if r==0) or ceiling (if r==1) of (a/b + c sqrt(q))/d). 
+   No aliasing allowed. b and d must be positive.
+   If b is NULL we interpret it as 1. If c is NULL we interpret it as 0. */
+void fmpq_floor_ceil_quad(fmpz_t res, int r, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
+  if (c == NULL) {
+    if (b != NULL) {
+      if (r) fmpz_cdiv_q(res, a, b);
+      else fmpz_fdiv_q(res, a, b);
+    } else fmpz_set(res, a);
+  } else { 
+    fmpz_mul(res, c, c);
+    fmpz_mul(res, res, q);
+    if (r) { 
+      if (fmpz_sgn(c) < 0) {
+        fmpz_sqrt(res, res);
+        fmpz_neg(res, res);
+      } else fmpz_sqrt_c(res, res);
+    } else {
+      if (fmpz_sgn(c) < 0) {
+        fmpz_sqrt_c(res, res);
+        fmpz_neg(res, res);
+      } else fmpz_sqrt(res, res);
+    }
+    if (b != NULL) fmpz_mul(res, res, b);
+    fmpz_add(res, res, a);
+    if (b != NULL) fmpz_div_q(res, res, b, r);
   }
-  if (b != NULL) fmpz_mul(res, res, b);
-  fmpz_add(res, res, a);
-  if (b != NULL) fmpz_cdiv_q(res, res, b);
-  fmpz_cdiv_q(res, res, d);
+  fmpz_div_q(res, res, d, r);
 }
 
 /*
@@ -106,7 +110,7 @@ void hankel_determinant_direct(fmpz_t res, const fmpz *seq, int n) {
 
 /*
   Attempt to compute the Hankel determinant associated to the sequence seq of odd length n
-  using Dodgson condensation. Returns 1 for success, 0 for failure.
+  using Dodgson . Returns 1 for success, 0 for failure.
 
   This function assumes that {w, 2*n-5} is scratch space.
 */
@@ -320,7 +324,7 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
     if (st_data->q_is_square) fmpz_pow_ui(k0, st_data->q_sqrt, i);
     else fmpz_pow_ui(k0, q, i/2);
     fmpz_mul_ui(k0, k0, 2*d);
-    fmpz_mul(k0, k0, lead);
+    for (j=0; j<i; j++) fmpz_mul(k0, k0, lead);
   }
   
   /* Matrix to compute reciprocal transform. */
@@ -366,7 +370,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   fmpz_set_si(dy_data->hankel_dets, d);
   fmpz_set_si(dy_data->hankel_dets+1, 1);
 
-  dy_data->wlen = 3*d+10;
+  dy_data->wlen = 3*d+9;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
 
   if (coefflist != NULL) {
@@ -520,18 +524,13 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
   return(1);
 }
 
-void update_power_sums(fmpz *pow_num, fmpz *pol, int k, fmpz *t0z, fmpz *lead_pows) {
+void update_power_sums(fmpz *pow_num, fmpz *pol, int k) {
   fmpz *tz = pow_num + k;
+  fmpz *lead = pol + k;
   int i;
 
-  fmpz_mul(tz, pol+k-1, tz-1);
-  for (i=1; i<k-1; i++) {
-    fmpz_mul(t0z, lead_pows+i, pol+k-1-i);
-    fmpz_addmul(tz, t0z, tz-1-i);
-  }
-  fmpz_mul(t0z, lead_pows+k-1, pol); 
-  fmpz_addmul_ui(tz, t0z, k);
-  fmpz_neg(tz, tz);
+  fmpz_mul_si(tz, pol, -k);
+  for (i=1; i<k; i++) fmpz_fmms(tz, tz, lead, pol+i, pow_num+i);
 }
 
 /* The following is the key subroutine: given some initial coefficients, compute
@@ -569,7 +568,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
 
   /* Local working space, not maintained throughout */
 
-  int i, s;
+  int i, j, s;
   fmpz *w = f+3; // Length 3*k+3, passed to subroutines
 
   fmpz *t0z = w;
@@ -596,16 +595,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   */
 
   inline void change_by_sign(int update, int r, const fmpz_t val1_num, const fmpz_t val1_den, const fmpz_t val2_num) {
-    if (val2_num == NULL) {
-      if (r ^ force_squarefree) {
-        fmpz_cdiv_q(t2z, val1_num, f);
-        if (val1_den != NULL) fmpz_cdiv_q(t2z, t2z, val1_den);
-      } else {
-        fmpz_fdiv_q(t2z, val1_num, f);
-        if (val1_den != NULL) fmpz_fdiv_q(t2z, t2z, val1_den);
-      }
-    } else if (r ^ force_squarefree) fmpq_ceil_quad(t2z, val1_num, val1_den, val2_num, f, q);
-    else fmpq_floor_quad(t2z, val1_num, val1_den, val2_num, f, q);
+    fmpq_floor_ceil_quad(t2z, r ^ force_squarefree, val1_num, val1_den, val2_num, f, q);
     if (!r) { // change_upper
       if (force_squarefree) {
         if (!update || fmpz_cmp(t2z, upper) <= 0) fmpz_sub_ui(upper, t2z, 1);
@@ -628,20 +618,17 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   /* Update pow_num[k] using the Girard-Newton formula.
      This is the k-th power sum times c^k where c is the leading coefficient. */
 
-  if (k > 1) {
-    if (lead_pow == NULL) {
-      tz = pow_num + k;
-      _fmpz_vec_dot_general(tz, NULL, 1, pol+1, pow_num+1, 0, k-1);
-      fmpz_submul_ui(tz, pol, k);
-    } else update_power_sums(pow_num, pol, k, t0z, st_data->lead_pows);
-  } else fmpz_neg(pow_num+1, pol);
+  if (lead_pow == NULL) {
+    tz = pow_num + k;
+    _fmpz_vec_dot_general(tz, NULL, 1, pol+1, pow_num+1, 0, k-1);
+    fmpz_submul_ui(tz, pol, k);
+  } else update_power_sums(pow_num, pol, k);
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
   _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
   fmpz_set(t1z, st_data->ranges+k);
   if (q_is_square || k2 == 0) { // q^{k/2} is rational
-    if (lead_pow != NULL) fmpz_mul(t1z, lead_pow, t1z);
     fmpz_add(t2z, t0z, t1z);
     change_by_sign(modulus_is_0, 0, t2z, lead_pow, NULL);
     fmpz_sub(t2z, t0z, t1z);
@@ -673,55 +660,54 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
      In order to restrict to integer arithmetic, we skip this condition when
      k is odd and q is not a perfect square. */
 
-  for (i=1; i>=0; i--) {
-    if (!q_is_square && k2 == 1) continue; // Hankel matrix is not defined over Q
+  if (q_is_square || k2 == 0) // Hankel matrix is defined over Q
+    for (i=1; i>=0; i--) {
+      s = (k2 == 1) ? k : (i == 0) ? k + 1 : k - 1;
 
-    if (i == 1 && k2 == 0) {
-      s = k - 1;
-      fmpz_set(t0z, st_data->c0); // t0z := 4*lead^2*q
-    } else if (k2 == 1) {
-      s = k;
-      fmpz_set(t0z, st_data->c1); // t0z := 2*lead*sqrt(q)
-    } else s = k + 1;
+      tz = dy_data->hankel_dets + 2*k + i;
+      j = k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0);
+      if (q_is_square && i == 0 && k > 1 && (force_squarefree || fmpz_sgn(tz-3) > 0)) {
+        /* Use the recursive relationship between upper and lower Hankel determinants. */
+        if (k2 == 1) {
+           tza = t1z;
+           fmpz_mul_ui(tza, tz-2, 2);
+           fmpz_mul(tza, tza, st_data->c1);
+        } else tza = tz-2;
+        fmpz_fmms(t1z, tz-1, tza, tz-4, tz+1);
+        fmpz_divexact(tz, t1z, tz-3);
+        if (k2 == 1 && !j) { // Need the corner entry
+          tza = w;
+          fmpz_mul(tza+s-1, pow_num+s-1, st_data->c1);
+          fmpz_add(tza+s-1, tza+s-1, pow_num+s+1-k2);
+        } else tza = pow_num;
+      } else {
+        /* Compute the Hankel determinant by condensation (if possible) or directly. */
+        if (k2 == 1) {
+          tza = w;
+          _fmpz_vec_scalar_mul_fmpz(tza, pow_num, s, st_data->c1); // c1 := 2*lead*sqrt(q)
+          if (i == 0) _fmpz_vec_add(tza, tza, pow_num+1, s);
+          else _fmpz_vec_sub(tza, tza, pow_num+1, s);
+        } else if (i == 1) {
+          tza = w;
+          _fmpz_vec_scalar_mul_fmpz(tza, pow_num, s, st_data->c0); // c0 := 4*lead^2*q
+          _fmpz_vec_sub(tza, tza, pow_num+2, s);
+        } else tza = pow_num;
+        if (!hankel_determinant_condensation(tz, tza, s, w+k+1))
+          hankel_determinant_direct(tz, tza, s);
+      }
 
-    /* If applicable, use the recursive relationship between upper and lower Hankel determinants. */
-    tz = dy_data->hankel_dets + 2*k + i;
-    if (q_is_square && i == 0 && k > 1 && !fmpz_is_zero(tz-3)) {
-      if (k2 == 1) {
-         tza = t1z;
-         fmpz_mul_ui(tza, tz-2, 2);
-         fmpz_mul(tza, tza, st_data->c1);
-      } else tza = tz-2;
-      fmpz_fmms(t1z, tz-1, tza, tz-4, tz+1);
-      fmpz_divexact(tz, t1z, tz-3);
-      if (k2 == 1) {
-        tza = w;
-        fmpz_mul(tza+s-1, pow_num+s-1, t0z);
-        fmpz_add(tza+s-1, tza+s-1, pow_num+s+1-k2);
-      } else tza = pow_num;
-    } else {
-      /* Otherwise, compute the determinant by condensation (if possible) or directly. */
-      if (i == 1 || k2 == 1) {
-        tza = w;
-        _fmpz_vec_scalar_mul_fmpz(tza, pow_num, s, t0z);
-        if (k2 == 0) _fmpz_vec_sub(tza, tza, pow_num+2, s);
-        else if (i == 0) _fmpz_vec_add(tza, tza, pow_num+1, s);
-        else _fmpz_vec_sub(tza, tza, pow_num+1, s);
-      } else tza = pow_num;
-      if (!hankel_determinant_condensation(tz, tza, s, w+k+1))
-        hankel_determinant_direct(tz, tza, s);
+      /* Deduce a linear constraint. */
+      if (j) {
+        if (lead_pow != NULL) { tza = t1z; fmpz_mul(tza, tz-4, lead_pow); }
+        else tza = tz-4;
+        if (i == 1) { fmpz_neg(t0z, tz); tz = t0z; }
+      } else { // Argue that the corner entry is nonnegative
+        if (i == 1) { tz = t0z; fmpz_neg(tz, tza+s-1); }
+        else tz = tza+s-1;
+        tza = lead_pow;
+      }
+      change_by_sign(1, i, tz, tza, NULL);
     }
-
-    /* Deduce a linear constraint. */
-    if (k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0)) {
-      if (i == 1) fmpz_neg(t0z, tz); else fmpz_set(t0z, tz);
-      if (lead_pow == NULL) fmpz_set(t1z, tz-4); else fmpz_mul(t1z, tz-4, lead_pow);
-      change_by_sign(1, i, t0z, t1z, NULL);
-    } else { // Argue that the corner entry is nonnegative
-      if (i == 1) fmpz_neg(t0z, tza+s-1); else fmpz_set(t0z, tza+s-1);
-      change_by_sign(1, i, t0z, lead_pow, NULL);
-    }
-  }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
   /* Rolle criterion: the divided n-th derivative of pol has all roots real. */
