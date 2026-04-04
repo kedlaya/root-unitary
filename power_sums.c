@@ -79,6 +79,21 @@ void fmpq_floor_ceil_quad(fmpz_t res, int r, const fmpz_t a, const fmpz_t b, con
   fmpz_div_q(res, tmp, d, r);
 }
 
+void _fmpz_vec_fmms(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, int n) {
+  int i;
+  for (i=0; i<n; i++) fmpz_fmms(res+i, a+i, b+i, c+i, d+i);
+}
+
+void _fmpz_vec_scalar_fmma(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, const fmpz_t d, int n) {
+  int i;
+  for (i=0; i<n; i++) fmpz_fmma(res+i, a+i, b, c+i, d);
+}
+
+void _fmpz_vec_scalar_fmms(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, const fmpz_t d, int n) {
+  int i;
+  for (i=0; i<n; i++) fmpz_fmms(res+i, a+i, b, c+i, d);
+}
+
 /*
   Compute the Hankel determinant associated to the sequence seq of odd length n
   by a direct application of FLINT's determinant function.
@@ -116,16 +131,17 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
   fmpz *f1 = w+n1; // Length max(0,n-4)
   fmpz *t = (fmpz *)seq, *t1, *t2;
 
-  for (i=0; i<n1; i++) fmpz_fmms(f0+i, t+i, t+i+2, t+i+1, t+i+1);
+  _fmpz_vec_fmms(f0, t, t+2, t+1, t+1, n1);
   while (n1 > 1) {
-    for (i=0; i<n1-2; i++) {
+    n1 -= 2;
+    for (i=0; i<n1; i++) 
       if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
+    for (i=0; i<n1; i++) {
       t1 = f0+i+1;
       t2 = f1+i;
       fmpz_fmms(t2, t1-1, t1+1, t1, t1);
       fmpz_divexact(t2, t2, t+i+2);
     }
-    n1 -= 2;
     t = f0; f0 = f1; f1 = t;
   }
   fmpz_set(res, f0);
@@ -151,8 +167,8 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
                               int force_squarefree, const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
 
-  int sgn, i;
-  fmpz *t, *t1, *lead1, *lead2, *sub1, *sub2; // Scratch pointers
+  int sgn;
+  fmpz *t, *lead1, *lead2, *sub1, *sub2; // Scratch pointers
   fmpz *content = NULL; // No content to remove in the first iteration
 
   /* Put the updated constant term of poly in f0. */
@@ -200,20 +216,14 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
       fmpz_fmms(f0, f0, lead1, f1, sub2);
       fmpz_divexact(f0, f0, content);
       fmpz_fmma(f0, f0, lead1, f1, sub1);
-      for (i=1; i<n-1; i++) { // Inner loop
-        t = f0+i; t1 = f1+i;
-        fmpz_fmms(t, t, lead1, t1, sub2);
-        fmpz_divexact(t, t, content);
-        fmpz_sub(t, t, t1-1);
-        fmpz_fmma(t, t, lead1, t1, sub1);
-      }
+      _fmpz_vec_scalar_fmms(f0+1, f0+1, lead1, f1+1, sub2, n-2);
+      _fmpz_vec_scalar_divexact_fmpz(f0+1, f0+1, n-2, content);
+      _fmpz_vec_sub(f0+1, f0+1, f1, n-2);
+      _fmpz_vec_scalar_fmma(f0+1, f0+1, lead1, f1+1, sub1, n-2);
     } else { // No Ducos variation, direct Euclidean division
       fmpz_mul(f0, f0, lead1);
-      for (i=0; i<n-1; i++) {
-        t = f0+i; t1 = f1+i;
-        if (i>0) fmpz_fmms(t, poly+i, lead1, t1-1, lead2);
-        fmpz_fmms(t, t, lead1, t1, sub2);
-      }
+      _fmpz_vec_scalar_fmms(f0+1, poly+1, lead1, f1, lead2, n-2);
+      _fmpz_vec_scalar_fmms(f0, f0, lead1, f1, sub2, n-1);
     }
 
     /* If not forcing squarefree but sgn == 0, we win iff f0 = 0. */
@@ -673,16 +683,13 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
           fmpz_add(tza+s-1, tza+s-1, pow_num+s+1-k2);
         } else tza = pow_num;
       } else {
-        /* Compute the Hankel determinant by condensation (if possible) or directly. */
-        if (k2 == 1) {
+        /* Compute the Hankel determinant by condensation (if possible) or directly. 
+           Predefined: c1 == 2*lead*sqrt(q), c0 == 4*lead^2*q. */
+        if (i == 1 || k2 == 1) {
+          tza = w+s+1;
+          fmpz_set_si(tza, i == 0 ? 1 : -1);
+          _fmpz_vec_scalar_fmma(w, pow_num, k2 == 1 ? st_data->c1 : st_data->c0, pow_num+(k2 == 0 ? 2 : 1), tza, s);
           tza = w;
-          _fmpz_vec_scalar_mul_fmpz(tza, pow_num, s, st_data->c1); // c1 := 2*lead*sqrt(q)
-          if (i == 0) _fmpz_vec_add(tza, tza, pow_num+1, s);
-          else _fmpz_vec_sub(tza, tza, pow_num+1, s);
-        } else if (i == 1) {
-          tza = w;
-          _fmpz_vec_scalar_mul_fmpz(tza, pow_num, s, st_data->c0); // c0 := 4*lead^2*q
-          _fmpz_vec_sub(tza, tza, pow_num+2, s);
         } else tza = pow_num;
         if (!hankel_determinant_condensation(tz, tza, s, w+k+1))
           hankel_determinant_direct(tz, tza, s);

@@ -31,7 +31,7 @@ fn main() {
     let max_threads = 200; // Recommended value is n^2 where n = # of available cores
     eprintln!("Computing Weil polynomials with d = {d0}, q = {q}, lead = {lead} (threads: {max_threads})");
 
-    let max_steps = 1024; // Maximum steps in a single call to ps_next_pol
+    let max_steps = 10000; // Maximum (weighted) steps in a single call to ps_next_pol
     let mut steps = 1;
     let d = d0/2;
     let d_size = (d0+1) as usize;
@@ -108,7 +108,7 @@ fn main() {
         while let Some(tx) = dispatch.pop() {
             if steps < max_steps { steps += 1; } // Recalibrate steps after runup
             let data = reserve.pop(); // Do not unwrap! Pass as an option
-            let exhausted = data.is_none(); // Must do this before data is moved
+            let exhausted = data.is_none(); // Must check this before data is moved
             tx.send(data).unwrap();
             if exhausted { break; }
         }
@@ -121,7 +121,7 @@ fn main() {
     // Unblock the answer channel, then collect remaining answers.
     drop(tx_answers);
     ans_count += rx_answers.iter().map(|x| record(x)).count();
-    eprintln!("Number of polynomials found: {ans_count}");
+    eprintln!("Found {ans_count} Weil polynomials with d = {d0}, q = {q}, lead = {lead}");
 
     // Release allocated memory.
     unsafe {
