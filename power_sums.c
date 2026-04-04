@@ -79,10 +79,13 @@ void fmpq_floor_ceil_quad(fmpz_t res, int r, const fmpz_t a, const fmpz_t b, con
   fmpz_div_q(res, tmp, d, r);
 }
 
+/* Compute the vector res with res[i] = a[i]*b[i] - c[i]*d[i]. Aliasing allowed. */
 void _fmpz_vec_fmms(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, int n) {
   for (int i=0; i<n; i++) fmpz_fmms(res+i, a+i, b+i, c+i, d+i);
 }
 
+/* Compute the vector res with res[i] = (a[i]*b[i] - c[i]*d[i])/e[i] assuming that division is exact. 
+   Aliasing allowed. */
 void _fmpz_vec_fmms_divexact(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, const fmpz_t e, int n) {
   for (int i=0; i<n; i++) {
     fmpz_fmms(res+i, a+i, b+i, c+i, d+i);
@@ -90,19 +93,23 @@ void _fmpz_vec_fmms_divexact(fmpz *res, const fmpz *a, const fmpz *b, const fmpz
   }
 }
 
+/* Compute the vector res with res[i] = a[i]*b + c[i]*d. Aliasing not allowed between res and b or d. */
 void _fmpz_vec_scalar_fmma(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, const fmpz_t d, int n) {
   for (int i=0; i<n; i++) fmpz_fmma(res+i, a+i, b, c+i, d);
 }
 
+/* Compute the vector res with res[i] = a[i]*b + c[i]. Aliasing not allowed between res and b. */
 void _fmpz_vec_scalar_fmma_one(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, int n) {
   _fmpz_vec_scalar_mul_fmpz(res, a, n, b);
   _fmpz_vec_add(res, res, c, n);
 }
 
+/* Compute the vector res with res[i] = a[i]*b - c[i]*d. Aliasing not allowed between res and b or d. */
 void _fmpz_vec_scalar_fmms(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, const fmpz_t d, int n) {
   for (int i=0; i<n; i++) fmpz_fmms(res+i, a+i, b, c+i, d);
 }
 
+/* Compute the vector res with res[i] = a[i]*b - c[i]. Aliasing not allowed between res and b. */
 void _fmpz_vec_scalar_fmms_one(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, int n) {
   _fmpz_vec_scalar_mul_fmpz(res, a, n, b);
   _fmpz_vec_sub(res, res, c, n);
