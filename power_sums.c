@@ -28,10 +28,25 @@ int num_threads() {
 }
 
 #if DEBUG
+void fmpz_fmma_wrapper(fmpz_t f, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d) {
+  fmpz_fmma(f, a, b, c, d);
+}
+
+void fmpz_fmms_wrapper(fmpz_t f, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d) {
+  fmpz_fmms(f, a, b, c, d);
+}
+
+void _fmpz_vec_sub_wrapper(fmpz *res, const fmpz *vec1, const fmpz *vec2, slong len2) {
+  _fmpz_vec_sub(res, vec1, vec2, len2);
+}
+
 void _fmpz_vec_scalar_divexact_fmpz_wrapper(fmpz *vec1, const fmpz *vec2, slong len2, const fmpz_t x) {
   _fmpz_vec_scalar_divexact_fmpz(vec1, vec2, len2, x);
 }
 #else
+  #define fmpz_fmma_wrapper(f, a, b, c, d) fmpz_fmma(f, a, b, c, d)
+  #define fmpz_fmms_wrapper(f, a, b, c, d) fmpz_fmms(f, a, b, c, d)
+  #define _fmpz_vec_sub_wrapper(res, vec1, vec2, len2) _fmpz_vec_sub(res, vec1, vec2, len2)
   #define _fmpz_vec_scalar_divexact_fmpz_wrapper(vec1, vec2, len2, x) _fmpz_vec_scalar_divexact_fmpz(vec1, vec2, len2, x)
 #endif
 
@@ -194,7 +209,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
   if (n <= 2) return(1);  // Constant or linear polynomial
 
   int sgn;
-  fmpz *t, *lead1, *lead2, *sub2; // Scratch pointers
+  fmpz *t, *lead1, *lead2; // Scratch pointers
   fmpz *content = NULL; // No content to remove in the first iteration
 
   /* Put the updated constant term of poly in f0. */
@@ -213,18 +228,18 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
 
     t = f0+n-1; lead1 = f1+n;
     if (content != NULL) { // Ducos variation
-      fmpz_fmms(t, t, lead1, lead1-1, t+1);
+      fmpz_fmms_wrapper(t, t, lead1, lead1-1, t+1);
       fmpz_divexact(t, t, content);
       if (n > 1) fmpz_sub(t, t, lead1-2);
-      fmpz_fmma(t, t, lead1, lead1-1, lead1-1);
+      fmpz_fmma_wrapper(t, t, lead1, lead1-1, lead1-1);
     } else if (n > 1) { // No Ducos variation
       lead2 = (fmpz *)poly+n+1;
-      fmpz_fmms(t+1, lead2-1, lead1, lead1-1, lead2);
-      fmpz_fmms(t, lead2-2, lead1, lead1-2, lead2);
-      fmpz_fmms(t, t, lead1, lead1-1, t+1);
+      fmpz_fmms_wrapper(t+1, lead2-1, lead1, lead1-1, lead2);
+      fmpz_fmms_wrapper(t, lead2-2, lead1, lead1-2, lead2);
+      fmpz_fmms_wrapper(t, t, lead1, lead1-1, t+1);
     } else { // Quadratic case, compute discriminant
       fmpz_mul_ui(t, t, 4);
-      fmpz_fmms(t, t, poly+2, poly+1, poly+1);
+      fmpz_fmms_wrapper(t, t, poly+2, poly+1, poly+1);
     }
 
     /* If we miss any one sign change, we cannot have enough. */
@@ -236,16 +251,15 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
 
     /* Set f0 to the pseudoremainder of poly (in the first iteration) or f0 (otherwise)
        modulo f1, leaving f0[n], f0[n+1] intact as well as f0[n-1] (except to remove content). */
-    sub2 = f0+n;
     if (content != NULL) { // Ducos variation
-      _fmpz_vec_scalar_fmms(f0, f0, lead1, f1, sub2, n-1);
+      _fmpz_vec_scalar_fmms(f0, f0, lead1, f1, f0+n, n-1);
       _fmpz_vec_scalar_divexact_fmpz_wrapper(f0, f0, n-1, content);
-      _fmpz_vec_sub(f0+1, f0+1, f1, n-2);
+      _fmpz_vec_sub_wrapper(f0+1, f0+1, f1, n-2);
       _fmpz_vec_scalar_fmma(f0, f0, lead1, f1, f1+n-1, n-1);
     } else { // No Ducos variation, direct Euclidean division
       fmpz_mul(f0, f0, lead1);
       _fmpz_vec_scalar_fmms(f0+1, poly+1, lead1, f1, lead2, n-2);
-      _fmpz_vec_scalar_fmms(f0, f0, lead1, f1, sub2, n-1);
+      _fmpz_vec_scalar_fmms(f0, f0, lead1, f1, f0+n, n-1);
     }
 
     /* If not forcing squarefree but sgn == 0, we win iff f0 = 0. */
@@ -560,7 +574,7 @@ void update_power_sums(fmpz *pow_num, fmpz *pol, int k) {
     fmpz_submul_ui(tz, pol, k);
   } else {
     fmpz_mul_si(tz, pol, -k);
-    for (i=1; i<k; i++) fmpz_fmms(tz, tz, lead, pol+i, pow_num+i);
+    for (i=1; i<k; i++) fmpz_fmms_wrapper(tz, tz, lead, pol+i, pow_num+i);
   }
 }
 
@@ -697,7 +711,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
            fmpz_mul_ui(tza, tz-2, 2);
            fmpz_mul(tza, tza, st_data->c1);
         } else tza = tz-2;
-        fmpz_fmms(t1z, tz-1, tza, tz-4, tz+1);
+        fmpz_fmms_wrapper(t1z, tz-1, tza, tz-4, tz+1);
         fmpz_divexact(tz, t1z, tz-3);
         if (k2 == 1 && !j) { // Need the corner entry for a linear constraint
           tza = w;
