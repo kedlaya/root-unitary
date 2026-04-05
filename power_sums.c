@@ -17,6 +17,8 @@
 #include <stdlib.h>
 #include "power_sums.h"
 
+#define DEBUG 1
+
 /* Check for OpenMP at runtime. */
 int num_threads() {
   #if defined(_OPENMP)
@@ -24,6 +26,14 @@ int num_threads() {
   #endif
   return(1);
 }
+
+#if DEBUG
+void _fmpz_vec_scalar_divexact_fmpz_wrapper(fmpz *vec1, const fmpz *vec2, slong len2, const fmpz_t x) {
+  _fmpz_vec_scalar_divexact_fmpz(vec1, vec2, len2, x);
+}
+#else
+  #define _fmpz_vec_scalar_divexact_fmpz_wrapper(vec1, vec2, len2, x) _fmpz_vec_scalar_divexact_fmpz(vec1, vec2, len2, x)
+#endif
 
 /*****
   Arithmetic functions
@@ -85,7 +95,7 @@ void _fmpz_vec_fmms(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, cons
 }
 
 /* Compute the vector res with res[i] = (a[i]*b[i] - c[i]*d[i])/e[i] assuming that division is exact. 
-   Aliasing allowed. */
+   Aliasing allowed except between res and e. */
 void _fmpz_vec_fmms_divexact(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, const fmpz_t e, int n) {
   for (int i=0; i<n; i++) {
     fmpz_fmms(res+i, a+i, b+i, c+i, d+i);
@@ -136,7 +146,7 @@ void hankel_determinant_direct(fmpz_t res, const fmpz *seq, int n) {
 
 /*
   Attempt to compute the Hankel determinant associated to the sequence seq of odd length n
-  using Dodgson . Returns 1 for success, 0 for failure.
+  using Dodgson condensation. Returns 1 for success, 0 for failure.
 
   This function assumes that {w, 2*n-5} is scratch space.
 */
@@ -184,7 +194,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
   if (n <= 2) return(1);  // Constant or linear polynomial
 
   int sgn;
-  fmpz *t, *lead1, *lead2, *sub1, *sub2; // Scratch pointers
+  fmpz *t, *lead1, *lead2, *sub2; // Scratch pointers
   fmpz *content = NULL; // No content to remove in the first iteration
 
   /* Put the updated constant term of poly in f0. */
@@ -205,7 +215,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
     if (content != NULL) { // Ducos variation
       fmpz_fmms(t, t, lead1, lead1-1, t+1);
       fmpz_divexact(t, t, content);
-      if (n>1) fmpz_sub(t, t, lead1-2);
+      if (n > 1) fmpz_sub(t, t, lead1-2);
       fmpz_fmma(t, t, lead1, lead1-1, lead1-1);
     } else if (n > 1) { // No Ducos variation
       lead2 = (fmpz *)poly+n+1;
@@ -228,14 +238,10 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
        modulo f1, leaving f0[n], f0[n+1] intact as well as f0[n-1] (except to remove content). */
     sub2 = f0+n;
     if (content != NULL) { // Ducos variation
-      sub1 = f1+n-1;
-      fmpz_fmms(f0, f0, lead1, f1, sub2);
-      fmpz_divexact(f0, f0, content);
-      fmpz_fmma(f0, f0, lead1, f1, sub1);
-      _fmpz_vec_scalar_fmms(f0+1, f0+1, lead1, f1+1, sub2, n-2);
-      _fmpz_vec_scalar_divexact_fmpz(f0+1, f0+1, n-2, content);
+      _fmpz_vec_scalar_fmms(f0, f0, lead1, f1, sub2, n-1);
+      _fmpz_vec_scalar_divexact_fmpz_wrapper(f0, f0, n-1, content);
       _fmpz_vec_sub(f0+1, f0+1, f1, n-2);
-      _fmpz_vec_scalar_fmma(f0+1, f0+1, lead1, f1+1, sub1, n-2);
+      _fmpz_vec_scalar_fmma(f0, f0, lead1, f1, f1+n-1, n-1);
     } else { // No Ducos variation, direct Euclidean division
       fmpz_mul(f0, f0, lead1);
       _fmpz_vec_scalar_fmms(f0+1, poly+1, lead1, f1, lead2, n-2);
@@ -246,7 +252,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
     if (!sgn && !force_squarefree) return (_fmpz_vec_is_zero(f0, n-1));
 
     /* Divide f0 by content. */
-    if (content != NULL) _fmpz_vec_scalar_divexact_fmpz(f0, f0, n, content);
+    if (content != NULL) _fmpz_vec_scalar_divexact_fmpz_wrapper(f0, f0, n, content);
     
     /* Update content for the next iteration. */
     content = f1+n;
@@ -693,7 +699,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
         } else tza = tz-2;
         fmpz_fmms(t1z, tz-1, tza, tz-4, tz+1);
         fmpz_divexact(tz, t1z, tz-3);
-        if (k2 == 1 && !j) { // Need the corner entry
+        if (k2 == 1 && !j) { // Need the corner entry for a linear constraint
           tza = w;
           fmpz_mul(tza+s-1, pow_num+s-1, st_data->c1);
           fmpz_add(tza+s-1, tza+s-1, pow_num+s+1-k2);
