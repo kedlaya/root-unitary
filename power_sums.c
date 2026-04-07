@@ -36,6 +36,10 @@ void fmpz_fmms_wrapper(fmpz_t f, const fmpz_t a, const fmpz_t b, const fmpz_t c,
   fmpz_fmms(f, a, b, c, d);
 }
 
+void fmpz_divexact_wrapper(fmpz_t f, const fmpz_t g, const fmpz_t h) {
+   fmpz_divexact(f, g, h);
+}
+
 void _fmpz_vec_sub_wrapper(fmpz *res, const fmpz *vec1, const fmpz *vec2, slong len2) {
   _fmpz_vec_sub(res, vec1, vec2, len2);
 }
@@ -46,6 +50,7 @@ void _fmpz_vec_scalar_divexact_fmpz_wrapper(fmpz *vec1, const fmpz *vec2, slong 
 #else
   #define fmpz_fmma_wrapper(f, a, b, c, d) fmpz_fmma(f, a, b, c, d)
   #define fmpz_fmms_wrapper(f, a, b, c, d) fmpz_fmms(f, a, b, c, d)
+  #define fmpz_divexact_wrapper(f, g, h) fmpz_divexact(f, g, h)
   #define _fmpz_vec_sub_wrapper(res, vec1, vec2, len2) _fmpz_vec_sub(res, vec1, vec2, len2)
   #define _fmpz_vec_scalar_divexact_fmpz_wrapper(vec1, vec2, len2, x) _fmpz_vec_scalar_divexact_fmpz(vec1, vec2, len2, x)
 #endif
@@ -204,75 +209,87 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
     Based on code by Sebastian Pancratz from the FLINT repository (plus the Ducos variation).
 */
 
+#define sgn_criterion (sgn == 1 || (force_squarefree && sgn == 0))
 int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
                               int force_squarefree, const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
 
-  int sgn;
-  fmpz *t, *lead1, *lead2; // Scratch pointers
-  fmpz *content = NULL; // No content to remove in the first iteration
-
-  /* Put the updated constant term of poly in f0. */
-  if (b == NULL) fmpz_add(f0, a, poly); // Treat b as 1
+  /* Put the updated constant term of poly in f1. */
+  if (b == NULL) fmpz_add(f1, a, poly); // Treat b as 1
   else {
-    fmpz_mul(f0, a, b);
-    fmpz_add(f0, f0, poly);
+    fmpz_mul(f1, a, b);
+    fmpz_add(f1, f1, poly);
   }
-  /* Set f1 := deriv(poly). */
-  _fmpz_poly_derivative(f1, poly, n);
-  n -= 2;
 
-  while (1) {
+  int sgn;
+  if (n == 3) { // Quadratic case, compute discriminant
+    fmpz_mul_ui(f1, f1, 4);
+    fmpz_fmms_wrapper(f1, f1, poly+2, poly+1, poly+1);
+    sgn = fmpz_sgn(f1);
+    return(!sgn_criterion);
+  }
+
+  fmpz *t, *lead1, *lead2, *content; // Scratch pointers
+
+  /* Set f0 := deriv(poly). */
+  _fmpz_poly_derivative(f0, poly, n);
+
+  /* At this point deg(poly) = n-1, deg(f1) = n-2.
+     Compute the next leading coefficient (up to a positive factor).
+     Note that there is no Ducos variation at this step. */
+  
+  t = f1+n-3; lead1 = f0+n-2; lead2 = (fmpz *)poly+n-1;
+  fmpz_fmms_wrapper(t+1, lead2-1, lead1, lead1-1, lead2);
+  fmpz_fmms_wrapper(t, lead2-2, lead1, lead1-2, lead2);
+  fmpz_fmms_wrapper(t, t, lead1, lead1-1, t+1);
+
+  /* If we miss any one sign change, we cannot have enough. */
+  sgn = fmpz_sgn(t);
+  if (sgn_criterion) return(0);
+
+  /* Set f1 to the pseudoremainder of poly (in the first iteration) or f1 (otherwise)
+     modulo f0, leaving f1[n-2], f1[n-1] intact as well as f1[n-3]. 
+     Again there is no Ducos variation at this step. */
+
+  fmpz_mul(f1, f1, lead1);
+  _fmpz_vec_scalar_fmms(f1+1, poly+1, lead1, f0, lead2, n-4);
+  _fmpz_vec_scalar_fmms(f1, f1, lead1, f0, t+1, n-3);
+
+  /* If not forcing squarefree but sgn == 0, we win iff f1 = 0. */
+  if (!sgn && !force_squarefree) return (_fmpz_vec_is_zero(f1, n-3));
+
+  for (n -= 3; ; n--) {
     /* At this point deg(f0 or poly) = n+1, deg(f1) = n.
        Compute the next leading coefficient (up to a positive factor). */
+    content = lead1; t = f0+n-1; lead1 = f1+n;
+    fmpz_fmms_wrapper(t, t, lead1, lead1-1, t+1);
+    fmpz_divexact_wrapper(t, t, content);
 
-    t = f0+n-1; lead1 = f1+n;
-    if (content != NULL) { // Ducos variation
-      fmpz_fmms_wrapper(t, t, lead1, lead1-1, t+1);
-      fmpz_divexact(t, t, content);
-      if (n > 1) fmpz_sub(t, t, lead1-2);
+    /* If the pseudoremainder is a scalar, it is nonzero and we win. */
+    if (n == 1) {
       fmpz_fmma_wrapper(t, t, lead1, lead1-1, lead1-1);
-    } else if (n > 1) { // No Ducos variation
-      lead2 = (fmpz *)poly+n+1;
-      fmpz_fmms_wrapper(t+1, lead2-1, lead1, lead1-1, lead2);
-      fmpz_fmms_wrapper(t, lead2-2, lead1, lead1-2, lead2);
-      fmpz_fmms_wrapper(t, t, lead1, lead1-1, t+1);
-    } else { // Quadratic case, compute discriminant
-      fmpz_mul_ui(t, t, 4);
-      fmpz_fmms_wrapper(t, t, poly+2, poly+1, poly+1);
+      sgn = fmpz_sgn(t);
+      return (!sgn_criterion);
     }
+    fmpz_sub(t, t, lead1-2);
+    fmpz_fmma_wrapper(t, t, lead1, lead1-1, lead1-1);
 
     /* If we miss any one sign change, we cannot have enough. */
     sgn = fmpz_sgn(t);
-    if (sgn == 1 || (force_squarefree && sgn == 0)) return(0);
-
-    /* If the pseudoremainder is a scalar, it is nonzero and we win. */
-    if (n == 1) return(1);
+    if (sgn_criterion) return(0);
 
     /* Set f0 to the pseudoremainder of poly (in the first iteration) or f0 (otherwise)
        modulo f1, leaving f0[n], f0[n+1] intact as well as f0[n-1] (except to remove content). */
-    if (content != NULL) { // Ducos variation
-      _fmpz_vec_scalar_fmms(f0, f0, lead1, f1, f0+n, n-1);
-      _fmpz_vec_scalar_divexact_fmpz_wrapper(f0, f0, n-1, content);
-      _fmpz_vec_sub_wrapper(f0+1, f0+1, f1, n-2);
-      _fmpz_vec_scalar_fmma(f0, f0, lead1, f1, f1+n-1, n-1);
-    } else { // No Ducos variation, direct Euclidean division
-      fmpz_mul(f0, f0, lead1);
-      _fmpz_vec_scalar_fmms(f0+1, poly+1, lead1, f1, lead2, n-2);
-      _fmpz_vec_scalar_fmms(f0, f0, lead1, f1, f0+n, n-1);
-    }
+    _fmpz_vec_scalar_fmms(f0, f0, lead1, f1, t+1, n-1);
+    _fmpz_vec_scalar_divexact_fmpz_wrapper(f0, f0, n-1, content);
+    _fmpz_vec_sub_wrapper(f0+1, f0+1, f1, n-2);
+    _fmpz_vec_scalar_fmma(f0, f0, lead1, f1, lead1-1, n-1);
 
     /* If not forcing squarefree but sgn == 0, we win iff f0 = 0. */
     if (!sgn && !force_squarefree) return (_fmpz_vec_is_zero(f0, n-1));
 
     /* Divide f0 by content. */
-    if (content != NULL) _fmpz_vec_scalar_divexact_fmpz_wrapper(f0, f0, n, content);
-    
-    /* Update content for the next iteration. */
-    content = f1+n;
-
-    /* Decrement n. */
-    n--;
+    _fmpz_vec_scalar_divexact_fmpz_wrapper(f0, f0, n, content);
 
     /* Swap f0 with f1 at the pointer level. */
     t = f0; f0 = f1; f1 = t;
