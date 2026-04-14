@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
   temp_array = _fmpz_vec_init(d+1);
   fmpz_zero(temp_array+d);
   for (i=1; i<=d; i++) fmpz_one(temp_array+i);
-  st_data = ps_static_init(d, temp_q, temp_lead, temp_array, -1, 0);
+  st_data = ps_static_init(d, temp_q, temp_lead, temp_array, 0, NULL, -1, 0);
   fmpz_clear(temp_q);
 
   _fmpz_vec_zero(temp_array, d);

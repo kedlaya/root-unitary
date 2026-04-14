@@ -16,12 +16,15 @@ pub struct StaticData {
     pub q_is_1: c_int,
     pub q_is_square: c_int,
     pub lead_is_1: c_int,    
+    pub num_constraints: c_int,
+    pub constraint_lens: *const c_int,
     pub modlist: *const c_long,
     pub binom_mat: *const c_long,
     pub sum_mats: *const c_long,
     pub eval_pm2_mats: *const c_long,
     pub ranges: *const c_long,
     pub lead_pows: *const c_long,
+    pub constraints: *const c_long,
     pub pol_to_sym: fmpz_mat_t
 }
 
@@ -47,6 +50,8 @@ unsafe extern "C" {
         q: *const c_long,
         lead: *const c_long,
         modlist: *const c_long,
+        num_constraints: c_int,
+        constraints: *const c_long,
         node_limit: c_long,
         force_squarefree: c_int,
     ) -> *const StaticData;

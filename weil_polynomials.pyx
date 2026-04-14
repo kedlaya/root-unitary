@@ -86,7 +86,7 @@ cdef extern from "power_sums.c":
     int num_threads()
     int is_mpz(fmpz f)
 
-    ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const fmpz *modlist, long node_limit, int force_squarefree)
+    ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const fmpz *modlist, int num_constraints, const fmpz *constraints, long node_limit, int force_squarefree)
     ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist)
     void ps_static_clear(ps_static_data_t *st_data)
     void ps_dynamic_clear(ps_dynamic_data_t *dy_data)
@@ -153,7 +153,7 @@ cdef class dfs_manager:
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(modlist[i]).value)
         self.st_data = ps_static_init(d, temp_q, temp_lead,
-                                         temp_array, node_limit, force_squarefree)
+                                         temp_array, 0, NULL, node_limit, force_squarefree)
 
         # Initialize processes, but assign work to only one process.
         # In parallel mode, other processes will get initialized later via work sharing.

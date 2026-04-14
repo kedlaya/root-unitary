@@ -41,21 +41,21 @@ fn main() {
 
     // Initialize static data used by the C code.
     let null = ptr::null_mut();
-    let st_data = StaticPtr{ptr: unsafe {ps_static_init(d32, q as *const c_long, lead as *const c_long, null, -1, 0) }};
+    let st_data = StaticPtr{ptr: unsafe {ps_static_init(d32, q as *const c_long, lead as *const c_long, null, 0, null, -1, 0) }};
     
     // Construct deques for loaded work packets, empty packets, and Senders to dispatch work to threads.
     let mut work: Vec<DynamicPtr> = Vec::with_capacity(max_threads);
     let mut reserve: Vec<DynamicPtr> = Vec::with_capacity(max_threads);
     let mut dispatch: Vec<Sender<Option<DynamicPtr>>> = Vec::with_capacity(max_threads);
 
-    let layout = Layout::array::<c_long>((d+1) as usize).unwrap();
     unsafe{
+        let layout = Layout::array::<c_long>((d+1) as usize).unwrap();
         let ptr = alloc_zeroed(layout) as *mut c_long;
         *ptr.add(d as usize) = *lead;
         work.push(DynamicPtr{ptr: ps_dynamic_init(d32, ptr), flag: 1});
         dealloc(ptr as *mut u8, layout);
+        for _ in 1..max_threads { reserve.push(DynamicPtr{ptr: ps_dynamic_init(d32, null), flag: 0}); }
     }
-    for _ in 1..max_threads { reserve.push(DynamicPtr{ptr: unsafe { ps_dynamic_init(d32, null) }, flag: 0}); }
 
     // Construct channel to return answers.
     let (tx_answers, rx_answers) = channel::<Vec<c_long>>();

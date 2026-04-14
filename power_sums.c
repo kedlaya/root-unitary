@@ -302,6 +302,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
 
 /* Static memory allocation and initialization. */
 ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const fmpz *modlist,
+                                 int num_constraints, const fmpz *constraints,
                                  long node_limit, int force_squarefree) {
   int i, j;
   fmpz *k0, *pol;
@@ -400,6 +401,18 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
     for (i=0; i<=d; i++) fmpz_pow_ui(st_data->lead_pows+i, lead, i);
   }
 
+  /* Linear conditions on asymmetrized coefficients. */
+  st_data->num_constraints = num_constraints;
+  if (num_constraints) {
+    st_data->constraints = _fmpz_vec_init((d+1) * num_constraints);
+    _fmpz_vec_set(st_data->constraints, constraints, (d+1)*num_constraints);
+    st_data->constraint_lens = malloc(sizeof(int *) * num_constraints);
+    for (i=0; i<num_constraints; i++) {
+      for (j=d; j>0 && fmpz_is_zero(constraints+(d+1)*i+j); j--) {}
+      if (j > 0) st_data->constraint_lens[i] = j;
+    }
+  }
+
   return(st_data);
 }
 
@@ -450,6 +463,10 @@ void ps_static_clear(ps_static_data_t *st_data) {
   _fmpz_vec_clear(st_data->ranges, d+1);
   fmpz_mat_clear(st_data->pol_to_sym);
   if (!st_data->lead_is_1) _fmpz_vec_clear(st_data->lead_pows, d+1);
+  if (st_data->num_constraints) {
+    free(st_data->constraint_lens);
+    _fmpz_vec_clear(st_data->constraints, (d+1)*st_data->num_constraints);
+  }
   free(st_data);
 }
 
@@ -693,6 +710,19 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     fmpz_neg(t1z, t1z);
     change_by_sign(modulus_is_0, 1, t0z, lead_pow, t1z);
   }
+
+  /* Impose optional linear constraints. */
+  for (i=0; i<st_data->num_constraints; i++)
+    if (st_data->constraint_lens[i] == k) {
+      _fmpz_vec_dot(t0z, st_data->constraints+(d+1)*i, pow_num, k+1);
+      tz = st_data->constraints+(d+1)*i+k;
+      j = fmpz_sgn(st_data->constraints+(d+1)*i+k);
+      if (j<0) {
+        fmpz_neg(t0z, t0z);
+        fmpz_neg(t1z, tz);
+        change_by_sign(1, 1, t0z, t1z, NULL);
+      } else change_by_sign(1, 0, t0z, tz, NULL);
+    }
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
      have the correct signs. */
