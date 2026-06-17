@@ -109,7 +109,7 @@ cdef class dfs_manager:
     cdef ps_dynamic_data_t **dy_data_buf
     cdef Parent ring
 
-    def __cinit__(self, int d, q, coefflist, modlist,
+    def __cinit__(self, int d, q, coefflist, modlist, constraints,
                   long node_limit, int parallel, int force_squarefree, Parent ring):
         """
         Perform required C-level initialization (e.g., memory allocation).
@@ -129,7 +129,8 @@ cdef class dfs_manager:
         cdef fmpz_t temp_lead
         cdef fmpz_t temp_q
         cdef fmpz *temp_array
-        cdef int i
+        cdef fmpz *temp_constraints
+        cdef int i, j, num_constraints
         cdef Integer np
 
         self.d = d
@@ -152,8 +153,14 @@ cdef class dfs_manager:
         temp_array = _fmpz_vec_init(d+1)
         for i in range(d+1):
             fmpz_set_mpz(temp_array+i, Integer(modlist[i]).value)
+        num_constraints = len(constraints)
+        temp_constraints = _fmpz_vec_init((d+1) * num_constraints)
+        for i in range(num_constraints):
+            for j in min(d+1, len(constraints[i])):
+                fmpz_set_mpz(temp_constraints+(d+1)*i+j, Integer(constraints[i][j]).value)
         self.st_data = ps_static_init(d, temp_q, temp_lead,
-                                         temp_array, 0, NULL, node_limit, force_squarefree)
+                                         temp_array, num_constraints, temp_constraints, 
+                                         node_limit, force_squarefree)
 
         # Initialize processes, but assign work to only one process.
         # In parallel mode, other processes will get initialized later via work sharing.
@@ -166,6 +173,7 @@ cdef class dfs_manager:
         fmpz_clear(temp_lead)
         fmpz_clear(temp_q)
         _fmpz_vec_clear(temp_array, d+1)
+        _fmpz_vec_clear(temp_constraints, (d+1) * num_constraints)
 
     def __dealloc__(self):
         """
@@ -277,7 +285,9 @@ class WeilPolynomials_iter():
         sage: next(it)
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
     """
-    def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree, polring=None):
+    def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree, 
+        trace_lower={}, trace_upper={}, 
+        polring=None):
         r"""
         Create an iterator for Weil polynomials.
 
@@ -361,7 +371,12 @@ class WeilPolynomials_iter():
         if node_limit is None:
             node_limit = -1
         force_squarefree = Integer(squarefree)
-        self.process = dfs_manager(d2, q, coefflist, modlist, node_limit,
+        constraints = []
+        for i, j in trace_lower.items(): # To be added
+            pass
+        for i, j in trace_upper.items(): # To be added
+            pass
+        self.process = dfs_manager(d2, q, coefflist, modlist, constraints, node_limit,
                                    parallel, force_squarefree, self.pol_internal)
         self.q = q
         self.squarefree = squarefree
@@ -600,7 +615,7 @@ class WeilPolynomials():
         sage: list(WeilPolynomials(0, 1, sign=-1))
         []
     """
-    def __init__(self, d, q, sign=1, lead=1, node_limit=None, parallel=False, squarefree=False, polring=None):
+    def __init__(self, d, q, sign=1, lead=1, node_limit=None, parallel=False, squarefree=False, trace_lower={}, trace_upper={}, polring=None):
         r"""
         Initialize this iterable.
 
@@ -615,7 +630,7 @@ class WeilPolynomials():
         """
         if parallel and num_threads() == 1:
             raise RuntimeError("Parallel execution not supported")
-        self.data = (d, q, sign, lead, node_limit, parallel, squarefree, polring)
+        self.data = (d, q, sign, lead, node_limit, parallel, squarefree, trace_lower, trace_upper, polring)
 
     def __iter__(self):
         r"""

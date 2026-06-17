@@ -1,6 +1,6 @@
 /*
   Low-level code to exhaust over trees of Weil polynomials.
-  This code does not implement parallelism; see the Cython wrapper.
+  For examples of parallel execution, see the Cython, C, and Rust wrappers.
 
 #*****************************************************************************
 #       Copyright (C) 2019-2026 Kiran S. Kedlaya <kskedl@gmail.com>
@@ -15,9 +15,8 @@
 */
 
 #include <stdlib.h>
+#include "flint-utils.c"
 #include "power_sums.h"
-
-#define DEBUG 1
 
 /* Check for OpenMP at runtime. */
 int num_threads() {
@@ -25,275 +24,6 @@ int num_threads() {
   return omp_get_max_threads();
   #endif
   return(1);
-}
-
-#if DEBUG
-void fmpz_fmma_wrapper(fmpz_t f, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d) {
-  fmpz_fmma(f, a, b, c, d);
-}
-
-void fmpz_fmms_wrapper(fmpz_t f, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d) {
-  fmpz_fmms(f, a, b, c, d);
-}
-
-void fmpz_divexact_wrapper(fmpz_t f, const fmpz_t g, const fmpz_t h) {
-   fmpz_divexact(f, g, h);
-}
-
-void _fmpz_vec_sub_wrapper(fmpz *res, const fmpz *vec1, const fmpz *vec2, slong len2) {
-  _fmpz_vec_sub(res, vec1, vec2, len2);
-}
-
-void _fmpz_vec_scalar_divexact_fmpz_wrapper(fmpz *vec1, const fmpz *vec2, slong len2, const fmpz_t x) {
-  _fmpz_vec_scalar_divexact_fmpz(vec1, vec2, len2, x);
-}
-#else
-  #define fmpz_fmma_wrapper(f, a, b, c, d) fmpz_fmma(f, a, b, c, d)
-  #define fmpz_fmms_wrapper(f, a, b, c, d) fmpz_fmms(f, a, b, c, d)
-  #define fmpz_divexact_wrapper(f, g, h) fmpz_divexact(f, g, h)
-  #define _fmpz_vec_sub_wrapper(res, vec1, vec2, len2) _fmpz_vec_sub(res, vec1, vec2, len2)
-  #define _fmpz_vec_scalar_divexact_fmpz_wrapper(vec1, vec2, len2, x) _fmpz_vec_scalar_divexact_fmpz(vec1, vec2, len2, x)
-#endif
-
-/*****
-  Arithmetic functions
-
-  As with FLINT library functions, aliasing is allowed unless specified.
-*****/
-
-inline int is_mpz(fmpz f) {
-  return(COEFF_IS_MPZ(f));
-}
-
-/* Set res to floor((a+b)/2). */
-void fmpz_fmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
-  fmpz_add(res, a, b);
-  fmpz_fdiv_q_ui(res, res, 2);
-}
-
-/* Set res to ceil((a+b)/2). */
-void fmpz_cmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
-  fmpz_add(res, a, b);
-  fmpz_cdiv_q_ui(res, res, 2);
-}
-
-/* Set res to ceil(sqrt(a)). For the floor, use FLINT's built-in fmpz_sqrt instead. */
-void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
-  int s = fmpz_root(res, a, 2);
-  if (!s) fmpz_add_ui(res, res, 1);
-}
-
-/* Set res to floor(a/b) if r == 0 and ceil(r/b) if r == 1. Aliasing allowed. */
-void fmpz_div_q(fmpz_t res, const fmpz_t a, const fmpz_t b, int r) {
-  if (r) fmpz_cdiv_q(res, a, b);
-  else fmpz_fdiv_q(res, a, b);
-}
-
-/* Set res to the floor (if r==0) or ceiling (if r==1) of (a/b + c sqrt(q))/d). 
-   No aliasing allowed. b and d must be positive.
-   If b is NULL we interpret it as 1. If c is NULL we interpret it as 0. */
-void fmpq_floor_ceil_quad(fmpz_t res, int r, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
-  const fmpz *tmp;
-
-  if (c != NULL) {
-    int s = fmpz_sgn(c) > 0;
-    fmpz_mul(res, c, c);
-    fmpz_mul(res, res, q);
-    if (r ^ s) fmpz_sqrt(res, res); else fmpz_sqrt_c(res, res);
-    if (!s) fmpz_neg(res, res);
-    if (b != NULL) fmpz_mul(res, res, b);
-    fmpz_add(res, res, a);
-    tmp = res;
-  } else tmp = a;
-  if (b != NULL) { fmpz_div_q(res, tmp, b, r); tmp = res; }
-  fmpz_div_q(res, tmp, d, r);
-}
-
-/* Compute the vector res with res[i] = a[i]*b[i] - c[i]*d[i]. Aliasing allowed. */
-void _fmpz_vec_fmms(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, int n) {
-  for (int i=0; i<n; i++) fmpz_fmms(res+i, a+i, b+i, c+i, d+i);
-}
-
-/* Compute the vector res with res[i] = (a[i]*b[i] - c[i]*d[i])/e[i] assuming that division is exact. 
-   Aliasing allowed except between res and e. */
-void _fmpz_vec_fmms_divexact(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, const fmpz_t e, int n) {
-  for (int i=0; i<n; i++) {
-    fmpz_fmms(res+i, a+i, b+i, c+i, d+i);
-    fmpz_divexact(res+i, res+i, e+i);
-  }
-}
-
-/* Compute the vector res with res[i] = a[i]*b + c[i]*d. Aliasing not allowed between res and b or d. */
-void _fmpz_vec_scalar_fmma(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, const fmpz_t d, int n) {
-  for (int i=0; i<n; i++) fmpz_fmma(res+i, a+i, b, c+i, d);
-}
-
-/* Compute the vector res with res[i] = a[i]*b + c[i]. Aliasing not allowed between res and b. */
-void _fmpz_vec_scalar_fmma_one(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, int n) {
-  _fmpz_vec_scalar_mul_fmpz(res, a, n, b);
-  _fmpz_vec_add(res, res, c, n);
-}
-
-/* Compute the vector res with res[i] = a[i]*b - c[i]*d. Aliasing not allowed between res and b or d. */
-void _fmpz_vec_scalar_fmms(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, const fmpz_t d, int n) {
-  for (int i=0; i<n; i++) fmpz_fmms(res+i, a+i, b, c+i, d);
-}
-
-/* Compute the vector res with res[i] = a[i]*b - c[i]. Aliasing not allowed between res and b. */
-void _fmpz_vec_scalar_fmms_one(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, int n) {
-  _fmpz_vec_scalar_mul_fmpz(res, a, n, b);
-  _fmpz_vec_sub(res, res, c, n);
-}
-
-/*
-  Compute the Hankel determinant associated to the sequence seq of odd length n
-  by a direct application of FLINT's determinant function.
-*/
-
-void hankel_determinant_direct(fmpz_t res, const fmpz *seq, int n) {
-  fmpz_mat_t mat;
-  int s;
-
-  s = n/2 + 1;
-  fmpz_mat_init(mat, s, s);
-  for (int i=0; i<s; i++)
-    for (int j=0; j<s; j++)
-      fmpz_set(fmpz_mat_entry(mat, i, j), seq+i+j);
-  fmpz_mat_det(res, mat);
-  fmpz_mat_clear(mat);
-  return;
-}
-
-/*
-  Attempt to compute the Hankel determinant associated to the sequence seq of odd length n
-  using Dodgson condensation. Returns 1 for success, 0 for failure.
-
-  This function assumes that {w, 2*n-5} is scratch space.
-*/
-
-int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
-  if (n == 1) {
-    fmpz_set(res, seq);
-    return(1);
-  }
-
-  int i, n1 = n-2;
-  fmpz *f0 = w; // Length n-2
-  fmpz *f1 = w+n1; // Length max(0,n-4)
-  fmpz *t = (fmpz *)seq;
-
-  _fmpz_vec_fmms(f0, t, t+2, t+1, t+1, n1);
-  while (n1 > 1) {
-    n1 -= 2;
-    for (i=0; i<n1; i++) 
-      if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
-    _fmpz_vec_fmms_divexact(f1, f0, f0+2, f0+1, f0+1, t+2, n1);
-    t = f0; f0 = f1; f1 = t;
-  }
-  fmpz_set(res, f0);
-  return(1);
-}
-
-/*
-    Use a subresultant sequence to test whether a given polynomial has 
-    real roots. Note that this test has an early abort mechanism: 
-    having real roots means that the sign sequence has the maximal number
-    of sign changes, so the test aborts if any sign change is missed.
-
-    This function assumes that:
-        - {poly, n} is a normalized vector with n >= 2 and positive leading coefficient;
-        - {f0, n-1} and {f1, n-1} are scratch space.
-
-    We add a (if b is NULL) or a*b (otherwise) to the constant term before testing.
-
-    Based on code by Sebastian Pancratz from the FLINT repository (plus the Ducos variation).
-*/
-
-#define sgn_criterion (sgn == 1 || (force_squarefree && sgn == 0))
-int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
-                              int force_squarefree, const fmpz_t a, const fmpz_t b) {
-  if (n <= 2) return(1);  // Constant or linear polynomial
-
-  /* Put the updated constant term of poly in f1. */
-  if (b == NULL) fmpz_add(f1, a, poly); // Treat b as 1
-  else {
-    fmpz_mul(f1, a, b);
-    fmpz_add(f1, f1, poly);
-  }
-
-  int sgn;
-  if (n == 3) { // Quadratic case, compute discriminant
-    fmpz_mul_ui(f1, f1, 4);
-    fmpz_fmms_wrapper(f1, f1, poly+2, poly+1, poly+1);
-    sgn = fmpz_sgn(f1);
-    return(!sgn_criterion);
-  }
-
-  fmpz *t, *lead1, *lead2, *content; // Scratch pointers
-
-  /* Set f0 := deriv(poly). */
-  _fmpz_poly_derivative(f0, poly, n);
-
-  /* At this point deg(poly) = n-1, deg(f1) = n-2.
-     Compute the next leading coefficient (up to a positive factor).
-     Note that there is no Ducos variation at this step. */
-  
-  t = f1+n-3; lead1 = f0+n-2; lead2 = (fmpz *)poly+n-1;
-  fmpz_fmms_wrapper(t+1, lead2-1, lead1, lead1-1, lead2);
-  fmpz_fmms_wrapper(t, lead2-2, lead1, lead1-2, lead2);
-  fmpz_fmms_wrapper(t, t, lead1, lead1-1, t+1);
-
-  /* If we miss any one sign change, we cannot have enough. */
-  sgn = fmpz_sgn(t);
-  if (sgn_criterion) return(0);
-
-  /* Set f1 to the pseudoremainder of poly (in the first iteration) or f1 (otherwise)
-     modulo f0, leaving f1[n-2], f1[n-1] intact as well as f1[n-3]. 
-     Again there is no Ducos variation at this step. */
-
-  fmpz_mul(f1, f1, lead1);
-  _fmpz_vec_scalar_fmms(f1+1, poly+1, lead1, f0, lead2, n-4);
-  _fmpz_vec_scalar_fmms(f1, f1, lead1, f0, t+1, n-3);
-
-  /* If not forcing squarefree but sgn == 0, we win iff f1 = 0. */
-  if (!sgn && !force_squarefree) return (_fmpz_vec_is_zero(f1, n-3));
-
-  for (n -= 3; ; n--) {
-    /* At this point deg(f0 or poly) = n+1, deg(f1) = n.
-       Compute the next leading coefficient (up to a positive factor). */
-    content = lead1; t = f0+n-1; lead1 = f1+n;
-    fmpz_fmms_wrapper(t, t, lead1, lead1-1, t+1);
-    fmpz_divexact_wrapper(t, t, content);
-
-    /* If the pseudoremainder is a scalar, it is nonzero and we win. */
-    if (n == 1) {
-      fmpz_fmma_wrapper(t, t, lead1, lead1-1, lead1-1);
-      sgn = fmpz_sgn(t);
-      return (!sgn_criterion);
-    }
-    fmpz_sub(t, t, lead1-2);
-    fmpz_fmma_wrapper(t, t, lead1, lead1-1, lead1-1);
-
-    /* If we miss any one sign change, we cannot have enough. */
-    sgn = fmpz_sgn(t);
-    if (sgn_criterion) return(0);
-
-    /* Set f0 to the pseudoremainder of poly (in the first iteration) or f0 (otherwise)
-       modulo f1, leaving f0[n], f0[n+1] intact as well as f0[n-1] (except to remove content). */
-    _fmpz_vec_scalar_fmms(f0, f0, lead1, f1, t+1, n-1);
-    _fmpz_vec_scalar_divexact_fmpz_wrapper(f0, f0, n-1, content);
-    _fmpz_vec_sub_wrapper(f0+1, f0+1, f1, n-2);
-    _fmpz_vec_scalar_fmma(f0, f0, lead1, f1, lead1-1, n-1);
-
-    /* If not forcing squarefree but sgn == 0, we win iff f0 = 0. */
-    if (!sgn && !force_squarefree) return (_fmpz_vec_is_zero(f0, n-1));
-
-    /* Divide f0 by content. */
-    _fmpz_vec_scalar_divexact_fmpz_wrapper(f0, f0, n, content);
-
-    /* Swap f0 with f1 at the pointer level. */
-    t = f0; f0 = f1; f1 = t;
-  }
 }
 
 /*****
@@ -701,23 +431,24 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
   fmpz_set(t1z, st_data->ranges+k);
   if (q_is_square || k2 == 0) { // q^{k/2} is rational
-    fmpz_add(t2z, t0z, t1z);
+    fmpz_add(t2z, t0z, st_data->ranges+k);
     change_by_sign(modulus_is_0, 0, t2z, lead_pow, NULL);
-    fmpz_sub(t2z, t0z, t1z);
+    fmpz_sub(t2z, t0z, st_data->ranges+k);
     change_by_sign(modulus_is_0, 1, t2z, lead_pow, NULL);
   } else { // q^{k/2} is irrational
-    change_by_sign(modulus_is_0, 0, t0z, lead_pow, t1z);
-    fmpz_neg(t1z, t1z);
+    change_by_sign(modulus_is_0, 0, t0z, lead_pow, st_data->ranges+k);
+    fmpz_neg(t1z, st_data->ranges+k);
     change_by_sign(modulus_is_0, 1, t0z, lead_pow, t1z);
   }
 
-  /* Impose optional linear constraints. */
+  /* Impose optional linear constraints on power sums. */
+
   for (i=0; i<st_data->num_constraints; i++)
     if (st_data->constraint_lens[i] == k) {
-      _fmpz_vec_dot(t0z, st_data->constraints+(d+1)*i, pow_num, k+1);
-      tz = st_data->constraints+(d+1)*i+k;
-      j = fmpz_sgn(st_data->constraints+(d+1)*i+k);
-      if (j<0) {
+      tz = st_data->constraints+(d+1)*i;
+      _fmpz_vec_dot(t0z, tz, pow_num, k+1);
+      tz += k;
+      if (fmpz_sgn(tz) < 0) {
         fmpz_neg(t0z, t0z);
         fmpz_neg(t1z, tz);
         change_by_sign(1, 1, t0z, t1z, NULL);
@@ -748,7 +479,6 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   if (q_is_square || k2 == 0) // Hankel matrix is defined over Q
     for (i=1; i>=0; i--) {
       s = (k2 == 1) ? k : (i == 0) ? k + 1 : k - 1;
-
       tz = dy_data->hankel_dets + 2*k + i;
       j = k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0);
       if (q_is_square && i == 0 && k > 1 && (force_squarefree || fmpz_sgn(tz-3) > 0)) {
