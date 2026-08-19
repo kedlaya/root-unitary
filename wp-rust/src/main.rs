@@ -76,20 +76,34 @@ fn main() {
                 let sympol = unsafe { (*data.ptr).sympol };
                 let x = loop {
                     // Step this process forward. If we find a polynomial, return it via a channel.
-                    data.flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, 1) };
-                    if data.flag == 2 {
+                    if data.ascend == 1 {
+                        data.n = unsafe { ascend_step_forward(st_data.ptr, data.ptr, data.n) };
+                        if data.n > d { data.flag = 0; break rx_dispatch.recv().unwrap(); }
+                        data.ascend = 0;
+                    } else if data.n < 0 {
+                        unsafe { reciprocal_transform(st_data.ptr, data.ptr); }
                         let iter = (0..d_size).map(|x| unsafe { *sympol.add(x) });
                         tx_answers_clone.send(Vec::from_iter(iter)).unwrap();
+                        data.ascend = 1;
+                    } else {
+                        data.n -= 1;
+                        data.ascend = 1 - unsafe { set_range_from_power_sums(st_data.ptr, data.ptr, data.n) };
                     }
-                    // Check exit/split conditions.
-                    if data.flag == 0 { break rx_dispatch.recv().unwrap(); }
-                    else if let Ok(x) = rx_dispatch.try_recv() { break x; }
+                    // Check split condition.
+                    if let Ok(x) = rx_dispatch.try_recv() { break x; }
                 };
                 // Split if necessary, clean up, and return packets.
                 if let Some(mut data2) = x {
+                    unsafe {
+                        (*data.ptr).n = data.n;
+                        (*data.ptr).ascend = data.ascend;
+                        (*data.ptr).flag = data.flag;
+                    }
                     data2.flag = unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr) };
-                    data2.ascend = 0;
-                    data2.n = unsafe { (*data.ptr).n };
+                    if data2.flag != 0 {
+                        data2.ascend =  unsafe { (*data2.ptr).ascend };
+                        data2.n = unsafe { (*data2.ptr).n };
+                    }
                     tx_data_clone.send(data2).unwrap();
                 }
                 tx_data_clone.send(data).unwrap();
