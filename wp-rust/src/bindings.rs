@@ -77,6 +77,29 @@ unsafe extern "C" {
 }
 
 unsafe extern "C" {
+    pub fn ascend_step_forward(
+        st_data: *const StaticData,
+        dy_data: *mut DynamicData,
+        n: c_int,
+    ) -> c_int;
+}
+
+unsafe extern "C" {
+    pub fn set_range_from_power_sums(
+        st_data: *const StaticData,
+        dy_data: *mut DynamicData,
+        n: c_int,
+    ) -> c_int;
+}
+
+unsafe extern "C" {
+    pub fn reciprocal_transform(
+        st_data: *const StaticData,
+        dy_data: *mut DynamicData,
+    );
+}
+
+unsafe extern "C" {
     pub fn ps_dynamic_split(
         st_data: *const StaticData,
         dy_data: *mut DynamicData,

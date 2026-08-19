@@ -12,7 +12,7 @@ use crate::bindings::*;
 struct StaticPtr{ ptr: *const StaticData }
 unsafe impl Send for StaticPtr {}
 
-struct DynamicPtr{ ptr: *mut DynamicData, flag: i32 }
+struct DynamicPtr{ ptr: *mut DynamicData, flag: i32, ascend: i32, n: i32 }
 unsafe impl Send for DynamicPtr {}
 
 // Record polynomials taken from an iterator.
@@ -31,8 +31,6 @@ fn main() {
     let max_threads = 200; // Recommended value is n^2 where n = # of available cores
     eprintln!("Computing Weil polynomials with d = {d0}, q = {q}, lead = {lead} (threads: {max_threads})");
 
-    let max_steps = 10000; // Maximum (weighted) steps in a single call to ps_next_pol
-    let mut steps = 1;
     let d = d0/2;
     let d_size = (d0+1) as usize;
     let d32 = d as c_int;
@@ -52,9 +50,9 @@ fn main() {
         let layout = Layout::array::<c_long>((d+1) as usize).unwrap();
         let ptr = alloc_zeroed(layout) as *mut c_long;
         *ptr.add(d as usize) = *lead;
-        work.push(DynamicPtr{ptr: ps_dynamic_init(d32, ptr), flag: 1});
+        work.push(DynamicPtr{ptr: ps_dynamic_init(d32, ptr), flag: 1, ascend: 0, n: d});
         dealloc(ptr as *mut u8, layout);
-        for _ in 1..max_threads { reserve.push(DynamicPtr{ptr: ps_dynamic_init(d32, null), flag: 0}); }
+        for _ in 1..max_threads { reserve.push(DynamicPtr{ptr: ps_dynamic_init(d32, null), flag: 0, ascend: 0, n: 0}); }
     }
 
     // Construct channel to return answers.
@@ -78,7 +76,7 @@ fn main() {
                 let sympol = unsafe { (*data.ptr).sympol };
                 let x = loop {
                     // Step this process forward. If we find a polynomial, return it via a channel.
-                    data.flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, steps) };
+                    data.flag = unsafe { ps_next_pol(st_data.ptr, data.ptr, 1) };
                     if data.flag == 2 {
                         let iter = (0..d_size).map(|x| unsafe { *sympol.add(x) });
                         tx_answers_clone.send(Vec::from_iter(iter)).unwrap();
@@ -90,6 +88,8 @@ fn main() {
                 // Split if necessary, clean up, and return packets.
                 if let Some(mut data2) = x {
                     data2.flag = unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr) };
+                    data2.ascend = 0;
+                    data2.n = unsafe { (*data.ptr).n };
                     tx_data_clone.send(data2).unwrap();
                 }
                 tx_data_clone.send(data).unwrap();
@@ -106,7 +106,6 @@ fn main() {
         // Distribute reserve processes to trigger splitting.
         // If reserve gets exhausted, we force one dummy split to avert deadlock.
         while let Some(tx) = dispatch.pop() {
-            if steps < max_steps { steps += 1; } // Recalibrate steps after runup
             let data = reserve.pop(); // Do not unwrap! Pass as an option
             let exhausted = data.is_none(); // Must check this before data is moved
             tx.send(data).unwrap();

@@ -38,6 +38,10 @@ void ps_static_clear(ps_static_data_t *st_data);
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data);
 void ps_cleanup(int n);
 
+int ascend_step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n);
+int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n);
+void reciprocal_transform(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data);
+
 int ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, ps_dynamic_data_t *dy_data2);
 int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int max_steps);
 

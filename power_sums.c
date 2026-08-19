@@ -256,6 +256,15 @@ void step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, i
   }
 }
 
+int ascend_step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
+  int d = st_data->d;
+  fmpz *pol = dy_data->pol;
+  fmpz *upper = dy_data->upper;
+  do {n++; } while ((n <= d) && (fmpz_cmp(pol+n, upper+n) >= 0));
+  if (n <= d) step_forward(st_data, dy_data, n, NULL);
+  return(n);
+}
+
 /* Given a polynomial pol of length k, shrink the interval [lower, upper] to the range of constant terms
    which when added to pol give a polynomial with all real roots. Returns 0 if this range is empty (with
    lower, upper now undefined) and 1 otherwise (with lower, upper now the endpoints of the new range).
@@ -632,8 +641,6 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
   int ascend = dy_data->ascend;
   long node_limit = st_data->node_limit;
   long node_count = dy_data->node_count;
-  fmpz *pol = dy_data->pol;
-  fmpz *upper = dy_data->upper;
 
   int flag = 1;
   int count_steps = 0;
@@ -641,9 +648,9 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
 
   while (1) {
     if (ascend) { // Ascend the tree and step forward as needed.
-      do {n++; } while ((flag = (n <= d)) && (ascend = (fmpz_cmp(pol+n, upper+n) >= 0)));
-      if (!flag) break;
-      step_forward(st_data, dy_data, n, NULL);
+      n = ascend_step_forward(st_data, dy_data, n);
+      if (n > d) {flag = 0; break;}
+      ascend = 0;
     } else if (n < 0) { // Return a solution.
       reciprocal_transform(st_data, dy_data);
       ascend = 1;
