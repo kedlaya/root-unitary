@@ -12,7 +12,7 @@ use crate::bindings::*;
 struct StaticPtr{ ptr: *const StaticData }
 unsafe impl Send for StaticPtr {}
 
-struct DynamicPtr{ ptr: *mut DynamicData, flag: i32, ascend: i32, n: i32 }
+struct DynamicPtr{ ptr: *mut DynamicData, flag: bool, ascend: bool, n: i32 }
 unsafe impl Send for DynamicPtr {}
 
 // Record polynomials taken from an iterator.
@@ -50,9 +50,9 @@ fn main() {
         let layout = Layout::array::<c_long>((d+1) as usize).unwrap();
         let ptr = alloc_zeroed(layout) as *mut c_long;
         *ptr.add(d as usize) = *lead;
-        work.push(DynamicPtr{ptr: ps_dynamic_init(d32, ptr), flag: 1, ascend: 0, n: d});
+        work.push(DynamicPtr{ptr: ps_dynamic_init(d32, ptr), flag: true, ascend: false, n: d});
         dealloc(ptr as *mut u8, layout);
-        for _ in 1..max_threads { reserve.push(DynamicPtr{ptr: ps_dynamic_init(d32, null), flag: 0, ascend: 0, n: 0}); }
+        for _ in 1..max_threads { reserve.push(DynamicPtr{ptr: ps_dynamic_init(d32, null), flag: false, ascend: false, n: 0}); }
     }
 
     // Construct channel to return answers.
@@ -72,22 +72,23 @@ fn main() {
             let (tx_dispatch, rx_dispatch) = channel::<Option<DynamicPtr>>();
             dispatch.push(tx_dispatch);
             thread::spawn(move || {
-                let _ = st_data.clone(); // Makes st_data.ptr available in the spawned thread
+                let st = st_data.clone().ptr; 
                 let sympol = unsafe { (*data.ptr).sympol };
                 let x = loop {
-                    // Step this process forward. If we find a polynomial, return it via a channel.
-                    if data.ascend == 1 {
-                        data.n = unsafe { ascend_step_forward(st_data.ptr, data.ptr, data.n) };
-                        if data.n > d { data.flag = 0; break rx_dispatch.recv().unwrap(); }
-                        data.ascend = 0;
+                    if data.ascend {
+                        data.n = unsafe { ascend_step_forward(st, data.ptr, data.n) };
+                        if data.n > d { data.flag = false; break rx_dispatch.recv().unwrap(); }
+                        data.ascend = false;
                     } else if data.n < 0 {
-                        unsafe { reciprocal_transform(st_data.ptr, data.ptr); }
+                        // Return a polynomial via a channel.
+                        unsafe { reciprocal_transform(st, data.ptr); }
                         let iter = (0..d_size).map(|x| unsafe { *sympol.add(x) });
                         tx_answers_clone.send(Vec::from_iter(iter)).unwrap();
-                        data.ascend = 1;
+                        data.ascend = true;
                     } else {
                         data.n -= 1;
-                        data.ascend = 1 - unsafe { set_range_from_power_sums(st_data.ptr, data.ptr, data.n) };
+                        data.ascend = unsafe { set_range_from_power_sums(st, data.ptr, data.n) == 0 ||  
+                            reduce_range_from_rolle(st, data.ptr, data.n) == 0 };
                     }
                     // Check split condition.
                     if let Ok(x) = rx_dispatch.try_recv() { break x; }
@@ -96,12 +97,12 @@ fn main() {
                 if let Some(mut data2) = x {
                     unsafe {
                         (*data.ptr).n = data.n;
-                        (*data.ptr).ascend = data.ascend;
-                        (*data.ptr).flag = data.flag;
+                        (*data.ptr).ascend = if data.ascend { 1 } else { 0 };
+                        (*data.ptr).flag = if data.flag { 1 } else { 0 };
                     }
-                    data2.flag = unsafe { ps_dynamic_split(st_data.ptr, data.ptr, data2.ptr) };
-                    if data2.flag != 0 {
-                        data2.ascend =  unsafe { (*data2.ptr).ascend };
+                    data2.flag = unsafe { ps_dynamic_split(st, data.ptr, data2.ptr) == 1 };
+                    if data2.flag {
+                        data2.ascend = unsafe { (*data2.ptr).ascend == 1 };
                         data2.n = unsafe { (*data2.ptr).n };
                     }
                     tx_data_clone.send(data2).unwrap();
@@ -112,10 +113,7 @@ fn main() {
         }
 
         // Collect split and terminated processes.
-        for data in rx_data.try_iter() {
-            if data.flag == 0 { reserve.push(data); }
-            else { work.push(data); }
-        }
+        for data in rx_data.try_iter() { if data.flag { work.push(data); } else { reserve.push(data); } }
 
         // Distribute reserve processes to trigger splitting.
         // If reserve gets exhausted, we force one dummy split to avert deadlock.

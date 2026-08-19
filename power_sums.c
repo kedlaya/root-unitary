@@ -223,6 +223,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
    If step is NULL it is interpreted as 1. */
 
 void step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
+  if (step != NULL && fmpz_is_zero(step)) return;
   int d = st_data->d;
   int k = d - n;
   fmpz *pol = dy_data->pol;
@@ -349,6 +350,57 @@ void update_power_sums(fmpz *pow_num, fmpz *pol, int k) {
     fmpz_mul_si(tz, pol, -k);
     for (i=1; i<k; i++) fmpz_fmms_wrapper(tz, tz, lead, pol+i, pow_num+i);
   }
+}
+
+int reduce_range_from_rolle(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
+  if (n < 0) return(1);
+
+  /* Static data */
+
+  int d = st_data->d;
+  int k = d - n;
+  int force_squarefree = st_data->force_squarefree;
+  fmpz *modulus = st_data->modlist + n;
+  int modulus_is_1 = fmpz_is_one(modulus);
+
+  /* Dynamic data */
+
+  fmpz *pol = dy_data->pol + n;
+
+  /* Integers allocated from working space, maintained throughout */
+
+  fmpz *f = dy_data->w;
+  fmpz *upper = f+1;
+  fmpz *lower = f+2;
+
+  /* Local working space, not maintained throughout */
+
+  int i;
+  fmpz *w = f+3; // Length 3*k+3, passed to subroutines
+
+  /* Unallocated pointers */
+
+  fmpz *tz, *tza;
+
+  fmpz_zero(lower);
+  fmpz_sub(upper, dy_data->upper+n, pol);
+  if (!modulus_is_1) fmpz_divexact(upper, upper, modulus);
+
+  tza = st_data->binom_mat + (d+2)*n;
+  for (i=0; i<=k; i++) fmpz_mul(w+i, tza+i, pol+i);
+  tz = modulus_is_1 ? NULL : modulus;
+  if (!apply_rolle_condition(lower, upper, w, k+1, force_squarefree, tz, w+k+1)) return(0);
+
+  /* Set the new upper bound. */
+
+  if (!modulus_is_1) fmpz_mul(upper, upper, modulus);
+  fmpz_add(dy_data->upper+n, pol, upper);
+
+  /* Set the new polynomial value, then correct the k-th power sum and related quantities. */
+
+  step_forward(st_data, dy_data, n, lower);
+
+  return(1);
 }
 
 /* The following is the key subroutine: given some initial coefficients, compute
@@ -532,14 +584,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
-  /* Rolle criterion: the divided n-th derivative of pol has all roots real. */
-
-  tza = st_data->binom_mat + (d+2)*n;
-  for (i=0; i<=k; i++) fmpz_mul(w+i, tza+i, pol+i);
-  tz = modulus_is_1 ? NULL : modulus;
-  if (!apply_rolle_condition(lower, upper, w, k+1, force_squarefree, tz, w+k+1)) return(0);
-
-  /* Set the new upper bound. */
+  /* Set the new upper bound without the Rolle condition. */
 
   if (!modulus_is_1) fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n, pol, upper);
@@ -549,6 +594,16 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   step_forward(st_data, dy_data, n, lower);
 
   return(1);
+}
+
+/* Compute the reciprocal transform of pol and store it in sympol. */
+
+void reciprocal_transform(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
+  int d = st_data->d;
+  fmpz *pol = dy_data->pol;
+  fmpz *sympol = dy_data->sympol;
+
+  fmpz_mat_mul_fmpz_vec(sympol, st_data->pol_to_sym, pol, d+1);
 }
 
 /*****
@@ -609,16 +664,6 @@ int ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data
   return(0);
 }
 
-/* Compute the reciprocal transform of pol and store it in sympol. */
-
-void reciprocal_transform(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
-  int d = st_data->d;
-  fmpz *pol = dy_data->pol;
-  fmpz *sympol = dy_data->sympol;
-
-  fmpz_mat_mul_fmpz_vec(sympol, st_data->pol_to_sym, pol, d+1);
-}
-
 /* Top-level flow control: allow one process to run for up to max_steps iterations,
    or until it finds a polynomial to be returned, whichever comes first.
 
@@ -658,7 +703,8 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
       break;
     } else { // Compute children of the current node.
       n--;
-      if ((ascend = !set_range_from_power_sums(st_data, dy_data, n))) // Found a terminal node
+      if ((ascend = !(set_range_from_power_sums(st_data, dy_data, n) && 
+        reduce_range_from_rolle(st_data, dy_data, n)))) // Found a terminal node
 	if (node_limit != -1 && (++node_count) >= node_limit) {
 	  flag = -1;
 	  break;
@@ -671,7 +717,7 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
   dy_data->ascend = ascend;
   dy_data->n = n;
   dy_data->node_count = node_count;
-  dy_data->flag = flag;
+  dy_data->flag = flag; 
   return(flag);
 }
 
