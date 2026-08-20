@@ -73,6 +73,7 @@ fn main() {
             dispatch.push(tx_dispatch);
             thread::spawn(move || {
                 let st = st_data.clone().ptr; 
+                //let pol = unsafe { (*data.ptr).pol };
                 let sympol = unsafe { (*data.ptr).sympol };
                 let x = loop {
                     if data.ascend {
@@ -87,8 +88,8 @@ fn main() {
                         data.ascend = true;
                     } else {
                         data.n -= 1;
-                        data.ascend = unsafe { set_range_from_power_sums(st, data.ptr, data.n) == 0 ||  
-                            reduce_range_from_rolle(st, data.ptr, data.n) == 0 };
+                        data.ascend = unsafe { set_range_from_power_sums(st, data.ptr, data.n) == 0 ||
+                          reduce_range_from_rolle(st, data.ptr, data.n) == 0 };
                     }
                     // Check split condition.
                     if let Ok(x) = rx_dispatch.try_recv() { break x; }

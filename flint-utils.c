@@ -77,6 +77,12 @@ void fmpz_fmms_divexact(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, 
   fmpz_divexact(res, res, e);
 }
 
+/* Compute the vector res with res[i] = a[i]*b[i]. 
+   Aliasing allowed except for *partial* overlap between res and a, b. */
+void _fmpz_vec_mul(fmpz *res, const fmpz *a, const fmpz *b, int n) {
+  for (int i=0; i<n; i++) fmpz_mul(res+i, a+i, b+i);
+}
+
 /* Compute the vector res with res[i] = a[i]*b[i] - c[i]*d[i]. 
    Aliasing allowed except for *partial* overlap between res and a, b, c, or d. */
 void _fmpz_vec_fmms(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, int n) {

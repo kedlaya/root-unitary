@@ -266,74 +266,6 @@ int ascend_step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   return(n);
 }
 
-/* Given a polynomial pol of length k, shrink the interval [lower, upper] to the range of constant terms
-   which when added to pol give a polynomial with all real roots. Returns 0 if this range is empty (with
-   lower, upper now undefined) and 1 otherwise (with lower, upper now the endpoints of the new range).
-
-   This function assumes that {w, 2*k+2} is scratch space.
-*/
-
-int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, int force_squarefree, const fmpz_t modulus, fmpz *w) {
-  int r, s;
-
-  /* Allocate from working space. */
-  fmpz *t0z = w;
-  fmpz *t1z = w+1;
-  fmpz *t2z = w+2;
-  fmpz *f0 = w+3; // Length k-1
-  fmpz *f1 = w+k+2; // Length k
-
-  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(pol, k, f0, f1, force_squarefree, x, modulus)
-
-  /* Handle the case upper == lower directly. */
-  fmpz_sub(t0z, upper, lower);
-  if (fmpz_is_zero(t0z)) return(TEST_ROOTS(lower));
-
-  /* Look for a single value where the Rolle criterion holds. */
-  fmpz_add_ui(t0z, t0z, 1);
-  r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1)); forced to be positive
-  fmpz_one_2exp(t2z, r);
-  while (1) {
-    if (r) {
-      fmpz_add(t0z, lower, t2z);
-      fmpz_sub_ui(t0z, t0z, 1);
-    } else fmpz_set(t0z, lower);
-    do {
-      if ((s = TEST_ROOTS(t0z))) break; 
-      else fmpz_addmul_ui(t0z, t2z, 2);
-    } while (fmpz_cmp(t0z, upper) <= 0);
-    if (s) break;
-    if (--r < 0) return(0); // Found nothing
-    fmpz_divexact_ui(t2z, t2z, 2);
-  }
-
-  if (r == 0) { // In this case, enforce lower == upper and exit
-    fmpz_set(lower, t0z);
-    fmpz_set(upper, t0z);
-    return(1);
-  }
-
-  /* Shorten the interval based on tested values. */
-  fmpz_sub(t1z, t0z, t2z);
-  fmpz_add_ui(lower, t1z, 1); // Does not decrease lower
-  fmpz_add(t1z, t0z, t2z);
-  if (fmpz_cmp(t1z, upper) <= 0) fmpz_sub_ui(upper, t1z, 1);
-
-  /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
-  fmpz_set(t1z, t0z);
-  while (!fmpz_equal(lower, t0z)) {
-    fmpz_fmid(t2z, lower, t0z);
-    if (TEST_ROOTS(t2z)) fmpz_set(t0z, t2z);
-    else fmpz_add_ui(lower, t2z, 1);
-  }
-  while (!fmpz_equal(t1z, upper)) {
-    fmpz_cmid(t0z, t1z, upper);
-    if (TEST_ROOTS(t0z)) fmpz_set(t1z, t0z);
-    else fmpz_sub_ui(upper, t0z, 1);
-  }
-  return(1);
-}
-
 /* Update pow_num[k] using the Girard-Newton formula.
    This is the k-th power sum times c^k where c is the leading coefficient. */
 
@@ -350,57 +282,6 @@ void update_power_sums(fmpz *pow_num, fmpz *pol, int k) {
     fmpz_mul_si(tz, pol, -k);
     for (i=1; i<k; i++) fmpz_fmms_wrapper(tz, tz, lead, pol+i, pow_num+i);
   }
-}
-
-int reduce_range_from_rolle(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
-  if (n < 0) return(1);
-
-  /* Static data */
-
-  int d = st_data->d;
-  int k = d - n;
-  int force_squarefree = st_data->force_squarefree;
-  fmpz *modulus = st_data->modlist + n;
-  int modulus_is_1 = fmpz_is_one(modulus);
-
-  /* Dynamic data */
-
-  fmpz *pol = dy_data->pol + n;
-
-  /* Integers allocated from working space, maintained throughout */
-
-  fmpz *f = dy_data->w;
-  fmpz *upper = f+1;
-  fmpz *lower = f+2;
-
-  /* Local working space, not maintained throughout */
-
-  int i;
-  fmpz *w = f+3; // Length 3*k+3, passed to subroutines
-
-  /* Unallocated pointers */
-
-  fmpz *tz, *tza;
-
-  fmpz_zero(lower);
-  fmpz_sub(upper, dy_data->upper+n, pol);
-  if (!modulus_is_1) fmpz_divexact(upper, upper, modulus);
-
-  tza = st_data->binom_mat + (d+2)*n;
-  for (i=0; i<=k; i++) fmpz_mul(w+i, tza+i, pol+i);
-  tz = modulus_is_1 ? NULL : modulus;
-  if (!apply_rolle_condition(lower, upper, w, k+1, force_squarefree, tz, w+k+1)) return(0);
-
-  /* Set the new upper bound. */
-
-  if (!modulus_is_1) fmpz_mul(upper, upper, modulus);
-  fmpz_add(dy_data->upper+n, pol, upper);
-
-  /* Set the new polynomial value, then correct the k-th power sum and related quantities. */
-
-  step_forward(st_data, dy_data, n, lower);
-
-  return(1);
 }
 
 /* The following is the key subroutine: given some initial coefficients, compute
@@ -596,6 +477,111 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   return(1);
 }
 
+/* Given a polynomial pol of length k, shrink the interval [lower, upper] to the range of constant terms
+   which when added to pol give a polynomial with all real roots. Returns 0 if this range is empty (with
+   lower, upper now undefined) and 1 otherwise (with lower, upper now the endpoints of the new range).
+
+   This function assumes that {w, 2*k+2} is scratch space.
+*/
+
+int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, int force_squarefree, const fmpz_t modulus, fmpz *w) {
+  int r, s;
+
+  /* Allocate from working space. */
+  fmpz *t0z = w;
+  fmpz *t1z = w+1;
+  fmpz *t2z = w+2;
+  fmpz *f0 = w+3; // Length k-1
+  fmpz *f1 = w+k+2; // Length k
+
+  #define TEST_ROOTS(x) _fmpz_poly_all_real_roots(pol, k, f0, f1, force_squarefree, x, modulus)
+
+  /* Handle the case upper == lower directly. */
+  fmpz_sub(t0z, upper, lower);
+  if (fmpz_is_zero(t0z)) return(TEST_ROOTS(lower));
+
+  /* Look for a single value where the Rolle criterion holds. */
+  fmpz_add_ui(t0z, t0z, 1);
+  r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1)); forced to be positive
+  fmpz_one_2exp(t2z, r);
+  while (1) {
+    if (r) {
+      fmpz_add(t0z, lower, t2z);
+      fmpz_sub_ui(t0z, t0z, 1);
+    } else fmpz_set(t0z, lower);
+    do {
+      if (s = TEST_ROOTS(t0z)) break; 
+      else fmpz_addmul_ui(t0z, t2z, 2);
+    } while (fmpz_cmp(t0z, upper) <= 0);
+    if (s) break; // Found a good value
+    if (--r < 0) return(0); // Found nothing
+    fmpz_divexact_ui(t2z, t2z, 2);
+  }
+
+  if (r == 0) { // In this case, enforce lower == upper and exit
+    fmpz_set(lower, t0z);
+    fmpz_set(upper, t0z);
+    return(1);
+  }
+
+  /* Shorten the interval based on tested values. */
+  fmpz_sub(t1z, t0z, t2z);
+  fmpz_add_ui(lower, t1z, 1); // Does not decrease lower
+  fmpz_add(t1z, t0z, t2z);
+  if (fmpz_cmp(t1z, upper) <= 0) fmpz_sub_ui(upper, t1z, 1);
+
+  /* Use binary searches to compute the interval on which the Rolle criterion is satisfied. */
+  fmpz_set(t1z, t0z);
+  while (!fmpz_equal(lower, t0z)) {
+    fmpz_fmid(t2z, lower, t0z);
+    if (TEST_ROOTS(t2z)) fmpz_set(t0z, t2z);
+    else fmpz_add_ui(lower, t2z, 1);
+  }
+  while (!fmpz_equal(t1z, upper)) {
+    fmpz_cmid(t0z, t1z, upper);
+    if (TEST_ROOTS(t0z)) fmpz_set(t1z, t0z);
+    else fmpz_sub_ui(upper, t0z, 1);
+  }
+  return(1);
+}
+
+/* Use the Rolle condition to refine the range of a specific coefficient. Normally should be called after first
+   constructing a suitable range using set_range_from_power_sums. Returns 0 if the updated range would be empty
+   (in which case it is not actually updated).
+*/
+
+int reduce_range_from_rolle(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n) {
+  if (n < 0) return(1);
+  int d = st_data->d;
+  int k = d - n + 1;
+  fmpz *modulus = st_data->modlist + n;
+  int modulus_is_1 = fmpz_is_one(modulus);
+
+  fmpz *pol = dy_data->pol + n;
+  fmpz *upper = dy_data->w;
+  fmpz *lower = dy_data->w+1;
+  fmpz *polderiv = dy_data->w+2;
+
+  fmpz_zero(lower);
+  fmpz_sub(upper, dy_data->upper+n, pol);
+  if (!modulus_is_1) fmpz_divexact(upper, upper, modulus);
+  _fmpz_vec_mul(polderiv, st_data->binom_mat + (d+2)*n, pol, k);
+
+  if (!apply_rolle_condition(lower, upper, polderiv, k, st_data->force_squarefree, 
+    modulus_is_1 ? NULL : modulus, polderiv + k)) return(0);
+
+  /* Set the new upper bound. */
+
+  if (!modulus_is_1) fmpz_mul(upper, upper, modulus);
+  fmpz_add(dy_data->upper+n, pol, upper);
+
+  /* Set the new polynomial value, then correct the k-th power sum and related quantities. */
+
+  step_forward(st_data, dy_data, n, lower);
+
+  return(1);
+}
+
 /* Compute the reciprocal transform of pol and store it in sympol. */
 
 void reciprocal_transform(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
@@ -704,7 +690,7 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
     } else { // Compute children of the current node.
       n--;
       if ((ascend = !(set_range_from_power_sums(st_data, dy_data, n) && 
-        reduce_range_from_rolle(st_data, dy_data, n)))) // Found a terminal node
+            reduce_range_from_rolle(st_data, dy_data, n)))) // Found a terminal node
 	if (node_limit != -1 && (++node_count) >= node_limit) {
 	  flag = -1;
 	  break;
