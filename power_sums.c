@@ -261,7 +261,7 @@ int ascend_step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   int d = st_data->d;
   fmpz *pol = dy_data->pol;
   fmpz *upper = dy_data->upper;
-  do {n++; } while ((n <= d) && (fmpz_cmp(pol+n, upper+n) >= 0));
+  do {n++; } while (n <= d && fmpz_cmp(pol+n, upper+n) >= 0);
   if (n <= d) step_forward(st_data, dy_data, n, NULL);
   return(n);
 }
@@ -275,7 +275,6 @@ void update_power_sums(fmpz *pow_num, fmpz *pol, int k) {
   int i;
 
   if (fmpz_is_one(lead)) {
-    tz = pow_num + k;
     _fmpz_vec_dot_general(tz, NULL, 1, pol+1, pow_num+1, 0, k-1);
     fmpz_submul_ui(tz, pol, k);
   } else {
@@ -319,7 +318,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
 
   /* Local working space, not maintained throughout */
 
-  int i, j, j1, s;
+  int i, j, s;
   fmpz *w = f+3; // Length 3*k+3, passed to subroutines
 
   fmpz *t0z = w;
@@ -348,23 +347,19 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   inline void change_by_sign(int update, int r, const fmpz_t val1_num, const fmpz_t val1_den, const fmpz_t val2_num) {
     fmpq_floor_ceil_quad(t2z, r ^ force_squarefree, val1_num, val1_den, val2_num, f, q);
     if (!r) { // change_upper
-      if (force_squarefree) {
-        if (!update || fmpz_cmp(t2z, upper) <= 0) fmpz_sub_ui(upper, t2z, 1);
-      } else if (!update || fmpz_cmp(t2z, upper) < 0) fmpz_set(upper, t2z);
+      if (force_squarefree) { if (!update || fmpz_cmp(t2z, upper) <= 0) fmpz_sub_ui(upper, t2z, 1); } 
+      else if (!update || fmpz_cmp(t2z, upper) < 0) fmpz_set(upper, t2z);
     } else { // change_lower
-      if (force_squarefree) {
-        if (!update || fmpz_cmp(t2z, lower) >= 0) fmpz_add_ui(lower, t2z, 1);
-      } else if (!update || fmpz_cmp(t2z, lower) > 0) fmpz_set(lower, t2z);
+      if (force_squarefree) { if (!update || fmpz_cmp(t2z, lower) >= 0) fmpz_add_ui(lower, t2z, 1); } 
+      else if (!update || fmpz_cmp(t2z, lower) > 0) fmpz_set(lower, t2z);
     }
   }
 
   /* If modulus==0, reduce the interval to [0]. */
 
   fmpz_set_ui(f, k);
-  if (modulus_is_0) {
-    fmpz_zero(lower);
-    fmpz_zero(upper);
-  } else if (!modulus_is_1) fmpz_mul(f, f, modulus);
+  if (modulus_is_0) { fmpz_zero(lower); fmpz_zero(upper); }
+  else if (!modulus_is_1) fmpz_mul(f, f, modulus);
 
   update_power_sums(pow_num, pol, k);
 
@@ -373,13 +368,13 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
   fmpz_set(t1z, st_data->ranges+k);
   if (q_is_square || k2 == 0) { // q^{k/2} is rational
-    fmpz_add(t2z, t0z, st_data->ranges+k);
+    fmpz_add(t2z, t0z, t1z);
     change_by_sign(modulus_is_0, 0, t2z, lead_pow, NULL);
-    fmpz_sub(t2z, t0z, st_data->ranges+k);
+    fmpz_sub(t2z, t0z, t1z);
     change_by_sign(modulus_is_0, 1, t2z, lead_pow, NULL);
   } else { // q^{k/2} is irrational
-    change_by_sign(modulus_is_0, 0, t0z, lead_pow, st_data->ranges+k);
-    fmpz_neg(t1z, st_data->ranges+k);
+    change_by_sign(modulus_is_0, 0, t0z, lead_pow, t1z);
+    fmpz_neg(t1z, t1z);
     change_by_sign(modulus_is_0, 1, t0z, lead_pow, t1z);
   }
 
@@ -387,7 +382,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
 
   for (i=0; i<st_data->num_constraints; i++)
     if (st_data->constraint_lens[i] == k) {
-      tz = st_data->constraints+(d+1)*i;
+      tz = st_data->constraints + (d+1)*i;
       _fmpz_vec_dot(t0z, tz, pow_num, k+1);
       tz += k;
       if (fmpz_sgn(tz) < 0) {
@@ -407,10 +402,13 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     change_by_sign(1, 1, t2z, NULL, NULL);
     fmpz_sub(t2z, t0z, t1z);
     change_by_sign(1, 1-k2, t2z, NULL, NULL);
+  } else if (k2 == 0) {
+    fmpz_abs(t1z, t1z);
+    change_by_sign(1, 1, t0z, NULL, t1z);
   } else {
     change_by_sign(1, 1, t0z, NULL, t1z);
     fmpz_neg(t1z, t1z);
-    change_by_sign(1, 1-k2, t0z, NULL, t1z);
+    change_by_sign(1, 0, t0z, NULL, t1z);
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
@@ -442,30 +440,26 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
            Predefined: c1 == 2*lead*sqrt(q), c0 == 4*lead^2*q. */
         if (i == 1 || k2 == 1) {
           tza = (fmpz *)(k2 == 1 ? st_data->c1 : st_data->c0);
-          j1 = k2 == 0 ? 2 : 1;
-          if (i == 0) _fmpz_vec_scalar_fmma_one(w, pow_num, tza, pow_num+j1, s);
-          else _fmpz_vec_scalar_fmms_one(w, pow_num, tza, pow_num+j1, s);
+          if (i == 0) _fmpz_vec_scalar_fmma_one(w, pow_num, tza, pow_num+2-k2, s);
+          else _fmpz_vec_scalar_fmms_one(w, pow_num, tza, pow_num+2-k2, s);
           tza = w;
         } else tza = pow_num;
-        if (!hankel_determinant_condensation(tz, tza, s, w+k+1))
-          hankel_determinant_direct(tz, tza, s);
+        if (!hankel_determinant_condensation(tz, tza, s, w+k+1)) hankel_determinant_direct(tz, tza, s);
       }
 
       /* Deduce a linear constraint. */
       if (j) {
-        if (lead_pow != NULL) { tza = t1z; fmpz_mul(tza, tz-4, lead_pow); }
-        else tza = tz-4;
+        if (lead_pow != NULL) fmpz_mul(tza = t1z, tz-4, lead_pow); else tza = tz-4;
         if (i == 1) { fmpz_neg(t0z, tz); tz = t0z; }
       } else { // Argue that the corner entry is nonnegative
-        if (i == 1) { tz = t0z; fmpz_neg(tz, tza+s-1); }
-        else tz = tza+s-1;
+        if (i == 1) fmpz_neg(tz = t0z, tza+s-1); else tz = tza+s-1;
         tza = lead_pow;
       }
       change_by_sign(1, i, tz, tza, NULL);
     }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
-  /* Set the new upper bound without the Rolle condition. */
+  /* Set the new upper bound. */
 
   if (!modulus_is_1) fmpz_mul(upper, upper, modulus);
   fmpz_add(dy_data->upper+n, pol, upper);
@@ -510,8 +504,7 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
       fmpz_sub_ui(t0z, t0z, 1);
     } else fmpz_set(t0z, lower);
     do {
-      if (s = TEST_ROOTS(t0z)) break; 
-      else fmpz_addmul_ui(t0z, t2z, 2);
+      if ((s = TEST_ROOTS(t0z))) break; else fmpz_addmul_ui(t0z, t2z, 2);
     } while (fmpz_cmp(t0z, upper) <= 0);
     if (s) break; // Found a good value
     if (--r < 0) return(0); // Found nothing
@@ -585,11 +578,7 @@ int reduce_range_from_rolle(const ps_static_data_t *st_data, ps_dynamic_data_t *
 /* Compute the reciprocal transform of pol and store it in sympol. */
 
 void reciprocal_transform(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data) {
-  int d = st_data->d;
-  fmpz *pol = dy_data->pol;
-  fmpz *sympol = dy_data->sympol;
-
-  fmpz_mat_mul_fmpz_vec(sympol, st_data->pol_to_sym, pol, d+1);
+  fmpz_mat_mul_fmpz_vec(dy_data->sympol, st_data->pol_to_sym, dy_data->pol, st_data->d + 1);
 }
 
 /*****

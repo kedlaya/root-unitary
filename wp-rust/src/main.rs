@@ -73,37 +73,37 @@ fn main() {
             dispatch.push(tx_dispatch);
             thread::spawn(move || {
                 let st = st_data.clone().ptr; 
-                //let pol = unsafe { (*data.ptr).pol };
-                let sympol = unsafe { (*data.ptr).sympol };
+                let dt = data.ptr;
+                let mut iter = (0..d_size).map(|x| unsafe { *(*dt).sympol.add(x) });
                 let x = loop {
                     if data.ascend {
-                        data.n = unsafe { ascend_step_forward(st, data.ptr, data.n) };
-                        if data.n > d { data.flag = false; break rx_dispatch.recv().unwrap(); }
+                        data.n = unsafe { ascend_step_forward(st, dt, data.n) };
+                        data.flag = data.n <= d;
                         data.ascend = false;
                     } else if data.n < 0 {
                         // Return a polynomial via a channel.
-                        unsafe { reciprocal_transform(st, data.ptr); }
-                        let iter = (0..d_size).map(|x| unsafe { *sympol.add(x) });
-                        tx_answers_clone.send(Vec::from_iter(iter)).unwrap();
+                        unsafe { reciprocal_transform(st, dt); }
+                        tx_answers_clone.send(Vec::from_iter(&mut iter)).unwrap();
                         data.ascend = true;
                     } else {
                         data.n -= 1;
-                        data.ascend = unsafe { set_range_from_power_sums(st, data.ptr, data.n) == 0 ||
-                          reduce_range_from_rolle(st, data.ptr, data.n) == 0 };
+                        data.ascend = unsafe { set_range_from_power_sums(st, dt, data.n) == 0 ||
+                          reduce_range_from_rolle(st, dt, data.n) == 0 };
                     }
-                    // Check split condition.
-                    if let Ok(x) = rx_dispatch.try_recv() { break x; }
+                    // Check exit/split conditions.
+                    if !data.flag { break rx_dispatch.recv().unwrap(); }
+                    else if let Ok(x) = rx_dispatch.try_recv() { break x; }
                 };
                 // Split if necessary, clean up, and return packets.
                 if let Some(mut data2) = x {
                     unsafe {
-                        (*data.ptr).n = data.n;
-                        (*data.ptr).ascend = if data.ascend { 1 } else { 0 };
-                        (*data.ptr).flag = if data.flag { 1 } else { 0 };
+                        (*dt).n = data.n;
+                        (*dt).ascend = data.ascend as i32;
+                        (*dt).flag = data.flag as i32;
                     }
-                    data2.flag = unsafe { ps_dynamic_split(st, data.ptr, data2.ptr) == 1 };
+                    data2.flag = unsafe { ps_dynamic_split(st, dt, data2.ptr) != 0 };
                     if data2.flag {
-                        data2.ascend = unsafe { (*data2.ptr).ascend == 1 };
+                        data2.ascend = unsafe { (*data2.ptr).ascend != 0 };
                         data2.n = unsafe { (*data2.ptr).n };
                     }
                     tx_data_clone.send(data2).unwrap();

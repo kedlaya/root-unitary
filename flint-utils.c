@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include "flint-utils.h"
 
+#define ROTATE(x, y, z) { x = y; y = z; z = x; }
 /*****
   Arithmetic functions
 
@@ -138,9 +139,7 @@ void _fmpz_vec_scalar_fmms_one(fmpz *res, const fmpz *a, const fmpz_t b, const f
 
 void hankel_determinant_direct(fmpz_t res, const fmpz *seq, int n) {
   fmpz_mat_t mat;
-  int s;
-
-  s = n/2 + 1;
+  int s = n/2 + 1;
   fmpz_mat_init(mat, s, s);
   for (int i=0; i<s; i++)
     for (int j=0; j<s; j++)
@@ -158,10 +157,7 @@ void hankel_determinant_direct(fmpz_t res, const fmpz *seq, int n) {
 */
 
 int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w) {
-  if (n == 1) {
-    fmpz_set(res, seq);
-    return(1);
-  }
+  if (n == 1) { fmpz_set(res, seq); return(1); }
 
   int i, n1 = n-2;
   fmpz *f0 = w; // Length n-2
@@ -171,10 +167,9 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
   _fmpz_vec_fmms(f0, t, t+2, t+1, t+1, n1);
   while (n1 > 1) {
     n1 -= 2;
-    for (i=0; i<n1; i++) 
-      if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
+    for (i=0; i<n1; i++) if (fmpz_is_zero(t+i+2)) return(0); // Failure because of zero division
     _fmpz_vec_fmms_divexact(f1, f0, f0+2, f0+1, f0+1, t+2, n1);
-    t = f0; f0 = f1; f1 = t;
+    ROTATE(t, f0, f1)
   }
   fmpz_set(res, f0);
   return(1);
@@ -199,7 +194,6 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
 int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
                               int force_squarefree, const fmpz_t a, const fmpz_t b) {
   if (n <= 2) return(1);  // Constant or linear polynomial
-  int sgn;
 
   /* Put the updated constant term of poly in f1. */
   if (b != NULL) {
@@ -207,6 +201,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
     fmpz_add(f1, f1, poly);
   } else fmpz_add(f1, a, poly); // Treat b as 1
 
+  int sgn;
   if (n == 3) { // Quadratic case, compute discriminant
     fmpz_mul_ui(f1, f1, 4);
     fmpz_fmms_wrapper(f1, f1, poly+2, poly+1, poly+1);
@@ -240,8 +235,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
   /* Set f0 := deriv(poly). */
   _fmpz_poly_derivative(f0, poly, n-2);
 
-  /* Set f1 to the pseudoremainder of poly modulo f0,
-     again removing one factor of lead2. 
+  /* Set f1 to the pseudoremainder of poly modulo f0, again removing one factor of lead2. 
      We use t+1 = f1+n-2 as scratch. */
 
   _fmpz_vec_scalar_fmms(f1+1, poly+1, lead1, f0, lead2, n-4);
@@ -284,7 +278,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
     _fmpz_vec_scalar_divexact_fmpz_wrapper(f0, f0, n, content);
 
     /* Swap f0 with f1 at the pointer level. */
-    t = f0; f0 = f1; f1 = t;
+    ROTATE(t, f0, f1)
 
     /* At this point deg(f0) = n, deg(f1) = n-1.
        Start computing the next leading coefficient (up to a positive factor). */
