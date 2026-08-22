@@ -548,7 +548,7 @@ int reduce_range_from_rolle(const ps_static_data_t *st_data, ps_dynamic_data_t *
   int d = st_data->d;
   int k = d - n + 1;
   fmpz *modulus = st_data->modlist + n;
-  int modulus_is_1 = fmpz_is_one(modulus);
+  int modulus_is_1 = fmpz_is_one(modulus) || fmpz_is_zero(modulus);
 
   fmpz *pol = dy_data->pol + n;
   fmpz *upper = dy_data->w;
