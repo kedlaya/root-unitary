@@ -156,7 +156,7 @@ cdef class dfs_manager:
         num_constraints = len(constraints)
         temp_constraints = _fmpz_vec_init((d+1) * num_constraints)
         for i in range(num_constraints):
-            for j in min(d+1, len(constraints[i])):
+            for j in range(min(d+1, len(constraints[i]))):
                 fmpz_set_mpz(temp_constraints+(d+1)*i+j, Integer(constraints[i][j]).value)
         self.st_data = ps_static_init(d, temp_q, temp_lead,
                                          temp_array, num_constraints, temp_constraints, 
@@ -223,7 +223,7 @@ cdef class dfs_manager:
            fmpz_poly_set_coeff_fmpz(poly._poly, j, sympol+j)
         return poly
 
-    cpdef object advance_exhaust(self, list ans):
+    cpdef object advance_exhaust(self, list ans, long ans_max=10000):
         """
         Advance the tree exhaustion.
 
@@ -242,7 +242,7 @@ cdef class dfs_manager:
         """
         cdef int i, k = 1, flag
         cdef int t = 1, u = 0, np = self.num_processes, max_steps = 10000
-        cdef long ans_count = 0, ans_max = 10000
+        cdef long ans_count = 0
 
         if np == 1: # Serial mode
             while (t and not u and ans_count < ans_max):
@@ -285,9 +285,7 @@ class WeilPolynomials_iter():
         sage: next(it)
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
     """
-    def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree, 
-        trace_lower={}, trace_upper={}, 
-        polring=None):
+    def __init__(self, d, q, sign, lead, node_limit, parallel, squarefree, constraints=[], polring=None):
         r"""
         Create an iterator for Weil polynomials.
 
@@ -371,11 +369,6 @@ class WeilPolynomials_iter():
         if node_limit is None:
             node_limit = -1
         force_squarefree = Integer(squarefree)
-        constraints = []
-        for i, j in trace_lower.items(): # To be added
-            pass
-        for i, j in trace_upper.items(): # To be added
-            pass
         self.process = dfs_manager(d2, q, coefflist, modlist, constraints, node_limit,
                                    parallel, force_squarefree, self.pol_internal)
         self.q = q
@@ -507,6 +500,12 @@ class WeilPolynomials():
     - ``squarefree`` -- boolean (default: ``False``)
 
         If set, only squarefree polynomials will be returned.
+        
+    - ``constraints`` -- list (default: empty)
+    
+        Each entry is a tuple expressing a lower bound constraint on Frobenius traces.
+        The tuple `(c0, c1, ..., cn)` represents the constraint that ``c_0 \leq c_1 t_1 + \cdots 
+        + c_n t_n`` where `t_i` is the `i`-th power Frobenius trace.
 
     - ``polring`` -- (optional) a polynomial ring in which to construct the results
 
@@ -554,6 +553,16 @@ class WeilPolynomials():
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
         sage: list(WeilPolynomials(10, 2, lead=[1, -3, 5, -5, 5, -5]))
         [x^10 - 3*x^9 + 5*x^8 - 5*x^7 + 5*x^6 - 5*x^5 + 10*x^4 - 20*x^3 + 40*x^2 - 48*x + 32]
+        
+    Generating Weil polynomials with linear constraints on Frobenius traces::
+
+        sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1])
+        sage: l = list(w)
+        sage: w2 = WeilPolynomials(10, 1, sign=1, lead=[3,1], constraints=[(3,1,0,1)])
+        sage: l2 = list(w2)
+        sage: l3 = [u for u in l2 if sum((i^3 + i) * j for i,j in u.roots(CC)) >= 2.99]
+        sage: l2 == l3
+        True
 
     TESTS:
 
@@ -615,7 +624,7 @@ class WeilPolynomials():
         sage: list(WeilPolynomials(0, 1, sign=-1))
         []
     """
-    def __init__(self, d, q, sign=1, lead=1, node_limit=None, parallel=False, squarefree=False, trace_lower={}, trace_upper={}, polring=None):
+    def __init__(self, d, q, sign=1, lead=1, node_limit=None, parallel=False, squarefree=False, constraints=[], polring=None):
         r"""
         Initialize this iterable.
 
@@ -630,7 +639,7 @@ class WeilPolynomials():
         """
         if parallel and num_threads() == 1:
             raise RuntimeError("Parallel execution not supported")
-        self.data = (d, q, sign, lead, node_limit, parallel, squarefree, trace_lower, trace_upper, polring)
+        self.data = (d, q, sign, lead, node_limit, parallel, squarefree, constraints, polring)
 
     def __iter__(self):
         r"""

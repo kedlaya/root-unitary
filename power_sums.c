@@ -34,7 +34,7 @@ int num_threads() {
 ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const fmpz *modlist,
                                  int num_constraints, const fmpz *constraints,
                                  long node_limit, int force_squarefree) {
-  int i, j;
+  int i, j, k, l;
   fmpz *k0, *pol;
 
   ps_static_data_t *st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
@@ -72,12 +72,40 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
         fmpz_pow_ui(k0, q, (i-j)/2);
         fmpz_mul(pol+j, k0, pol+j);
       }
-    if (!st_data->lead_is_1)
+  }
+
+  if (!st_data->lead_is_1) 
+    for (i=0; i<=d; i++) {
+      pol = st_data->sum_mats + (d+1)*i;
       for (j=i%2; j<=i; j+=2) {
         fmpz_pow_ui(k0, lead, i-j);
         fmpz_mul(pol+j, k0, pol+j);
       }
-  }
+    }
+
+  /* Linear conditions on asymmetrized coefficients. 
+     Since these are provided in terms of symmetrized coefficients,
+     we convert them using the Chebyshev polynomial matrix. */
+  st_data->num_constraints = num_constraints;
+  if (num_constraints) {
+    st_data->constraints = _fmpz_vec_init((d+1) * num_constraints);
+    st_data->constraint_lens = malloc(sizeof(int *) * num_constraints);
+    for (i=0; i<num_constraints; i++) {
+      for (j=d; j>0 && fmpz_is_zero(constraints+(d+1)*i+j); j--);
+      if (j > 0) {
+        st_data->constraint_lens[i] = j;
+        for (l=1; l <= j; l++) {
+          fmpz_pow_ui(k0, lead, j-l);
+          fmpz_mul(k0, k0, constraints+(d+1)*i+l);
+          _fmpz_vec_scalar_addmul_fmpz(st_data->constraints+(d+1)*i, 
+            st_data->sum_mats+(d+1)*l, j+1, k0);
+        }
+        _fmpz_vec_scalar_mul_ui(st_data->constraints+(d+1)*i, st_data->constraints+(d+1)*i, j+1, d);
+        fmpz_pow_ui(k0, lead, j);
+        fmpz_submul(st_data->constraints+(d+1)*i, k0, constraints+(d+1)*i);
+      }
+    }
+  } 
 
   /* Moduli constraints. If not specified, fix the leading coefficient and impose no other constraints. */
   if (modlist == NULL) for (i=0; i<d; i++) fmpz_one(st_data->modlist+i);
@@ -129,18 +157,6 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
   if (!st_data->lead_is_1) {
     st_data->lead_pows = _fmpz_vec_init(d+1);
     for (i=0; i<=d; i++) fmpz_pow_ui(st_data->lead_pows+i, lead, i);
-  }
-
-  /* Linear conditions on asymmetrized coefficients. */
-  st_data->num_constraints = num_constraints;
-  if (num_constraints) {
-    st_data->constraints = _fmpz_vec_init((d+1) * num_constraints);
-    _fmpz_vec_set(st_data->constraints, constraints, (d+1)*num_constraints);
-    st_data->constraint_lens = malloc(sizeof(int *) * num_constraints);
-    for (i=0; i<num_constraints; i++) {
-      for (j=d; j>0 && fmpz_is_zero(constraints+(d+1)*i+j); j--) {}
-      if (j > 0) st_data->constraint_lens[i] = j;
-    }
   }
 
   return(st_data);
@@ -366,15 +382,14 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
 
   _fmpz_vec_dot(t0z, st_data->sum_mats+(d+1)*k, pow_num, k+1);
-  fmpz_set(t1z, st_data->ranges+k);
   if (q_is_square || k2 == 0) { // q^{k/2} is rational
-    fmpz_add(t2z, t0z, t1z);
-    change_by_sign(modulus_is_0, 0, t2z, lead_pow, NULL);
-    fmpz_sub(t2z, t0z, t1z);
-    change_by_sign(modulus_is_0, 1, t2z, lead_pow, NULL);
+    fmpz_add(t1z, t0z, st_data->ranges+k);
+    change_by_sign(modulus_is_0, 0, t1z, lead_pow, NULL);
+    fmpz_sub(t1z, t0z, st_data->ranges+k);
+    change_by_sign(modulus_is_0, 1, t1z, lead_pow, NULL);
   } else { // q^{k/2} is irrational
-    change_by_sign(modulus_is_0, 0, t0z, lead_pow, t1z);
-    fmpz_neg(t1z, t1z);
+    change_by_sign(modulus_is_0, 0, t0z, lead_pow, st_data->ranges+k);
+    fmpz_neg(t1z, st_data->ranges+k);
     change_by_sign(modulus_is_0, 1, t0z, lead_pow, t1z);
   }
 
@@ -384,12 +399,13 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     if (st_data->constraint_lens[i] == k) {
       tz = st_data->constraints + (d+1)*i;
       _fmpz_vec_dot(t0z, tz, pow_num, k+1);
-      tz += k;
-      if (fmpz_sgn(tz) < 0) {
+      if (lead_pow == NULL) fmpz_set(t1z, tz+k);
+      else fmpz_mul(t1z, lead_pow, tz+k);
+      if ((j = fmpz_sgn(t1z) < 0)) {
         fmpz_neg(t0z, t0z);
-        fmpz_neg(t1z, tz);
-        change_by_sign(1, 1, t0z, t1z, NULL);
-      } else change_by_sign(1, 0, t0z, tz, NULL);
+        fmpz_neg(t1z, t1z);
+      }
+      change_by_sign(1, j, t0z, t1z, NULL);
     }
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
@@ -398,10 +414,17 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), pol, k+1);
   _fmpz_vec_dot(t1z, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
   if (q_is_square) {
-    fmpz_add(t2z, t0z, t1z);
-    change_by_sign(1, 1, t2z, NULL, NULL);
-    fmpz_sub(t2z, t0z, t1z);
-    change_by_sign(1, 1-k2, t2z, NULL, NULL);
+    if (k2 == 0) {
+      fmpz_abs(t1z, t1z);
+      fmpz_add(t0z, t0z, t1z);
+      change_by_sign(1, 1, t0z, NULL, NULL);
+    } else {
+      fmpz_add(t0z, t0z, t1z);
+      change_by_sign(1, 1, t0z, NULL, NULL);
+      fmpz_sub(t0z, t0z, t1z);
+      fmpz_sub(t0z, t0z, t1z);
+      change_by_sign(1, 0, t0z, NULL, NULL);
+    }
   } else if (k2 == 0) {
     fmpz_abs(t1z, t1z);
     change_by_sign(1, 1, t0z, NULL, t1z);
