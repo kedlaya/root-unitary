@@ -34,7 +34,7 @@ int num_threads() {
 ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const fmpz *modlist,
                                  int num_constraints, const fmpz *constraints,
                                  long node_limit, int force_squarefree) {
-  int i, j, k, l;
+  int i, j, k;
   fmpz *k0, *pol;
 
   ps_static_data_t *st_data = (ps_static_data_t *)malloc(sizeof(ps_static_data_t));
@@ -44,8 +44,8 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
   st_data->q_is_square = fmpz_is_square(q);
   st_data->lead_is_1 = fmpz_is_one(lead);
   if (st_data->q_is_square) {
-     fmpz_init(st_data->q_sqrt);
-     fmpz_sqrt(st_data->q_sqrt, q);
+    fmpz_init(st_data->q_sqrt);
+    fmpz_sqrt(st_data->q_sqrt, q);
   }
   st_data->node_limit = node_limit;
   st_data->force_squarefree = force_squarefree;
@@ -57,8 +57,10 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
   fmpz_mul(st_data->c0, lead, lead);
   fmpz_mul(st_data->c0, st_data->c0, q);
   fmpz_mul_ui(st_data->c0, st_data->c0, 4);
-  fmpz_init(st_data->c1); // c1 = 2*lead*sqrt(q)
-  if (st_data->q_is_square) fmpz_sqrt(st_data->c1, st_data->c0);
+  if (st_data->q_is_square) {
+    fmpz_init(st_data->c1);
+    fmpz_sqrt(st_data->c1, st_data->c0); // c1 = 2*lead*sqrt(q)
+  }
 
   /* Matrix of cefficients of 2*(i-th Chebyshev polynomial)(x/2).
      The coefficient of x^j is multiplied by c^{i-j} q^{(i-j)/2} where c is the leading coefficient. */
@@ -72,16 +74,12 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
         fmpz_pow_ui(k0, q, (i-j)/2);
         fmpz_mul(pol+j, k0, pol+j);
       }
-  }
-
-  if (!st_data->lead_is_1) 
-    for (i=0; i<=d; i++) {
-      pol = st_data->sum_mats + (d+1)*i;
+    if (!st_data->lead_is_1) 
       for (j=i%2; j<=i; j+=2) {
         fmpz_pow_ui(k0, lead, i-j);
         fmpz_mul(pol+j, k0, pol+j);
       }
-    }
+  }
 
   /* Linear conditions on asymmetrized coefficients. 
      Since these are provided in terms of symmetrized coefficients,
@@ -94,15 +92,17 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
       for (j=d; j>0 && fmpz_is_zero(constraints+(d+1)*i+j); j--);
       if (j > 0) {
         st_data->constraint_lens[i] = j;
-        for (l=1; l <= j; l++) {
-          fmpz_pow_ui(k0, lead, j-l);
-          fmpz_mul(k0, k0, constraints+(d+1)*i+l);
-          _fmpz_vec_scalar_addmul_fmpz(st_data->constraints+(d+1)*i, 
-            st_data->sum_mats+(d+1)*l, j+1, k0);
+        pol = st_data->constraints+(d+1)*i;
+        for (k=1; k<=j; k++) {
+          fmpz_pow_ui(k0, lead, j-k);
+          fmpz_mul(k0, k0, constraints+(d+1)*i+k);
+          _fmpz_vec_scalar_addmul_fmpz(pol, st_data->sum_mats+(d+1)*k, j+1, k0);
         }
-        _fmpz_vec_scalar_mul_ui(st_data->constraints+(d+1)*i, st_data->constraints+(d+1)*i, j+1, d);
+        _fmpz_vec_scalar_mul_ui(pol, pol, j+1, d);
         fmpz_pow_ui(k0, lead, j);
-        fmpz_submul(st_data->constraints+(d+1)*i, k0, constraints+(d+1)*i);
+        fmpz_submul(pol, k0, constraints+(d+1)*i);
+        /* If force_squarefree is set, we must shift by one to avoid missing edge cases. */
+        if (force_squarefree) fmpz_sub_ui(pol, pol, 1);
       }
     }
   } 
@@ -201,7 +201,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
   if (fmpz_is_square(st_data->q)) fmpz_clear(st_data->q_sqrt);
   fmpz_clear(st_data->q);
   fmpz_clear(st_data->c0);
-  fmpz_clear(st_data->c1);
+  if (st_data->q_is_square) fmpz_clear(st_data->c1);
   _fmpz_vec_clear(st_data->modlist, d+1);
   _fmpz_vec_clear(st_data->binom_mat, (d+1)*(d+1));
   _fmpz_vec_clear(st_data->sum_mats, (d+1)*(d+1));
@@ -254,7 +254,7 @@ void step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, i
     fmpz_pow_ui(t0z, pol+d, k-1);
     fmpz_mul_ui(t0z, t0z, k);
   } else fmpz_set_ui(t0z, k);
-  fmpz_mul(t0z, t0z, modulus);
+  if (!modulus_is_1) fmpz_mul(t0z, t0z, modulus);
   if (step == NULL)
     if (modulus_is_1) fmpz_add_ui(poln, poln, 1);
     else fmpz_add(poln, poln, modulus);
@@ -277,7 +277,7 @@ int ascend_step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_d
   int d = st_data->d;
   fmpz *pol = dy_data->pol;
   fmpz *upper = dy_data->upper;
-  do {n++; } while (n <= d && fmpz_cmp(pol+n, upper+n) >= 0);
+  do { n++; } while (n <= d && fmpz_cmp(pol+n, upper+n) >= 0);
   if (n <= d) step_forward(st_data, dy_data, n, NULL);
   return(n);
 }
@@ -349,9 +349,8 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
      The pair (val1, val2) stands for g = val1 + val2*sqrt(q).
      The value in val1 is specified as a numerator-denominator
      pair which need not be canonicalized (a denominator of NULL is interpreted as 1).
-     A value of NULL for val2_num is interpreted as 0.
-     No aliasing allowed unless val2_num = NULL, in which case allowed between t2z and val1_num.
-
+     A value of NULL for val2_num is interpreted as 0. No aliasing allowed.
+     
      Given that g is a monic linear function of the k-th power sum, then:
 
      -- passing r = 0 imposes the condition g >= 0 (or g > 0 if force_squarefree != 0);
@@ -377,6 +376,8 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   if (modulus_is_0) { fmpz_zero(lower); fmpz_zero(upper); }
   else if (!modulus_is_1) fmpz_mul(f, f, modulus);
 
+  /* Update the vector of power sums. */
+
   update_power_sums(pow_num, pol, k);
 
   /* Chebyshev criterion: the k-th symmetrized power sum must lie in [-2*d*q^(k/2), 2*d*q^(k/2)]. */
@@ -399,13 +400,12 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     if (st_data->constraint_lens[i] == k) {
       tz = st_data->constraints + (d+1)*i;
       _fmpz_vec_dot(t0z, tz, pow_num, k+1);
-      if (lead_pow == NULL) fmpz_set(t1z, tz+k);
-      else fmpz_mul(t1z, lead_pow, tz+k);
-      if ((j = fmpz_sgn(t1z) < 0)) {
+      if (lead_pow == NULL) tza = tz + k; else fmpz_mul(tza = t1z, lead_pow, tz+k);
+      if ((j = fmpz_sgn(tza) < 0)) {
         fmpz_neg(t0z, t0z);
-        fmpz_neg(t1z, t1z);
+        fmpz_neg(tza, tza);
       }
-      change_by_sign(1, j, t0z, t1z, NULL);
+      change_by_sign(1, j, t0z, tza, NULL);
     }
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
@@ -413,25 +413,20 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
 
   _fmpz_vec_dot(t0z, st_data->eval_pm2_mats+(d+1)*(2*k), pol, k+1);
   _fmpz_vec_dot(t1z, st_data->eval_pm2_mats+(d+1)*(2*k+1), pol, k+1);
+  if (!k2) fmpz_abs(t1z, t1z);
   if (q_is_square) {
-    if (k2 == 0) {
-      fmpz_abs(t1z, t1z);
-      fmpz_add(t0z, t0z, t1z);
-      change_by_sign(1, 1, t0z, NULL, NULL);
-    } else {
-      fmpz_add(t0z, t0z, t1z);
-      change_by_sign(1, 1, t0z, NULL, NULL);
-      fmpz_sub(t0z, t0z, t1z);
-      fmpz_sub(t0z, t0z, t1z);
+    fmpz_add(t0z, t0z, t1z);
+    change_by_sign(1, 1, t0z, NULL, NULL);
+    if (k2) {
+      fmpz_submul_ui(t0z, t1z, 2);
       change_by_sign(1, 0, t0z, NULL, NULL);
     }
-  } else if (k2 == 0) {
-    fmpz_abs(t1z, t1z);
-    change_by_sign(1, 1, t0z, NULL, t1z);
   } else {
     change_by_sign(1, 1, t0z, NULL, t1z);
-    fmpz_neg(t1z, t1z);
-    change_by_sign(1, 0, t0z, NULL, t1z);
+    if (k2) {
+      fmpz_neg(t1z, t1z);
+      change_by_sign(1, 0, t0z, NULL, t1z);
+    }
   }
   if (fmpz_cmp(lower, upper) > 0) return(0);
 
@@ -439,7 +434,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
      In order to restrict to integer arithmetic, we skip this condition when
      k is odd and q is not a perfect square. */
 
-  if (q_is_square || k2 == 0) // Hankel matrix is defined over Q
+  if (q_is_square || k2 == 0)
     for (i=1; i>=0; i--) {
       s = (k2 == 1) ? k : (i == 0) ? k + 1 : k - 1;
       tz = dy_data->hankel_dets + 2*k + i;
@@ -527,7 +522,8 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
       fmpz_sub_ui(t0z, t0z, 1);
     } else fmpz_set(t0z, lower);
     do {
-      if ((s = TEST_ROOTS(t0z))) break; else fmpz_addmul_ui(t0z, t2z, 2);
+      if ((s = TEST_ROOTS(t0z))) break;
+      fmpz_addmul_ui(t0z, t2z, 2);
     } while (fmpz_cmp(t0z, upper) <= 0);
     if (s) break; // Found a good value
     if (--r < 0) return(0); // Found nothing
@@ -639,12 +635,12 @@ int ps_dynamic_split(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data
       _fmpz_vec_set(dy_data2->hankel_dets, dy_data->hankel_dets, 2*j);
 
       /* Clear unused values to make sure large mpz's get deallocated promptly. */
-      _fmpz_vec_zero(dy_data2->power_sums_num+j, d+1-j);
-      _fmpz_vec_zero(dy_data2->hankel_dets+2*j, 2*(d+1-j));
+      _fmpz_vec_zero(dy_data2->power_sums_num+j, i);
+      _fmpz_vec_zero(dy_data2->hankel_dets+2*j, 2*i);
       _fmpz_vec_zero(dy_data->w, dy_data->wlen);
       _fmpz_vec_zero(dy_data2->w, dy_data2->wlen);
 
-      /* Restrict the donee process to the right half of the interval. */
+      /* Restrict the donee process to the right half of the interval (rounding right). */
       fmpz_sub(t0z, upper, lower);
       if (!modulus_is_1) fmpz_divexact(t0z, t0z, modulus);
       fmpz_cdiv_q_ui(t0z, t0z, 2);
@@ -692,7 +688,7 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
   while (1) {
     if (ascend) { // Ascend the tree and step forward as needed.
       n = ascend_step_forward(st_data, dy_data, n);
-      if (n > d) {flag = 0; break;}
+      if (n > d) { flag = 0; break; }
       ascend = 0;
     } else if (n < 0) { // Return a solution.
       reciprocal_transform(st_data, dy_data);
@@ -703,10 +699,7 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
       n--;
       if ((ascend = !(set_range_from_power_sums(st_data, dy_data, n) && 
             reduce_range_from_rolle(st_data, dy_data, n)))) // Found a terminal node
-	if (node_limit != -1 && (++node_count) >= node_limit) {
-	  flag = -1;
-	  break;
-	}
+	if (node_limit != -1 && (++node_count) >= node_limit) { flag = -1; break; }
       i = d-n+1; count_steps += i*i;
       if (count_steps > max_steps) break;
     }

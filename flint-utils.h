@@ -5,7 +5,7 @@
 #include <flint/fmpz_poly.h>
 #include <flint/fmpz_mat.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 

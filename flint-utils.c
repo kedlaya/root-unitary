@@ -290,7 +290,5 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
   fmpz_fmma_wrapper(t, t, lead1, lead11, lead11);
   sgn = fmpz_sgn(t);
   return (!sgn_criterion);
-    
 }
-
 

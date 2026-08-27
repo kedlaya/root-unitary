@@ -42,6 +42,9 @@ AUTHOR:
                    more balanced work-splitting
                    more direct conversion of output to Sage polynomials
                    improved chunking in parallel mode
+  -- (2026-08-26): better answer conversion from FLINT to Sage
+                   compute some Hankel determinants recursively
+                   option to filter by linear constraints on Frobenius traces
 
 A standalone version of this code can be found at
    https://github.com/kedlaya/root-unitary
@@ -499,15 +502,16 @@ class WeilPolynomials():
 
     - ``squarefree`` -- boolean (default: ``False``)
 
-        If set, only squarefree polynomials will be returned.
+        If set, only squarefree polynomials coprime to ``x^2 - q`` will be returned.
         
     - ``constraints`` -- list (default: empty)
     
-        Each entry is a tuple expressing a lower bound constraint on Frobenius traces.
-        The tuple `(c0, c1, ..., cn)` represents the constraint that ``c_0 \leq c_1 t_1 + \cdots 
-        + c_n t_n`` where `t_i` is the `i`-th power Frobenius trace.
+        Each entry is a tuple expressing a lower bound constraint on the power sums `s_i`.
+        The tuple `(c0, c1, ..., cn)` represents ``c_0 \leq c_1 s_1 + \cdots + c_n t_n``.
 
     - ``polring`` -- (optional) a polynomial ring in which to construct the results
+    
+        If not specified, answers are created in a polynomial ring over `ZZ` with variable `x`.
 
     EXAMPLES:
 
@@ -554,7 +558,7 @@ class WeilPolynomials():
         sage: list(WeilPolynomials(10, 2, lead=[1, -3, 5, -5, 5, -5]))
         [x^10 - 3*x^9 + 5*x^8 - 5*x^7 + 5*x^6 - 5*x^5 + 10*x^4 - 20*x^3 + 40*x^2 - 48*x + 32]
         
-    Generating Weil polynomials with linear constraints on Frobenius traces::
+    Generating Weil polynomials with linear constraints on power sums::
 
         sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1])
         sage: l = list(w)
