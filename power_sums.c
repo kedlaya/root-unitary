@@ -108,8 +108,8 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
   } 
 
   /* Moduli constraints. If not specified, fix the leading coefficient and impose no other constraints. */
-  if (modlist == NULL) for (i=0; i<d; i++) fmpz_one(st_data->modlist+i);
-  else for (i=0; i<=d; i++) fmpz_set(st_data->modlist+i, modlist+d-i);
+  if (modlist) for (i=0; i<=d; i++) fmpz_set(st_data->modlist+i, modlist+d-i);
+  else for (i=0; i<d; i++) fmpz_one(st_data->modlist+i);
 
   /* Matrix of binomial coefficients. */
   st_data->binom_mat = _fmpz_vec_init((d+1)*(d+1));
@@ -146,8 +146,8 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
     k0 = fmpz_mat_entry(st_data->pol_to_sym, d-i, i);
     fmpz_one(k0);
     for (j=i; j>0; j--) {
-      if (j==i) fmpz_set(fmpz_mat_entry(st_data->pol_to_sym, d+i, i), k0); 
-      else fmpz_add(fmpz_mat_entry(st_data->pol_to_sym, d-i+2*j, i), fmpz_mat_entry(st_data->pol_to_sym, d-i+2*j, i), k0);
+      pol = fmpz_mat_entry(st_data->pol_to_sym, d-i+2*j, i);
+      if (j==i) fmpz_set(pol, k0); else fmpz_add(pol, pol, k0);
       if (!st_data->q_is_1) fmpz_mul(k0, k0, q);
       fmpz_mul_ui(k0, k0, j);
       fmpz_divexact_ui(k0, k0, i-j+1);
@@ -185,7 +185,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
   dy_data->wlen = 3*d+9;
   dy_data->w = _fmpz_vec_init(dy_data->wlen);
 
-  if (coefflist != NULL) {
+  if (coefflist) {
     dy_data->flag = 1; // Activate this process
     _fmpz_vec_set(dy_data->pol, coefflist, d+1);
   } else dy_data->flag = 0; // Flag this process as inactive
@@ -194,7 +194,7 @@ ps_dynamic_data_t *ps_dynamic_init(int d, fmpz *coefflist) {
 
 /* Static memory deallocation. */
 void ps_static_clear(ps_static_data_t *st_data) {
-  if (st_data == NULL) return;
+  if (!st_data) return;
 
   int d = st_data->d;
 
@@ -218,7 +218,7 @@ void ps_static_clear(ps_static_data_t *st_data) {
 
 /* Dynamic memory deallocation. */
 void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
-  if (dy_data == NULL) return;
+  if (!dy_data) return;
 
   int d = dy_data->d;
 
@@ -239,7 +239,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
    If step is NULL it is interpreted as 1. */
 
 void step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
-  if (step != NULL && fmpz_is_zero(step)) return;
+  if (step && fmpz_is_zero(step)) return;
   int d = st_data->d;
   int k = d - n;
   fmpz *pol = dy_data->pol;
@@ -250,18 +250,16 @@ void step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, i
   fmpz *det = dy_data->hankel_dets + 2*k;
   fmpz *t0z = dy_data->w;
 
-  if (!st_data->lead_is_1) {
-    fmpz_pow_ui(t0z, pol+d, k-1);
-    fmpz_mul_ui(t0z, t0z, k);
-  } else fmpz_set_ui(t0z, k);
+  if (!st_data->lead_is_1) fmpz_mul_ui(t0z, st_data->lead_pows+k-1, k);
+  else fmpz_set_ui(t0z, k);
   if (!modulus_is_1) fmpz_mul(t0z, t0z, modulus);
-  if (step == NULL)
-    if (modulus_is_1) fmpz_add_ui(poln, poln, 1);
-    else fmpz_add(poln, poln, modulus);
-  else {
+  if (step) {
     fmpz_mul(t0z, t0z, step);
     if (modulus_is_1) fmpz_add(poln, poln, step);
     else fmpz_addmul(poln, step, modulus);
+  } else {
+    if (modulus_is_1) fmpz_add_ui(poln, poln, 1);
+    else fmpz_add(poln, poln, modulus);
   }
   fmpz_sub(pow_num, pow_num, t0z);
   if (k > 1) {
@@ -400,12 +398,13 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     if (st_data->constraint_lens[i] == k) {
       tz = st_data->constraints + (d+1)*i;
       _fmpz_vec_dot(t0z, tz, pow_num, k+1);
-      if (lead_pow == NULL) tza = tz + k; else fmpz_mul(tza = t1z, lead_pow, tz+k);
-      if ((j = fmpz_sgn(tza) < 0)) {
+      if (lead_pow) fmpz_mul(t1z, lead_pow, tz+k); else fmpz_set(t1z, tz+k); 
+      if ((j = fmpz_sgn(t1z) < 0)) {
         fmpz_neg(t0z, t0z);
-        fmpz_neg(tza, tza);
+        fmpz_neg(t1z, t1z);
       }
-      change_by_sign(1, j, t0z, tza, NULL);
+      change_by_sign(1, j, t0z, t1z, NULL);
+      if (fmpz_cmp(lower, upper) > 0) return(0);
     }
 
   /* Descartes criterion: the evaluations of the n-th derivative of pol at -2*sqrt(q), 2*sqrt(q)
@@ -434,31 +433,30 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
      In order to restrict to integer arithmetic, we skip this condition when
      k is odd and q is not a perfect square. */
 
-  if (q_is_square || k2 == 0)
+  if (q_is_square || !k2)
     for (i=1; i>=0; i--) {
-      s = (k2 == 1) ? k : (i == 0) ? k + 1 : k - 1;
+      s = k2 ? k : i ? k-1 : k+1;
       tz = dy_data->hankel_dets + 2*k + i;
       j = k > 1 && (force_squarefree || fmpz_sgn(tz-4) > 0);
-      if (q_is_square && i == 0 && k > 1 && (force_squarefree || fmpz_sgn(tz-3) > 0)) {
+      if (q_is_square && !i && k > 1 && (force_squarefree || fmpz_sgn(tz-3) > 0)) {
         /* Use the recursive relationship between upper and lower Hankel determinants. */
-        if (k2 == 1) {
+        if (k2) {
            tza = t1z;
            fmpz_mul_ui(tza, tz-2, 2);
            fmpz_mul(tza, tza, st_data->c1);
         } else tza = tz-2;
-        fmpz_fmms_wrapper(t1z, tz-1, tza, tz-4, tz+1);
-        fmpz_divexact(tz, t1z, tz-3);
-        if (k2 == 1 && !j) { // Need the corner entry for a linear constraint
+        fmpz_fmms_divexact(tz, tz-1, tza, tz-4, tz+1, tz-3);
+        if (k2 && !j) { // Need the corner entry for a linear constraint
           tza = w;
           fmpz_mul(tza+s-1, pow_num+s-1, st_data->c1);
-          fmpz_add(tza+s-1, tza+s-1, pow_num+s+1-k2);
+          fmpz_add(tza+s-1, tza+s-1, pow_num+s);
         } else tza = pow_num;
       } else {
         /* Compute the Hankel determinant by condensation (if possible) or directly. 
            Predefined: c1 == 2*lead*sqrt(q), c0 == 4*lead^2*q. */
-        if (i == 1 || k2 == 1) {
-          tza = (fmpz *)(k2 == 1 ? st_data->c1 : st_data->c0);
-          if (i == 0) _fmpz_vec_scalar_fmma_one(w, pow_num, tza, pow_num+2-k2, s);
+        if (i || k2) {
+          tza = (fmpz *)(k2 ? st_data->c1 : st_data->c0);
+          if (!i) _fmpz_vec_scalar_fmma_one(w, pow_num, tza, pow_num+1, s);
           else _fmpz_vec_scalar_fmms_one(w, pow_num, tza, pow_num+2-k2, s);
           tza = w;
         } else tza = pow_num;
@@ -467,10 +465,10 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
 
       /* Deduce a linear constraint. */
       if (j) {
-        if (lead_pow != NULL) fmpz_mul(tza = t1z, tz-4, lead_pow); else tza = tz-4;
-        if (i == 1) { fmpz_neg(t0z, tz); tz = t0z; }
+        if (lead_pow) fmpz_mul(tza = t1z, tz-4, lead_pow); else tza = tz-4;
+        if (i) { fmpz_neg(t0z, tz); tz = t0z; }
       } else { // Argue that the corner entry is nonnegative
-        if (i == 1) fmpz_neg(tz = t0z, tza+s-1); else tz = tza+s-1;
+        if (i) fmpz_neg(tz = t0z, tza+s-1); else tz = tza+s-1;
         tza = lead_pow;
       }
       change_by_sign(1, i, tz, tza, NULL);
@@ -526,11 +524,11 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
       fmpz_addmul_ui(t0z, t2z, 2);
     } while (fmpz_cmp(t0z, upper) <= 0);
     if (s) break; // Found a good value
-    if (--r < 0) return(0); // Found nothing
+    if (!r--) return(0); // Found nothing
     fmpz_divexact_ui(t2z, t2z, 2);
   }
 
-  if (r == 0) { // In this case, enforce lower == upper and exit
+  if (!r) { // In this case, enforce lower == upper and exit
     fmpz_set(lower, t0z);
     fmpz_set(upper, t0z);
     return(1);
