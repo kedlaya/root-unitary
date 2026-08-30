@@ -19,8 +19,8 @@ and:
 > K.S. Kedlaya, Improved search techniques for root-unitary polynomials,
 > preprint (2026).
 
-For the version circa 2015, see the branch archive-2015. 
-For an upcoming version with further improvements, see the branch 2026.
+For the version circa 2015, see the branch archive-2015.
+For the version circa 2025, see the branch archive-2025.
 
 As of December 2019, the code is available in Sage: try
 ```
@@ -57,7 +57,9 @@ There are also some test scripts. See the README files in the following director
 * k3-scripts: Build tables associated to K3 surfaces
 * k3-quartic-f2: Scripts and data associated to smooth quartic surfaces over F2
 
-This code is made available under the Lesser GNU Public License (LGPL), 
+As of 2026, we also provide wrapper code in C and Rust.
+
+This code is made available under the Lesser GNU Public License (LGPL),
 version 3.0 or any later version.
 
 POSSIBLE TODO LIST: 

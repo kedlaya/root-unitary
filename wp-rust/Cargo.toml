@@ -1,0 +1,12 @@
+[package]
+name = "wp-rust"
+version = "0.1.0"
+edition = "2024"
+
+[build-dependencies]
+cc = "1.2.56"
+
+[dependencies]
+cty = "0.2.2"
+flint3-sys = { git = "https://github.com/lairez/flint3-sys", package = "flint3-sys" }
+

@@ -1,3 +1,7 @@
+## This code verifies the conclusion of Kronecker's theorem for polynomials
+## of degree <= 21: every monic integer polynormial with all complex roots on
+## the unit circle is a product of cyclotomic polynomials.
+
 polRing.<x> = PolynomialRing(ZZ)
 f = open("k3f1-lines.txt", "r")
 l = []
