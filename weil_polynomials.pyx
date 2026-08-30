@@ -192,7 +192,7 @@ cdef class dfs_manager:
 
     cpdef long node_count(self) noexcept:
         """
-        Count nodes.
+        Count nodes. This always gives 0 unless node_limit is specified.
 
         This method should not be called directly. Instead, use the ``node_count`` method
         of an instance of ``WeilPolynomials`` or ``WeilPolynomials_iter``.
@@ -200,7 +200,7 @@ cdef class dfs_manager:
         TESTS::
 
             sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
-            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1], node_limit=10000000)
             sage: it = iter(w)
             sage: _ = next(it)
             sage: it.process.node_count()
@@ -239,9 +239,9 @@ cdef class dfs_manager:
             sage: w = WeilPolynomials(10,1,sign=1,lead=[3,1,1])
             sage: it = iter(w)
             sage: ans = []
-            sage: it.process.advance_exhaust(ans)
+            sage: ans = it.process.advance_exhaust(ans)
             sage: ans[0]
-            [3, 1, 1, -5, 1, -2, 1, -5, 1, 1, 3]
+            3*x^10 + x^9 + x^8 - 5*x^7 + x^6 - 2*x^5 + x^4 - 5*x^3 + x^2 + x + 3
         """
         cdef int i, k = 1, flag
         cdef int t = 1, u = 0, np = self.num_processes, max_steps = 10000
@@ -440,10 +440,12 @@ class WeilPolynomials_iter():
         Return the number of terminal nodes found in the tree, excluding
         actual solutions.
 
+        This always gives 0 unless node_limit is specified.
+
         EXAMPLES::
 
             sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
-            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1], node_limit=10000000)
             sage: it = iter(w)
             sage: l = list(it)
             sage: it.node_count()
@@ -569,9 +571,9 @@ class WeilPolynomials():
         True
         sage: w3 = WeilPolynomials(10, 1, sign=1, lead=[3,1], constraints=[(2,0,0,1), (-3,2,1,-1)])
         sage: l4 = list(w3)
-        sage: l5 = [u for u in l if sum(i^3 * j for i,j in u.roots(CC)) >= 1.99 and
-          sum((i^3 - i^2 - 2*i) * j for i,j in u.roots(CC)) <= 2.99 ]
-        sage: l4 == l5
+        sage: l5 = [u for u in l if sum(i^3 * j for i,j in u.roots(CC)) >= 1.99]
+        sage: l6 = [u for u in l5 if sum((i^3 - i^2 - 2*i) * j for i,j in u.roots(CC)) <= 2.99 ]
+        sage: l4 == l6
         True
 
     TESTS:
@@ -670,11 +672,13 @@ class WeilPolynomials():
     def node_count(self):
         r"""
         Return the number of terminal nodes found in the tree, excluding actual solutions.
+        
+        This always gives 0 unless node_limit is specified.
 
         EXAMPLES::
 
             sage: from sage.rings.polynomial.weil.weil_polynomials import WeilPolynomials
-            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1])
+            sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1,1], node_limit=10000000)
             sage: l = list(w)
             sage: w.node_count()
             118
