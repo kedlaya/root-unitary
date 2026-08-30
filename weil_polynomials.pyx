@@ -564,8 +564,14 @@ class WeilPolynomials():
         sage: l = list(w)
         sage: w2 = WeilPolynomials(10, 1, sign=1, lead=[3,1], constraints=[(3,1,0,1)])
         sage: l2 = list(w2)
-        sage: l3 = [u for u in l2 if sum((i^3 + i) * j for i,j in u.roots(CC)) >= 2.99]
+        sage: l3 = [u for u in l if sum((i^3 + i) * j for i,j in u.roots(CC)) >= 2.99]
         sage: l2 == l3
+        True
+        sage: w3 = WeilPolynomials(10, 1, sign=1, lead=[3,1], constraints=[(2,0,0,1), (-3,2,1,-1)])
+        sage: l4 = list(w3)
+        sage: l5 = [u for u in l if sum(i^3 * j for i,j in u.roots(CC)) >= 1.99 and
+          sum((i^3 - i^2 - 2*i) * j for i,j in u.roots(CC)) <= 2.99 ]
+        sage: l4 == l5
         True
 
     TESTS:

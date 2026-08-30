@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
     #pragma omp parallel private(thread_id, flag) 
     {
       thread_id = omp_get_thread_num();
-      flag = ps_next_pol(st_data, dy_data[thread_id], 1000);      
+      flag = ps_next_pol(st_data, dy_data[thread_id], 10000);
     }
     t = 0; 
     for (thread_id=0; thread_id<np; thread_id++) {

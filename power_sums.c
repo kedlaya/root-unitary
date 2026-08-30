@@ -345,8 +345,8 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
 
   /* Adjust lower and upper bounds within set_range_from_power_sums (affects lower, upper, t2z).
      The pair (val1, val2) stands for g = val1 + val2*sqrt(q).
-     The value in val1 is specified as a numerator-denominator
-     pair which need not be canonicalized (a denominator of NULL is interpreted as 1).
+     The value in val1 is specified as a numerator-denominator pair which need not be canonicalized,
+     although the denominator must be positive (a denominator of NULL is interpreted as 1).
      A value of NULL for val2_num is interpreted as 0. No aliasing allowed.
      
      Given that g is a monic linear function of the k-th power sum, then:
@@ -398,7 +398,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
     if (st_data->constraint_lens[i] == k) {
       tz = st_data->constraints + (d+1)*i;
       _fmpz_vec_dot(t0z, tz, pow_num, k+1);
-      if (lead_pow) fmpz_mul(t1z, lead_pow, tz+k); else fmpz_set(t1z, tz+k); 
+      fmpz_opt_mul(t1z, lead_pow, tz+k);
       if ((j = fmpz_sgn(t1z) < 0)) {
         fmpz_neg(t0z, t0z);
         fmpz_neg(t1z, t1z);
@@ -441,15 +441,15 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
       if (q_is_square && !i && k > 1 && (force_squarefree || fmpz_sgn(tz-3) > 0)) {
         /* Use the recursive relationship between upper and lower Hankel determinants. */
         if (k2) {
-           tza = t1z;
-           fmpz_mul_ui(tza, tz-2, 2);
-           fmpz_mul(tza, tza, st_data->c1);
+          tza = t1z;
+          fmpz_mul_ui(tza, tz-2, 2);
+          fmpz_mul(tza, tza, st_data->c1);
         } else tza = tz-2;
         fmpz_fmms_divexact(tz, tz-1, tza, tz-4, tz+1, tz-3);
         if (k2 && !j) { // Need the corner entry for a linear constraint
           tza = w;
-          fmpz_mul(tza+s-1, pow_num+s-1, st_data->c1);
-          fmpz_add(tza+s-1, tza+s-1, pow_num+s);
+          fmpz_mul(t0z, pow_num+s-1, st_data->c1);
+          fmpz_add(tza+s-1, t0z, pow_num+s);
         } else tza = pow_num;
       } else {
         /* Compute the Hankel determinant by condensation (if possible) or directly. 
@@ -494,7 +494,8 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
    This function assumes that {w, 2*k+2} is scratch space.
 */
 
-int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, int force_squarefree, const fmpz_t modulus, fmpz *w) {
+int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k,
+    int force_squarefree, const fmpz_t modulus, fmpz *w) {
   int r, s;
 
   /* Allocate from working space. */
@@ -513,8 +514,8 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
   /* Look for a single value where the Rolle criterion holds. */
   fmpz_add_ui(t0z, t0z, 1);
   r = fmpz_flog_ui(t0z, 2); // r = floor(log_2 (upper-lower+1)); forced to be positive
-  fmpz_one_2exp(t2z, r);
   while (1) {
+    fmpz_one_2exp(t2z, r);
     if (r) {
       fmpz_add(t0z, lower, t2z);
       fmpz_sub_ui(t0z, t0z, 1);
@@ -525,7 +526,6 @@ int apply_rolle_condition(fmpz_t lower, fmpz_t upper, const fmpz *pol, int k, in
     } while (fmpz_cmp(t0z, upper) <= 0);
     if (s) break; // Found a good value
     if (!r--) return(0); // Found nothing
-    fmpz_divexact_ui(t2z, t2z, 2);
   }
 
   if (!r) { // In this case, enforce lower == upper and exit

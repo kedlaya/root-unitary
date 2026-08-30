@@ -35,6 +35,8 @@ void _fmpz_vec_scalar_divexact_fmpz_wrapper(fmpz *vec1, const fmpz *vec2, slong 
 
 inline int is_mpz(fmpz f);
 
+void fmpz_opt_mul(fmpz_t res, const fmpz_t a, const fmpz_t b);
+void fmpz_opt_addmul(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c);
 void fmpz_fmid(fmpz_t res, const fmpz_t a, const fmpz_t b);
 void fmpz_cmid(fmpz_t res, const fmpz_t a, const fmpz_t b);
 void fmpz_sqrt_c(fmpz_t res, const fmpz_t a);

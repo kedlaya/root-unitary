@@ -20,7 +20,7 @@ and:
 > preprint (2026).
 
 For the version circa 2015, see the branch archive-2015. 
-For an upcoming version with further improvements, see the branch 2026.
+For the version circa 2025, see the branch archive-2025.
 
 As of December 2019, the code is available in Sage: try
 ```

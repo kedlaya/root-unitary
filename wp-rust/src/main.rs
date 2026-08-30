@@ -77,6 +77,7 @@ fn main() {
                 let mut iter = (0..d_size).map(|x| unsafe { *(*dt).sympol.add(x) });
                 let x = loop {
                     if data.ascend {
+                        // Ascend and step forward.
                         data.n = unsafe { ascend_step_forward(st, dt, data.n) };
                         data.flag = data.n <= d;
                         data.ascend = false;
@@ -86,6 +87,7 @@ fn main() {
                         tx_answers_clone.send(Vec::from_iter(&mut iter)).unwrap();
                         data.ascend = true;
                     } else {
+                        // Descend and compute a new range.
                         data.n -= 1;
                         data.ascend = unsafe { set_range_from_power_sums(st, dt, data.n) == 0 ||
                           reduce_range_from_rolle(st, dt, data.n) == 0 };

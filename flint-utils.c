@@ -27,6 +27,21 @@ inline int is_mpz(fmpz f) {
   return(COEFF_IS_MPZ(f));
 }
 
+/* Set res to a*b, interpreting NULL for a as 1. */
+void fmpz_opt_mul(fmpz_t res, const fmpz_t a, const fmpz_t b) {
+  if (a) fmpz_mul(res, a, b); else fmpz_set(res, b);
+}
+
+/* Set res to a*b + c, interpreting NULL for a as 1.
+   Aliasing not allowed between res and c unless a == NULL. */
+void fmpz_opt_addmul(fmpz_t res, const fmpz_t a, const fmpz_t b, const fmpz_t c) {
+  if (a) {
+    fmpz_mul(res, a, b);
+    fmpz_add(res, res, c);
+  }
+  else fmpz_add(res, b, c);
+}
+
 /* Set res to floor((a+b)/2). */
 void fmpz_fmid(fmpz_t res, const fmpz_t a, const fmpz_t b) {
   fmpz_add(res, a, b);
@@ -47,8 +62,7 @@ void fmpz_sqrt_c(fmpz_t res, const fmpz_t a) {
 
 /* Set res to floor(a/b) if r == 0 and ceil(r/b) if r == 1. Aliasing allowed. */
 void fmpz_div_q(fmpz_t res, const fmpz_t a, const fmpz_t b, int r) {
-  if (r) fmpz_cdiv_q(res, a, b);
-  else fmpz_fdiv_q(res, a, b);
+  if (r) fmpz_cdiv_q(res, a, b); else fmpz_fdiv_q(res, a, b);
 }
 
 /* Set res to the floor (if r==0) or ceiling (if r==1) of (a/b + c sqrt(q))/d). 
@@ -57,17 +71,17 @@ void fmpz_div_q(fmpz_t res, const fmpz_t a, const fmpz_t b, int r) {
 void fmpq_floor_ceil_quad(fmpz_t res, int r, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
   const fmpz *tmp;
 
-  if (c != NULL) {
+  if (c) {
     int s = fmpz_sgn(c) > 0;
     fmpz_mul(res, c, c);
     fmpz_mul(res, res, q);
     if (r ^ s) fmpz_sqrt(res, res); else fmpz_sqrt_c(res, res);
     if (!s) fmpz_neg(res, res);
-    if (b != NULL) fmpz_mul(res, res, b);
+    if (b) fmpz_mul(res, res, b);
     fmpz_add(res, res, a);
     tmp = res;
   } else tmp = a;
-  if (b != NULL) { fmpz_div_q(res, tmp, b, r); tmp = res; }
+  if (b) { fmpz_div_q(res, tmp, b, r); tmp = res; }
   fmpz_div_q(res, tmp, d, r);
 }
 
@@ -196,10 +210,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
   if (n <= 2) return(1);  // Constant or linear polynomial
 
   /* Put the updated constant term of poly in f1. */
-  if (b != NULL) {
-    fmpz_mul(f1, a, b);
-    fmpz_add(f1, f1, poly);
-  } else fmpz_add(f1, a, poly); // Treat b as 1
+  fmpz_opt_addmul(f1, b, a, poly);
 
   int sgn;
   if (n == 3) { // Quadratic case, compute discriminant
@@ -259,6 +270,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
     /* At this point deg(f0) = n+1, deg(f1) = n.
        Finish computing the next leading coefficient (up to a positive factor). */
     fmpz_sub(t, t, lead1-2);
+    if (fmpz_sgn(t) * fmpz_sgn(lead1) > 0) return(0);
     fmpz_fmma_wrapper(t, t, lead1, lead11, lead11);
 
     /* If we miss any one sign change, we cannot have enough. */
@@ -287,6 +299,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
   }
 
   /* Handle the case where the pseudoremainder is a scalar. */
+  if (fmpz_sgn(t) * fmpz_sgn(lead1) > 0) return(0);
   fmpz_fmma_wrapper(t, t, lead1, lead11, lead11);
   sgn = fmpz_sgn(t);
   return (!sgn_criterion);
