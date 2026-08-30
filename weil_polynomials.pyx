@@ -162,7 +162,7 @@ cdef class dfs_manager:
             for j in range(min(d+1, len(constraints[i]))):
                 fmpz_set_mpz(temp_constraints+(d+1)*i+j, Integer(constraints[i][j]).value)
         self.st_data = ps_static_init(d, temp_q, temp_lead,
-                                         temp_array, num_constraints, temp_constraints, 
+                                         temp_array, num_constraints, temp_constraints,
                                          node_limit, force_squarefree)
 
         # Initialize processes, but assign work to only one process.
@@ -505,12 +505,12 @@ class WeilPolynomials():
         If set, only squarefree polynomials coprime to ``x^2 - q`` will be returned.
         
     - ``constraints`` -- list (default: empty)
-    
+
         Each entry is a tuple expressing a lower bound constraint on the power sums `s_i`.
         The tuple `(c0, c1, ..., cn)` represents ``c_0 \leq c_1 s_1 + \cdots + c_n t_n``.
 
     - ``polring`` -- (optional) a polynomial ring in which to construct the results
-    
+
         If not specified, answers are created in a polynomial ring over `ZZ` with variable `x`.
 
     EXAMPLES:
@@ -557,7 +557,7 @@ class WeilPolynomials():
         3*x^10 + x^9 + x^8 + 6*x^7 - 2*x^6 + 2*x^4 - 6*x^3 - x^2 - x - 3
         sage: list(WeilPolynomials(10, 2, lead=[1, -3, 5, -5, 5, -5]))
         [x^10 - 3*x^9 + 5*x^8 - 5*x^7 + 5*x^6 - 5*x^5 + 10*x^4 - 20*x^3 + 40*x^2 - 48*x + 32]
-        
+
     Generating Weil polynomials with linear constraints on power sums::
 
         sage: w = WeilPolynomials(10, 1, sign=1, lead=[3,1])

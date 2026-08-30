@@ -40,7 +40,7 @@ fn main() {
     // Initialize static data used by the C code.
     let null = ptr::null_mut();
     let st_data = StaticPtr{ptr: unsafe {ps_static_init(d32, q as *const c_long, lead as *const c_long, null, 0, null, -1, 0) }};
-    
+
     // Construct deques for loaded work packets, empty packets, and Senders to dispatch work to threads.
     let mut work: Vec<DynamicPtr> = Vec::with_capacity(max_threads);
     let mut reserve: Vec<DynamicPtr> = Vec::with_capacity(max_threads);
@@ -72,7 +72,7 @@ fn main() {
             let (tx_dispatch, rx_dispatch) = channel::<Option<DynamicPtr>>();
             dispatch.push(tx_dispatch);
             thread::spawn(move || {
-                let st = st_data.clone().ptr; 
+                let st = st_data.clone().ptr;
                 let dt = data.ptr;
                 let mut iter = (0..d_size).map(|x| unsafe { *(*dt).sympol.add(x) });
                 let x = loop {

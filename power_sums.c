@@ -52,7 +52,7 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
 
   st_data->modlist = _fmpz_vec_init(d+1);
   k0 = st_data->modlist; // Used as a temporary variable for now
-  
+
   fmpz_init(st_data->c0); // c0 = 4*lead^2*q
   fmpz_mul(st_data->c0, lead, lead);
   fmpz_mul(st_data->c0, st_data->c0, q);
@@ -74,14 +74,14 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
         fmpz_pow_ui(k0, q, (i-j)/2);
         fmpz_mul(pol+j, k0, pol+j);
       }
-    if (!st_data->lead_is_1) 
+    if (!st_data->lead_is_1)
       for (j=i%2; j<=i; j+=2) {
         fmpz_pow_ui(k0, lead, i-j);
         fmpz_mul(pol+j, k0, pol+j);
       }
   }
 
-  /* Linear conditions on asymmetrized coefficients. 
+  /* Linear conditions on asymmetrized coefficients.
      Since these are provided in terms of symmetrized coefficients,
      we convert them using the Chebyshev polynomial matrix. */
   st_data->num_constraints = num_constraints;
@@ -105,7 +105,7 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
         if (force_squarefree) fmpz_sub_ui(pol, pol, 1);
       }
     }
-  } 
+  }
 
   /* Moduli constraints. If not specified, fix the leading coefficient and impose no other constraints. */
   if (modlist) for (i=0; i<=d; i++) fmpz_set(st_data->modlist+i, modlist+d-i);
@@ -138,7 +138,7 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
     fmpz_mul_ui(k0, k0, 2*d);
     for (j=0; j<i; j++) fmpz_mul(k0, k0, lead);
   }
-  
+
   /* Matrix to compute reciprocal transform. */
   fmpz_mat_init(st_data->pol_to_sym, 2*d+1, d+1);
   fmpz_mat_zero(st_data->pol_to_sym);
@@ -153,7 +153,7 @@ ps_static_data_t *ps_static_init(int d, const fmpz_t q, const fmpz_t lead, const
       fmpz_divexact_ui(k0, k0, i-j+1);
     }
   }
-  
+
   if (!st_data->lead_is_1) {
     st_data->lead_pows = _fmpz_vec_init(d+1);
     for (i=0; i<=d; i++) fmpz_pow_ui(st_data->lead_pows+i, lead, i);
@@ -235,7 +235,7 @@ void ps_dynamic_clear(ps_dynamic_data_t *dy_data) {
   Low-level flow control
 *****/
 
-/* Increment the current moving counter and update stored data to match. 
+/* Increment the current moving counter and update stored data to match.
    If step is NULL it is interpreted as 1. */
 
 void step_forward(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int n, fmpz_t step) {
@@ -348,7 +348,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
      The value in val1 is specified as a numerator-denominator pair which need not be canonicalized,
      although the denominator must be positive (a denominator of NULL is interpreted as 1).
      A value of NULL for val2_num is interpreted as 0. No aliasing allowed.
-     
+
      Given that g is a monic linear function of the k-th power sum, then:
 
      -- passing r = 0 imposes the condition g >= 0 (or g > 0 if force_squarefree != 0);
@@ -360,10 +360,10 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
   inline void change_by_sign(int update, int r, const fmpz_t val1_num, const fmpz_t val1_den, const fmpz_t val2_num) {
     fmpq_floor_ceil_quad(t2z, r ^ force_squarefree, val1_num, val1_den, val2_num, f, q);
     if (!r) { // change_upper
-      if (force_squarefree) { if (!update || fmpz_cmp(t2z, upper) <= 0) fmpz_sub_ui(upper, t2z, 1); } 
+      if (force_squarefree) { if (!update || fmpz_cmp(t2z, upper) <= 0) fmpz_sub_ui(upper, t2z, 1); }
       else if (!update || fmpz_cmp(t2z, upper) < 0) fmpz_set(upper, t2z);
     } else { // change_lower
-      if (force_squarefree) { if (!update || fmpz_cmp(t2z, lower) >= 0) fmpz_add_ui(lower, t2z, 1); } 
+      if (force_squarefree) { if (!update || fmpz_cmp(t2z, lower) >= 0) fmpz_add_ui(lower, t2z, 1); }
       else if (!update || fmpz_cmp(t2z, lower) > 0) fmpz_set(lower, t2z);
     }
   }
@@ -452,7 +452,7 @@ int set_range_from_power_sums(const ps_static_data_t *st_data, ps_dynamic_data_t
           fmpz_add(tza+s-1, t0z, pow_num+s);
         } else tza = pow_num;
       } else {
-        /* Compute the Hankel determinant by condensation (if possible) or directly. 
+        /* Compute the Hankel determinant by condensation (if possible) or directly.
            Predefined: c1 == 2*lead*sqrt(q), c0 == 4*lead^2*q. */
         if (i || k2) {
           tza = (fmpz *)(k2 ? st_data->c1 : st_data->c0);
@@ -577,7 +577,7 @@ int reduce_range_from_rolle(const ps_static_data_t *st_data, ps_dynamic_data_t *
   if (!modulus_is_1) fmpz_divexact(upper, upper, modulus);
   _fmpz_vec_mul(polderiv, st_data->binom_mat + (d+2)*n, pol, k);
 
-  if (!apply_rolle_condition(lower, upper, polderiv, k, st_data->force_squarefree, 
+  if (!apply_rolle_condition(lower, upper, polderiv, k, st_data->force_squarefree,
     modulus_is_1 ? NULL : modulus, polderiv + k)) return(0);
 
   /* Set the new upper bound. */
@@ -695,7 +695,7 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
       break;
     } else { // Compute children of the current node.
       n--;
-      if ((ascend = !(set_range_from_power_sums(st_data, dy_data, n) && 
+      if ((ascend = !(set_range_from_power_sums(st_data, dy_data, n) &&
             reduce_range_from_rolle(st_data, dy_data, n)))) // Found a terminal node
 	if (node_limit != -1 && (++node_count) >= node_limit) { flag = -1; break; }
       i = d-n+1; count_steps += i*i;
@@ -706,7 +706,7 @@ int ps_next_pol(const ps_static_data_t *st_data, ps_dynamic_data_t *dy_data, int
   dy_data->ascend = ascend;
   dy_data->n = n;
   dy_data->node_count = node_count;
-  dy_data->flag = flag; 
+  dy_data->flag = flag;
   return(flag);
 }
 

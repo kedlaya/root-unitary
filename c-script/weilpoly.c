@@ -10,7 +10,7 @@ int main(int argc, char* argv[]) {
   fmpz *temp_array;
   ps_static_data_t *st_data;
   ps_dynamic_data_t **dy_data;
-  
+
   if (argc != 4) {
     fprintf(stderr, "Format: weilpoly d q lead\n");
     return(1);
@@ -38,20 +38,20 @@ int main(int argc, char* argv[]) {
   dy_data[0] = ps_dynamic_init(d, temp_array);
   _fmpz_vec_clear(temp_array, d+1);
   for (i=1; i<np; i++) dy_data[i] = ps_dynamic_init(d, NULL);
-  
+
   fprintf(stderr, "Computing Weil polynomials with d = %d, q = %ld, lead = %ld (threads: %d)\n", d0, q, lead, np);
   while (t) {
-    #pragma omp parallel private(thread_id, flag) 
+    #pragma omp parallel private(thread_id, flag)
     {
       thread_id = omp_get_thread_num();
       flag = ps_next_pol(st_data, dy_data[thread_id], 10000);
     }
-    t = 0; 
+    t = 0;
     for (thread_id=0; thread_id<np; thread_id++) {
       flag = dy_data[thread_id]->flag;
       if (flag) t += 1;
       if (flag == 2) {
-        for (i=0; i<=d0; i++) { 
+        for (i=0; i<=d0; i++) {
           fmpz_print(dy_data[thread_id]->sympol+i);
           if (i<d0) printf(" ");
         }
@@ -62,11 +62,11 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  #pragma omp parallel 
+  #pragma omp parallel
   {
     ps_cleanup(1);
   }
- 
+
   ps_static_clear(st_data);
   for (i=0; i<np; i++) ps_dynamic_clear(dy_data[i]);
   free(dy_data);

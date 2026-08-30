@@ -65,7 +65,7 @@ void fmpz_div_q(fmpz_t res, const fmpz_t a, const fmpz_t b, int r) {
   if (r) fmpz_cdiv_q(res, a, b); else fmpz_fdiv_q(res, a, b);
 }
 
-/* Set res to the floor (if r==0) or ceiling (if r==1) of (a/b + c sqrt(q))/d). 
+/* Set res to the floor (if r==0) or ceiling (if r==1) of (a/b + c sqrt(q))/d).
    No aliasing allowed. b and d must be positive.
    If b is NULL we interpret it as 1. If c is NULL we interpret it as 0. */
 void fmpq_floor_ceil_quad(fmpz_t res, int r, const fmpz_t a, const fmpz_t b, const fmpz_t c, const fmpz_t d, const fmpz_t q) {
@@ -92,33 +92,33 @@ void fmpz_fmms_divexact(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, 
   fmpz_divexact(res, res, e);
 }
 
-/* Compute the vector res with res[i] = a[i]*b[i]. 
+/* Compute the vector res with res[i] = a[i]*b[i].
    Aliasing allowed except for *partial* overlap between res and a, b. */
 void _fmpz_vec_mul(fmpz *res, const fmpz *a, const fmpz *b, int n) {
   for (int i=0; i<n; i++) fmpz_mul(res+i, a+i, b+i);
 }
 
-/* Compute the vector res with res[i] = a[i]*b[i] - c[i]*d[i]. 
+/* Compute the vector res with res[i] = a[i]*b[i] - c[i]*d[i].
    Aliasing allowed except for *partial* overlap between res and a, b, c, or d. */
 void _fmpz_vec_fmms(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, int n) {
   for (int i=0; i<n; i++) fmpz_fmms(res+i, a+i, b+i, c+i, d+i);
 }
 
-/* Compute the vector res with res[i] = a[i]*b + c[i]*d. 
+/* Compute the vector res with res[i] = a[i]*b + c[i]*d.
    No aliasing allowed between res and b or d.
    No partial overlap allowed between res and a or c. */
 void _fmpz_vec_scalar_fmma(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, const fmpz_t d, int n) {
   for (int i=0; i<n; i++) fmpz_fmma(res+i, a+i, b, c+i, d);
 }
 
-/* Compute the vector res with res[i] = a[i]*b - c[i]*d. 
+/* Compute the vector res with res[i] = a[i]*b - c[i]*d.
    No aliasing allowed between res and b or d.
    No partial overlap allowed between res and a or c. */
 void _fmpz_vec_scalar_fmms(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, const fmpz_t d, int n) {
   for (int i=0; i<n; i++) fmpz_fmms(res+i, a+i, b, c+i, d);
 }
 
-/* Compute the vector res with res[i] = (a[i]*b - c[i]*d)/e assuming that division is exact. 
+/* Compute the vector res with res[i] = (a[i]*b - c[i]*d)/e assuming that division is exact.
    No aliasing allowed between res and b, d, or e.
    No partial overlap allowed between res and a or c. */
 void _fmpz_vec_scalar_fmms_divexact(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, int n, const fmpz *e) {
@@ -126,20 +126,20 @@ void _fmpz_vec_scalar_fmms_divexact(fmpz *res, const fmpz *a, const fmpz *b, con
   _fmpz_vec_scalar_divexact_fmpz_wrapper(res, res, n, e);
  }
 
-/* Compute the vector res with res[i] = (a[i]*b[i] - c[i]*d[i])/e[i] assuming that division is exact. 
+/* Compute the vector res with res[i] = (a[i]*b[i] - c[i]*d[i])/e[i] assuming that division is exact.
    No partial overlap allowed between res and a, b, c, d, or e. */
 void _fmpz_vec_fmms_divexact(fmpz *res, const fmpz *a, const fmpz *b, const fmpz *c, const fmpz *d, const fmpz_t e, int n) {
   for (int i=0; i<n; i++) fmpz_fmms_divexact(res+i, a+i, b+i, c+i, d+i, e+i);
 }
 
-/* Compute the vector res with res[i] = a[i]*b + c[i]. 
+/* Compute the vector res with res[i] = a[i]*b + c[i].
    Aliasing not allowed between res and b. */
 void _fmpz_vec_scalar_fmma_one(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, int n) {
   _fmpz_vec_scalar_mul_fmpz(res, a, n, b);
   _fmpz_vec_add(res, res, c, n);
 }
 
-/* Compute the vector res with res[i] = a[i]*b - c[i]. 
+/* Compute the vector res with res[i] = a[i]*b - c[i].
    Aliasing not allowed between res and b. */
 void _fmpz_vec_scalar_fmms_one(fmpz *res, const fmpz *a, const fmpz_t b, const fmpz *c, int n) {
   _fmpz_vec_scalar_mul_fmpz(res, a, n, b);
@@ -190,8 +190,8 @@ int hankel_determinant_condensation(fmpz_t res, const fmpz *seq, int n, fmpz *w)
 }
 
 /*
-    Use a subresultant sequence to test whether a given polynomial has 
-    real roots. Note that this test has an early abort mechanism: 
+    Use a subresultant sequence to test whether a given polynomial has
+    real roots. Note that this test has an early abort mechanism:
     having real roots means that the sign sequence has the maximal number
     of sign changes, so the test aborts if any sign change is missed.
 
@@ -220,7 +220,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
     return(!sgn_criterion);
   }
 
-  /* Introduce some unallocated pointers. 
+  /* Introduce some unallocated pointers.
      To gloss these, imagine we are trying to set f0 to be the
      pseudoremainder of f1 modulo f2. */
   fmpz *t; // Receives the leading coefficient of f0
@@ -246,7 +246,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
   /* Set f0 := deriv(poly). */
   _fmpz_poly_derivative(f0, poly, n-2);
 
-  /* Set f1 to the pseudoremainder of poly modulo f0, again removing one factor of lead2. 
+  /* Set f1 to the pseudoremainder of poly modulo f0, again removing one factor of lead2.
      We use t+1 = f1+n-2 as scratch. */
 
   _fmpz_vec_scalar_fmms(f1+1, poly+1, lead1, f0, lead2, n-4);
@@ -263,7 +263,7 @@ int _fmpz_poly_all_real_roots(const fmpz *poly, int n, fmpz *f0, fmpz *f1,
   content = lead1; t = f0+n-4; lead1 = f1+n-3; lead11 = lead1-1;
   fmpz_fmms_wrapper(t, t, lead1, t+1, lead11);
   fmpz_divexact_ui(t, t, n-1);
-  
+
   _fmpz_vec_scalar_mul_fmpz(f1, f1, n-2, lead2); // Put back in a factor for later
 
   for (n -= 3; n > 1; n--) {

@@ -15,7 +15,7 @@ pub struct StaticData {
     pub c1: *const c_long,
     pub q_is_1: c_int,
     pub q_is_square: c_int,
-    pub lead_is_1: c_int,    
+    pub lead_is_1: c_int,
     pub num_constraints: c_int,
     pub constraint_lens: *const c_int,
     pub modlist: *const c_long,
